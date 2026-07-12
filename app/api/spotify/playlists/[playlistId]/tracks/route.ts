@@ -22,7 +22,7 @@ export async function GET(
 
   try {
     const spotifyResponse = await fetch(
-      `https://api.spotify.com/v1/playlists/${playlistId}/items?limit=100`,
+      `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items?limit=50`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
