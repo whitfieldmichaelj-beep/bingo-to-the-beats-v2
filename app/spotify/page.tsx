@@ -87,9 +87,7 @@ export default function SpotifyPage() {
         {playlists.map((playlist) => (
           <Link
             key={playlist.id}
-            href={`/host/${playlist.id}?name=${encodeURIComponent(
-              playlist.name
-            )}`}
+            href={`/host/${playlist.id}?name=${encodeURIComponent(playlist.name)}`}
             style={{
               color: "inherit",
               textDecoration: "none",

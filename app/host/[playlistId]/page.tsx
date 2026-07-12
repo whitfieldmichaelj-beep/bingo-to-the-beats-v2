@@ -65,13 +65,11 @@ export default function HostPlaylistPage() {
         }
 
         const validTracks = (data.items || [])
-          .map((item: PlaylistItem) => item.track)
-          .filter(
-            (
-              track: SpotifyTrack | null | undefined
-            ): track is SpotifyTrack => Boolean(track?.id)
-          );
-
+  .map((entry: PlaylistItem) => entry.item ?? entry.track ?? null)
+  .filter(
+    (track: SpotifyTrack | null): track is SpotifyTrack =>
+      Boolean(track && (track.id || track.uri) && track.name)
+  );
         setTracks(validTracks);
 
         setMessage(
