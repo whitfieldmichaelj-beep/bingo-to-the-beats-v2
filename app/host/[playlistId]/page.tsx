@@ -44,6 +44,9 @@ export default function HostPlaylistPage() {
     "Loading playlist songs..."
   );
 
+  const [clipLength, setClipLength] = useState("20");
+  const [cardCount, setCardCount] = useState("100");
+
   useEffect(() => {
     async function loadTracks() {
       try {
@@ -86,6 +89,24 @@ export default function HostPlaylistPage() {
 
     loadTracks();
   }, [playlistId]);
+
+  function continueToGameSetup() {
+    const safeCardCount = Math.min(
+      200,
+      Math.max(1, Number(cardCount) || 1)
+    );
+
+    const query = new URLSearchParams({
+      name: playlistName,
+      clipLength,
+      cardCount: String(safeCardCount),
+      trackCount: String(tracks.length),
+    });
+
+    router.push(
+      `/host/${playlistId}/game?${query.toString()}`
+    );
+  }
 
   return (
     <main
@@ -150,6 +171,7 @@ export default function HostPlaylistPage() {
         </h2>
 
         <label
+          htmlFor="clipLength"
           style={{
             display: "block",
             marginTop: "24px",
@@ -160,7 +182,11 @@ export default function HostPlaylistPage() {
         </label>
 
         <select
-          defaultValue="20"
+          id="clipLength"
+          value={clipLength}
+          onChange={(event) =>
+            setClipLength(event.target.value)
+          }
           style={{
             width: "100%",
             marginTop: "8px",
@@ -176,6 +202,7 @@ export default function HostPlaylistPage() {
         </select>
 
         <label
+          htmlFor="cardCount"
           style={{
             display: "block",
             marginTop: "20px",
@@ -186,10 +213,14 @@ export default function HostPlaylistPage() {
         </label>
 
         <input
+          id="cardCount"
           type="number"
           min="1"
           max="200"
-          defaultValue="100"
+          value={cardCount}
+          onChange={(event) =>
+            setCardCount(event.target.value)
+          }
           style={{
             width: "100%",
             marginTop: "8px",
@@ -202,13 +233,7 @@ export default function HostPlaylistPage() {
         <button
           type="button"
           disabled={tracks.length === 0}
-          onClick={() => {
-            router.push(
-              `/host/${playlistId}/game?name=${encodeURIComponent(
-                playlistName
-              )}`
-            );
-          }}
+          onClick={continueToGameSetup}
           style={{
             width: "100%",
             marginTop: "24px",
@@ -276,6 +301,7 @@ export default function HostPlaylistPage() {
 
               <div>
                 <strong>{track.name}</strong>
+
                 <p
                   style={{
                     marginTop: "4px",
