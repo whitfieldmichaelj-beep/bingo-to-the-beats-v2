@@ -1,65 +1,212 @@
-import Image from "next/image";
+import Link from "next/link";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top, #312e81 0%, #111827 45%, #030712 100%)",
+        color: "white",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <nav
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding: "24px 28px",
+        }}
+      >
+        <div>
+          <strong style={{ fontSize: "20px" }}>
+            Bingo to the Beats
+          </strong>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <a
+          href="https://www.instagram.com/bingotothebeats"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            color: "#c4b5fd",
+            textDecoration: "none",
+            fontWeight: 700,
+          }}
+        >
+          @bingotothebeats
+        </a>
+      </nav>
+
+      <section
+        style={{
+          maxWidth: "1000px",
+          margin: "0 auto",
+          padding: "90px 28px 70px",
+          textAlign: "center",
+        }}
+      >
+        <p
+          style={{
+            color: "#a78bfa",
+            fontWeight: 800,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+          }}
+        >
+          DJ Mike Doelo Presents
+        </p>
+
+        <h1
+          style={{
+            marginTop: "18px",
+            fontSize: "clamp(52px, 10vw, 104px)",
+            lineHeight: 0.95,
+            fontWeight: 900,
+            letterSpacing: "-0.05em",
+          }}
+        >
+          Bingo to
+          <br />
+          the Beats
+        </h1>
+
+        <p
+          style={{
+            margin: "28px auto 0",
+            maxWidth: "650px",
+            fontSize: "22px",
+            lineHeight: 1.6,
+            color: "#d1d5db",
+          }}
+        >
+          Where bingo meets the music you love. Choose a playlist,
+          generate your game, and bring the party to life.
+        </p>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            flexWrap: "wrap",
+            gap: "16px",
+            marginTop: "42px",
+          }}
+        >
+          <Link
+            href="/api/spotify/login"
+            style={{
+              padding: "16px 26px",
+              borderRadius: "999px",
+              background: "#1ed760",
+              color: "#052e16",
+              textDecoration: "none",
+              fontSize: "17px",
+              fontWeight: 900,
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Connect Spotify
+          </Link>
+
+          <Link
+            href="/join"
+            style={{
+              padding: "16px 26px",
+              borderRadius: "999px",
+              border: "1px solid #6b7280",
+              color: "white",
+              textDecoration: "none",
+              fontSize: "17px",
+              fontWeight: 800,
+            }}
           >
-            Documentation
-          </a>
+            Join a Game
+          </Link>
         </div>
-      </main>
-    </div>
+      </section>
+
+      <section
+        style={{
+          maxWidth: "1100px",
+          margin: "0 auto",
+          padding: "20px 28px 90px",
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: "20px",
+        }}
+      >
+        {[
+          {
+            number: "01",
+            title: "Choose Your Music",
+            text: "Connect Spotify and select the perfect playlist for your event.",
+          },
+          {
+            number: "02",
+            title: "Create the Game",
+            text: "Choose the clip length and generate unique bingo cards.",
+          },
+          {
+            number: "03",
+            title: "Start the Party",
+            text: "Call songs, track winners, and keep the room moving.",
+          },
+        ].map((item) => (
+          <article
+            key={item.number}
+            style={{
+              padding: "28px",
+              borderRadius: "18px",
+              background: "rgba(31, 41, 55, 0.72)",
+              border: "1px solid rgba(167, 139, 250, 0.25)",
+            }}
+          >
+            <span
+              style={{
+                color: "#a78bfa",
+                fontWeight: 900,
+                fontSize: "15px",
+              }}
+            >
+              {item.number}
+            </span>
+
+            <h2
+              style={{
+                marginTop: "16px",
+                fontSize: "24px",
+              }}
+            >
+              {item.title}
+            </h2>
+
+            <p
+              style={{
+                marginTop: "12px",
+                color: "#cbd5e1",
+                lineHeight: 1.6,
+              }}
+            >
+              {item.text}
+            </p>
+          </article>
+        ))}
+      </section>
+
+      <footer
+        style={{
+          padding: "24px",
+          textAlign: "center",
+          borderTop: "1px solid #1f2937",
+          color: "#9ca3af",
+        }}
+      >
+        DJ Mike Doelo Presents · Bingo to the Beats
+      </footer>
+    </main>
   );
 }
