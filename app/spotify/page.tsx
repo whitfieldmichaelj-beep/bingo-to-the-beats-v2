@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type Playlist = {
@@ -28,12 +29,12 @@ export default function SpotifyPage() {
           return;
         }
 
-        const items = data.items || [];
+        const items: Playlist[] = data.items || [];
 
         setPlaylists(items);
         setMessage(
-          items.length > 0
-            ? "Choose a playlist to start building your game."
+          items.length
+            ? "Select a playlist to continue."
             : "No playlists were found."
         );
       } catch (error) {
@@ -57,9 +58,15 @@ export default function SpotifyPage() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <a href="/" style={{ color: "#93c5fd", textDecoration: "none" }}>
+      <Link
+        href="/"
+        style={{
+          color: "#93c5fd",
+          textDecoration: "none",
+        }}
+      >
         ← Back to Home
-      </a>
+      </Link>
 
       <h1 style={{ marginTop: "24px", fontSize: "36px" }}>
         Spotify Playlists
@@ -78,35 +85,59 @@ export default function SpotifyPage() {
         }}
       >
         {playlists.map((playlist) => (
-          <article
+          <Link
             key={playlist.id}
+            href={`/host/${playlist.id}?name=${encodeURIComponent(
+              playlist.name
+            )}`}
             style={{
-              background: "#1f2937",
-              borderRadius: "14px",
-              padding: "16px",
+              color: "inherit",
+              textDecoration: "none",
+              display: "block",
             }}
           >
-            {playlist.images?.[0]?.url && (
-              <img
-                src={playlist.images[0].url}
-                alt={playlist.name}
+            <article
+              style={{
+                height: "100%",
+                padding: "16px",
+                background: "#1f2937",
+                borderRadius: "14px",
+                cursor: "pointer",
+                border: "1px solid #334155",
+              }}
+            >
+              {playlist.images?.[0]?.url && (
+                <img
+                  src={playlist.images[0].url}
+                  alt={playlist.name}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    objectFit: "cover",
+                    borderRadius: "10px",
+                  }}
+                />
+              )}
+
+              <h2 style={{ marginTop: "14px", fontSize: "18px" }}>
+                {playlist.name}
+              </h2>
+
+              <p style={{ marginTop: "6px", color: "#9ca3af" }}>
+                {playlist.tracks?.total ?? 0} songs
+              </p>
+
+              <p
                 style={{
-                  width: "100%",
-                  aspectRatio: "1 / 1",
-                  objectFit: "cover",
-                  borderRadius: "10px",
+                  marginTop: "14px",
+                  color: "#1ed760",
+                  fontWeight: 700,
                 }}
-              />
-            )}
-
-            <h2 style={{ marginTop: "14px", fontSize: "18px" }}>
-              {playlist.name}
-            </h2>
-
-            <p style={{ marginTop: "6px", color: "#9ca3af" }}>
-              {playlist.tracks?.total ?? 0} songs
-            </p>
-          </article>
+              >
+                Select Playlist →
+              </p>
+            </article>
+          </Link>
         ))}
       </div>
     </main>
