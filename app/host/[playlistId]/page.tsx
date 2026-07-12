@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import {
+  useParams,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { useEffect, useState } from "react";
 
 type SpotifyImage = {
@@ -9,17 +13,14 @@ type SpotifyImage = {
 };
 
 type SpotifyArtist = {
-  id?: string;
   name: string;
 };
 
 type SpotifyTrack = {
   id: string;
   name: string;
-  duration_ms: number;
   artists: SpotifyArtist[];
   album?: {
-    name?: string;
     images?: SpotifyImage[];
   };
 };
@@ -30,6 +31,7 @@ type PlaylistItem = {
 
 export default function HostPlaylistPage() {
   const params = useParams<{ playlistId: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const playlistId = params.playlistId;
@@ -38,14 +40,18 @@ export default function HostPlaylistPage() {
 
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("Loading playlist songs...");
+  const [message, setMessage] = useState(
+    "Loading playlist songs..."
+  );
 
   useEffect(() => {
     async function loadTracks() {
       try {
         const response = await fetch(
           `/api/spotify/playlists/${playlistId}/tracks`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+          }
         );
 
         const data = await response.json();
@@ -58,11 +64,13 @@ export default function HostPlaylistPage() {
         const validTracks = (data.items || [])
           .map((item: PlaylistItem) => item.track)
           .filter(
-            (track: SpotifyTrack | null | undefined): track is SpotifyTrack =>
-              Boolean(track?.id)
+            (
+              track: SpotifyTrack | null | undefined
+            ): track is SpotifyTrack => Boolean(track?.id)
           );
 
         setTracks(validTracks);
+
         setMessage(
           validTracks.length > 0
             ? `${validTracks.length} songs loaded.`
@@ -91,7 +99,10 @@ export default function HostPlaylistPage() {
     >
       <Link
         href="/spotify"
-        style={{ color: "#93c5fd", textDecoration: "none" }}
+        style={{
+          color: "#93c5fd",
+          textDecoration: "none",
+        }}
       >
         ← Choose Another Playlist
       </Link>
@@ -101,18 +112,27 @@ export default function HostPlaylistPage() {
           marginTop: "28px",
           color: "#1ed760",
           fontWeight: 700,
-          letterSpacing: "0.08em",
           textTransform: "uppercase",
         }}
       >
         Host Setup
       </p>
 
-      <h1 style={{ marginTop: "8px", fontSize: "42px" }}>
+      <h1
+        style={{
+          marginTop: "8px",
+          fontSize: "42px",
+        }}
+      >
         {playlistName}
       </h1>
 
-      <p style={{ marginTop: "12px", color: "#cbd5e1" }}>
+      <p
+        style={{
+          marginTop: "12px",
+          color: "#cbd5e1",
+        }}
+      >
         {loading ? "Loading..." : message}
       </p>
 
@@ -125,7 +145,9 @@ export default function HostPlaylistPage() {
           maxWidth: "700px",
         }}
       >
-        <h2 style={{ fontSize: "24px" }}>Game Settings</h2>
+        <h2 style={{ fontSize: "24px" }}>
+          Game Settings
+        </h2>
 
         <label
           style={{
@@ -180,25 +202,43 @@ export default function HostPlaylistPage() {
         <button
           type="button"
           disabled={tracks.length === 0}
+          onClick={() => {
+            router.push(
+              `/host/${playlistId}/game?name=${encodeURIComponent(
+                playlistName
+              )}`
+            );
+          }}
           style={{
             width: "100%",
             marginTop: "24px",
             padding: "15px",
             border: 0,
             borderRadius: "10px",
-            background: tracks.length ? "#1ed760" : "#64748b",
+            background:
+              tracks.length > 0 ? "#1ed760" : "#64748b",
             color: "#052e16",
             fontSize: "17px",
             fontWeight: 800,
-            cursor: tracks.length ? "pointer" : "not-allowed",
+            cursor:
+              tracks.length > 0
+                ? "pointer"
+                : "not-allowed",
           }}
         >
           Continue to Game Setup
         </button>
       </section>
 
-      <section style={{ marginTop: "40px", maxWidth: "900px" }}>
-        <h2 style={{ fontSize: "26px" }}>Playlist Songs</h2>
+      <section
+        style={{
+          marginTop: "40px",
+          maxWidth: "900px",
+        }}
+      >
+        <h2 style={{ fontSize: "26px" }}>
+          Playlist Songs
+        </h2>
 
         <div style={{ marginTop: "18px" }}>
           {tracks.slice(0, 20).map((track, index) => (
@@ -212,7 +252,12 @@ export default function HostPlaylistPage() {
                 borderBottom: "1px solid #334155",
               }}
             >
-              <span style={{ width: "28px", color: "#94a3b8" }}>
+              <span
+                style={{
+                  width: "28px",
+                  color: "#94a3b8",
+                }}
+              >
                 {index + 1}
               </span>
 
@@ -231,8 +276,15 @@ export default function HostPlaylistPage() {
 
               <div>
                 <strong>{track.name}</strong>
-                <p style={{ marginTop: "4px", color: "#94a3b8" }}>
-                  {track.artists.map((artist) => artist.name).join(", ")}
+                <p
+                  style={{
+                    marginTop: "4px",
+                    color: "#94a3b8",
+                  }}
+                >
+                  {track.artists
+                    .map((artist) => artist.name)
+                    .join(", ")}
                 </p>
               </div>
             </div>
