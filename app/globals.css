@@ -24,3 +24,112 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #020617;
+  color: #ffffff;
+}
+
+.bttb-page-content {
+  min-height: calc(100vh - 230px);
+}
+
+.bttb-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 32px;
+  background: rgba(2, 6, 23, 0.96);
+  border-bottom: 1px solid #334155;
+  backdrop-filter: blur(12px);
+}
+
+.bttb-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: white;
+  text-decoration: none;
+}
+
+.bttb-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.bttb-brand-name {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.bttb-tagline {
+  margin-top: 3px;
+  color: #a78bfa;
+  font-size: 13px;
+}
+
+.bttb-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.bttb-nav a {
+  color: #e2e8f0;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bttb-nav a:hover {
+  color: #a3e635;
+}
+
+.bttb-footer {
+  padding: 28px 20px;
+  text-align: center;
+  color: #94a3b8;
+  background: #020617;
+  border-top: 1px solid #334155;
+}
+
+.bttb-footer p {
+  margin: 4px 0;
+}
+
+.bttb-footer a {
+  display: inline-block;
+  margin-top: 10px;
+  color: #a78bfa;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .bttb-header {
+    position: static;
+    flex-direction: column;
+    padding: 14px 18px;
+  }
+
+  .bttb-logo {
+    width: 58px;
+    height: 58px;
+  }
+
+  .bttb-brand-name {
+    font-size: 18px;
+  }
+
+  .bttb-nav {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+  }
+}
