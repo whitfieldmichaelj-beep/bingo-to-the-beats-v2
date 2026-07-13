@@ -26,7 +26,7 @@ export default function Header() {
         <Link href="/">Home</Link>
         <Link href="/api/spotify/login">Host a Game</Link>
         <Link href="/join">Join a Game</Link>
-        <Link href="/spotify">Music</Link>
+        <Link href="/music">Music</Link>
       </nav>
     </header>
   );
