@@ -308,9 +308,9 @@ export default function HostPlaylistPage() {
                     color: "#94a3b8",
                   }}
                 >
-                  {track.artists
-                    .map((artist) => artist.name)
-                    .join(", ")}
+                  {(track.artists ?? [])
+  .map((artist) => artist.name)
+  .join(", ")}
                 </p>
               </div>
             </div>
