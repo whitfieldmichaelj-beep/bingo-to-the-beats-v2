@@ -27,6 +27,7 @@ type SpotifyTrack = {
 
 type PlaylistItem = {
   track?: SpotifyTrack | null;
+  item?: SpotifyTrack | null;
 };
 
 export default function HostPlaylistPage() {
