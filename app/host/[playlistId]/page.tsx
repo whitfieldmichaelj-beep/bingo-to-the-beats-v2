@@ -17,9 +17,10 @@ type SpotifyArtist = {
 };
 
 type SpotifyTrack = {
-  id: string;
+  id?: string;
+  uri?: string;
   name: string;
-  artists: SpotifyArtist[];
+  artists?: SpotifyArtist[];
   album?: {
     images?: SpotifyImage[];
   };
