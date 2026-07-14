@@ -143,4 +143,19 @@ body {
     flex-wrap: wrap;
     gap: 12px 18px;
   }
+  .hero-logo{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    margin-bottom:40px;
+}
+
+.hero-logo img{
+    width:100%;
+    max-width:600px;
+    height:auto;
+
+    filter:
+        drop-shadow(0 15px 40px rgba(160,90,255,.45));
+}
 }
