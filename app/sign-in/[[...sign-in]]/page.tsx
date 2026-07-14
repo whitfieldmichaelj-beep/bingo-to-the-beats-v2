@@ -1,18 +1,15 @@
-import { SignIn } from "@clerk/nextjs";
+import Link from "next/link";
 
 export default function SignInPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <h1>Welcome Back</h1>
+        <h1>Log In</h1>
+        <p>Secure account login is being prepared.</p>
 
-        <p>Sign in to continue to Bingo to the Beats.</p>
-
-        <SignIn
-          path="/sign-in"
-          routing="path"
-          signUpUrl="/sign-up"
-        />
+        <Link href="/" className="pricing-button">
+          Back to Home
+        </Link>
       </section>
     </main>
   );

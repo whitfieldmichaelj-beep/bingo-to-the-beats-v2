@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -29,19 +28,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html
-        lang="en"
-        className={`${geistSans.variable} ${geistMono.variable}`}
-      >
-        <body>
-          <Header />
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
+      <body>
+        <Header />
 
-          <div className="bttb-page-content">{children}</div>
+        <div className="bttb-page-content">{children}</div>
 
-          <Footer />
-        </body>
-      </html>
-    </ClerkProvider>
+        <Footer />
+      </body>
+    </html>
   );
 }
