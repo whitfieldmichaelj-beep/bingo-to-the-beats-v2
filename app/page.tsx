@@ -49,16 +49,7 @@ export default function HomePage() {
           textAlign: "center",
         }}
       >
-        <p
-          style={{
-            color: "#a78bfa",
-            fontWeight: 800,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-          }}
-        >
-          DJ Mike Doelo Presents
-        </p>
+       
 
         <h1
           style={{

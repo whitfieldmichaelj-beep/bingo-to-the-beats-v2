@@ -22,12 +22,16 @@ export default function Header() {
         </div>
       </Link>
 
-      <nav className="bttb-nav" aria-label="Main navigation">
-        <Link href="/">Home</Link>
-        <Link href="/api/spotify/login">Host a Game</Link>
-        <Link href="/join">Join a Game</Link>
-        <Link href="/music">Music</Link>
-      </nav>
+<nav className="bttb-nav" aria-label="Main navigation">
+  <Link href="/">Home</Link>
+  <Link href="/pricing">Pricing</Link>
+  <Link href="/music">Music</Link>
+  <Link href="/join">Join a Game</Link>
+  <Link href="/sign-in">Log In</Link>
+  <Link href="/sign-up" className="header-register-link">
+    Register
+  </Link>
+</nav>
     </header>
   );
 }
