@@ -6,9 +6,7 @@ export default function SignUpPage() {
       <section className="auth-panel">
         <h1>Create Your Account</h1>
 
-        <p>
-          Registration is required to host or join a game.
-        </p>
+        <p>Registration is required to host or join a game.</p>
 
         <SignUp
           path="/sign-up"
