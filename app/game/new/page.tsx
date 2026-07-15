@@ -396,34 +396,34 @@ export default function CreateGamePage() {
             </p>
           )}
 
-          <Link
-            href={
-              selectedPlan?.id === "enterprise"
-                ? "/pricing"
-                : "/music"
-            }
-            aria-disabled={!selectedPlan}
-            style={{
-              display: "block",
-              marginTop: "30px",
-              padding: "16px 24px",
-              borderRadius: "999px",
-              background: selectedPlan
-                ? "#a3e635"
-                : "#475569",
-              color: "#172554",
-              textAlign: "center",
-              textDecoration: "none",
-              fontWeight: 900,
-              pointerEvents: selectedPlan
-                ? "auto"
-                : "none",
-            }}
-          >
-            {selectedPlan?.id === "enterprise"
-              ? "View Enterprise Options"
-              : "Continue to Music"}
-          </Link>
+<Link
+  href={
+    selectedPlan?.id === "enterprise"
+      ? "/pricing"
+      : `/game/details?players=${playerCount}&billing=${billingPeriod}`
+  }
+  aria-disabled={!selectedPlan}
+  style={{
+    display: "block",
+    marginTop: "30px",
+    padding: "16px 24px",
+    borderRadius: "999px",
+    background: selectedPlan
+      ? "#a3e635"
+      : "#475569",
+    color: "#172554",
+    textAlign: "center",
+    textDecoration: "none",
+    fontWeight: 900,
+    pointerEvents: selectedPlan
+      ? "auto"
+      : "none",
+  }}
+>
+  {selectedPlan?.id === "enterprise"
+    ? "View Enterprise Options"
+    : "Continue to Event Details"}
+</Link>
         </section>
       </section>
     </main>
