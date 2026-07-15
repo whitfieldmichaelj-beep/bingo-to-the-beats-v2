@@ -2,36 +2,40 @@ import Link from "next/link";
 
 const providers = [
   {
-    name: "Apple Music",
-    description:
-      "Connect Apple Music to browse your library and choose playlists.",
-    status: "Coming next",
-    href: "/music/apple",
-    accent: "#fa2d48",
-  },
-  {
     name: "Spotify",
     description:
-      "Use the Spotify connection already available in BTTB v2.",
-    status: "Beta",
+      "Connect Spotify and select one of your existing playlists.",
+    status: "Available",
     href: "/api/spotify/login",
     accent: "#1ed760",
+    icon: "♫",
+  },
+  {
+    name: "Apple Music",
+    description:
+      "Connect your Apple Music account and browse your playlists.",
+    status: "Setup in progress",
+    href: "/music/apple",
+    accent: "#fa2d48",
+    icon: "♪",
   },
   {
     name: "Manual Playlist",
     description:
-      "Build a game by entering song titles and artists directly.",
-    status: "Planned",
-    href: "/music/manual",
+      "Create a playlist by entering song titles and artists yourself.",
+    status: "Coming soon",
+    href: "#",
     accent: "#a78bfa",
+    icon: "✎",
   },
   {
     name: "Upload CSV",
     description:
-      "Import an existing song list from a spreadsheet or CSV file.",
-    status: "Planned",
-    href: "/music/upload",
+      "Import a prepared song list from a CSV spreadsheet.",
+    status: "Coming soon",
+    href: "#",
     accent: "#38bdf8",
+    icon: "↑",
   },
 ];
 
@@ -40,126 +44,161 @@ export default function MusicPage() {
     <main
       style={{
         minHeight: "100vh",
-        padding: "48px 28px 80px",
+        padding: "72px 24px 100px",
         background:
-          "radial-gradient(circle at top, #312e81 0%, #0f172a 42%, #020617 100%)",
+          "radial-gradient(circle at top, #312e81 0%, #111827 44%, #030712 100%)",
         color: "white",
       }}
     >
       <section
         style={{
-          width: "100%",
-          maxWidth: "1100px",
+          width: "min(100%, 1120px)",
           margin: "0 auto",
         }}
       >
-        <p
+        <div
           style={{
-            color: "#a78bfa",
-            fontWeight: 900,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            maxWidth: "760px",
+            margin: "0 auto",
+            textAlign: "center",
           }}
         >
-          Music Library
-        </p>
+          <p
+            style={{
+              margin: 0,
+              color: "#a78bfa",
+              fontSize: "14px",
+              fontWeight: 900,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}
+          >
+            Music Library
+          </p>
 
-        <h1
-          style={{
-            marginTop: "10px",
-            fontSize: "clamp(42px, 7vw, 72px)",
-            lineHeight: 1,
-          }}
-        >
-          Choose your music source
-        </h1>
+          <h1
+            style={{
+              margin: "14px 0 0",
+              fontSize: "clamp(42px, 7vw, 72px)",
+              lineHeight: 1,
+              letterSpacing: "-0.04em",
+            }}
+          >
+            Choose your music source
+          </h1>
 
-        <p
-          style={{
-            maxWidth: "700px",
-            marginTop: "18px",
-            color: "#cbd5e1",
-            fontSize: "19px",
-            lineHeight: 1.7,
-          }}
-        >
-          Select how you want to bring songs into your Bingo to the Beats
-          game.
-        </p>
+          <p
+            style={{
+              margin: "22px auto 0",
+              maxWidth: "680px",
+              color: "#cbd5e1",
+              fontSize: "19px",
+              lineHeight: 1.7,
+            }}
+          >
+            Select where Bingo to the Beats should load the music for
+            your next game.
+          </p>
+        </div>
 
         <div
           style={{
             display: "grid",
             gridTemplateColumns:
-              "repeat(auto-fit, minmax(250px, 1fr))",
-            gap: "20px",
-            marginTop: "38px",
+              "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: "22px",
+            marginTop: "52px",
           }}
         >
-          {providers.map((provider) => (
-            <Link
-              key={provider.name}
-              href={provider.href}
-              style={{
-                color: "inherit",
-                textDecoration: "none",
-              }}
-            >
-              <article
+          {providers.map((provider) => {
+            const unavailable = provider.href === "#";
+
+            return (
+              <Link
+                key={provider.name}
+                href={provider.href}
+                aria-disabled={unavailable}
                 style={{
-                  height: "100%",
-                  padding: "26px",
-                  borderRadius: "18px",
-                  background: "rgba(15, 23, 42, 0.9)",
-                  border: `1px solid ${provider.accent}`,
-                  boxShadow: `0 0 30px ${provider.accent}22`,
+                  color: "inherit",
+                  textDecoration: "none",
+                  pointerEvents: unavailable ? "none" : "auto",
+                  opacity: unavailable ? 0.65 : 1,
                 }}
               >
-                <span
+                <article
                   style={{
-                    display: "inline-block",
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    background: `${provider.accent}22`,
-                    color: provider.accent,
-                    fontSize: "13px",
-                    fontWeight: 900,
+                    height: "100%",
+                    padding: "30px",
+                    borderRadius: "22px",
+                    background: "rgba(15, 23, 42, 0.94)",
+                    border: `1px solid ${provider.accent}66`,
+                    boxShadow: `0 20px 55px ${provider.accent}18`,
                   }}
                 >
-                  {provider.status}
-                </span>
+                  <div
+                    style={{
+                      width: "64px",
+                      height: "64px",
+                      display: "grid",
+                      placeItems: "center",
+                      borderRadius: "18px",
+                      background: `${provider.accent}22`,
+                      color: provider.accent,
+                      fontSize: "34px",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {provider.icon}
+                  </div>
 
-                <h2
-                  style={{
-                    marginTop: "20px",
-                    fontSize: "28px",
-                  }}
-                >
-                  {provider.name}
-                </h2>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginTop: "24px",
+                      padding: "6px 11px",
+                      borderRadius: "999px",
+                      background: `${provider.accent}22`,
+                      color: provider.accent,
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {provider.status}
+                  </span>
 
-                <p
-                  style={{
-                    marginTop: "12px",
-                    color: "#cbd5e1",
-                    lineHeight: 1.65,
-                  }}
-                >
-                  {provider.description}
-                </p>
+                  <h2
+                    style={{
+                      margin: "18px 0 0",
+                      fontSize: "29px",
+                    }}
+                  >
+                    {provider.name}
+                  </h2>
 
-                <p
-                  style={{
-                    marginTop: "24px",
-                    color: provider.accent,
-                    fontWeight: 900,
-                  }}
-                >
-                  Continue →
-                </p>
-              </article>
-            </Link>
-          ))}
+                  <p
+                    style={{
+                      margin: "13px 0 0",
+                      color: "#cbd5e1",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {provider.description}
+                  </p>
+
+                  <p
+                    style={{
+                      margin: "26px 0 0",
+                      color: provider.accent,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {unavailable ? "Coming soon" : "Continue →"}
+                  </p>
+                </article>
+              </Link>
+            );
+          })}
         </div>
       </section>
     </main>
