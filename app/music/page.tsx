@@ -1,5 +1,4 @@
 import Link from "next/link";
-
 const providers = [
   {
     name: "Spotify",
@@ -23,17 +22,17 @@ const providers = [
     name: "Manual Playlist",
     description:
       "Create a playlist by entering song titles and artists yourself.",
-    status: "Available",
-    href: "/music/upload",
+    status: "Coming soon",
+    href: "#",
     accent: "#a78bfa",
     icon: "✎",
   },
   {
     name: "Upload CSV",
     description:
-      "Import a prepared song list from a CSV spreadsheet.",
+      "Import a Serato or prepared song list from a CSV spreadsheet.",
     status: "Available",
-    href: "#",
+    href: "/music/upload",
     accent: "#38bdf8",
     icon: "↑",
   },
