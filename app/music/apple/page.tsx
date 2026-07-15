@@ -145,17 +145,26 @@ export default function AppleMusicConnectionPage() {
             ← Back to Music Providers
           </Link>
 
-          <Image
-            src="/logo.png"
-            alt="Bingo to the Beats"
-            width={210}
-            height={210}
-            priority
-            style={{
-              width: "190px",
-              height: "auto",
-            }}
-          />
+        <div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    marginTop: "10px",
+    marginBottom: "28px",
+  }}
+>
+  <Image
+    src="/logo.png"
+    alt="Bingo to the Beats"
+    width={210}
+    height={210}
+    priority
+    style={{
+      width: "190px",
+      height: "auto",
+    }}
+  />
+</div>
 
           <p
             style={{
