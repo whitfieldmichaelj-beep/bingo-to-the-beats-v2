@@ -23,8 +23,8 @@ const providers = [
     name: "Manual Playlist",
     description:
       "Create a playlist by entering song titles and artists yourself.",
-    status: "Coming soon",
-    href: "#",
+    status: "Available",
+    href: "/music/upload",
     accent: "#a78bfa",
     icon: "✎",
   },
@@ -32,7 +32,7 @@ const providers = [
     name: "Upload CSV",
     description:
       "Import a prepared song list from a CSV spreadsheet.",
-    status: "Coming soon",
+    status: "Available",
     href: "#",
     accent: "#38bdf8",
     icon: "↑",
