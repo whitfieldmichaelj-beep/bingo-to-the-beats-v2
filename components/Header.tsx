@@ -23,7 +23,9 @@ export default function Header() {
       </Link>
 
 <nav className="bttb-nav" aria-label="Main navigation">
+  
   <Link href="/">Home</Link>
+  <Link href="/dashboard">Dashboard</Link>
   <Link href="/pricing">Pricing</Link>
   <Link href="/music">Music</Link>
   <Link href="/join">Join a Game</Link>
