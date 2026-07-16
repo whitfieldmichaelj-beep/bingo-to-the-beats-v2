@@ -1,12 +1,12 @@
 import Image from "next/image";
-import Link from "next/link";
+import { SignIn } from "@clerk/nextjs";
 
-export default function SignUpPage() {
+export default function SignInPage() {
   return (
     <main
       style={{
         minHeight: "100vh",
-        padding: "72px 24px",
+        padding: "72px 24px 100px",
         background:
           "radial-gradient(circle at top, #312e81 0%, #111827 45%, #030712 100%)",
         color: "white",
@@ -14,94 +14,53 @@ export default function SignUpPage() {
     >
       <section
         style={{
-          width: "min(100%, 560px)",
+          width: "min(100%, 520px)",
           margin: "0 auto",
-          padding: "36px",
           textAlign: "center",
-          borderRadius: "24px",
-          background: "rgba(15, 23, 42, 0.94)",
-          border: "1px solid #334155",
-          boxShadow: "0 24px 70px rgba(0, 0, 0, 0.28)",
         }}
       >
-        <Image
-          src="/logo.png"
-          alt="Bingo to the Beats"
-          width={190}
-          height={190}
-          priority
+        <div
           style={{
-            width: "170px",
-            height: "auto",
+            display: "flex",
+            justifyContent: "center",
+            marginBottom: "28px",
           }}
-        />
+        >
+          <Image
+            src="/logo.png"
+            alt="Bingo to the Beats"
+            width={160}
+            height={160}
+            priority
+            style={{
+              width: "150px",
+              height: "auto",
+            }}
+          />
+        </div>
 
         <h1
           style={{
-            margin: "22px 0 0",
+            margin: "0 0 28px",
             fontSize: "42px",
           }}
         >
-          Create Your Account
+          Welcome Back
         </h1>
-
-        <p
-          style={{
-            margin: "14px auto 0",
-            color: "#cbd5e1",
-            lineHeight: 1.7,
-          }}
-        >
-          Registration will be required to host or join Bingo to the
-          Beats games.
-        </p>
 
         <div
           style={{
-            marginTop: "28px",
-            padding: "20px",
-            borderRadius: "16px",
-            background: "rgba(163, 230, 53, 0.08)",
-            border: "1px solid rgba(163, 230, 53, 0.25)",
-            color: "#d9f99d",
+            display: "flex",
+            justifyContent: "center",
           }}
         >
-          Account registration is being prepared.
+          <SignIn
+            routing="path"
+            path="/sign-in"
+            signUpUrl="/sign-up"
+            forceRedirectUrl="/dashboard"
+          />
         </div>
-
-        <Link
-          href="/pricing"
-          style={{
-            display: "inline-block",
-            marginTop: "28px",
-            padding: "14px 22px",
-            borderRadius: "999px",
-            background: "#a3e635",
-            color: "#172554",
-            textDecoration: "none",
-            fontWeight: 900,
-          }}
-        >
-          View Pricing
-        </Link>
-
-        <p
-          style={{
-            marginTop: "24px",
-            color: "#94a3b8",
-          }}
-        >
-          Already have an account?{" "}
-          <Link
-            href="/sign-in"
-            style={{
-              color: "#c4b5fd",
-              fontWeight: 800,
-            }}
-          >
-            Log In
-          </Link>
-        </p>
       </section>
     </main>
   );
