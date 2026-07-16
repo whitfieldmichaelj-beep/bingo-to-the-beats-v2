@@ -355,11 +355,12 @@ type WinningPattern =
         <button
           key={option.value}
           type="button"
-          onClick={() =>
-            setWinningPattern(
-              option.value as WinningPattern
-            )
-          }
+         onClick={() => {
+  const pattern = option.value as WinningPattern;
+
+  setWinningPattern(pattern);
+  sessionStorage.setItem("bttbWinningPattern", pattern);
+}}
           style={{
             padding: "18px",
             borderRadius: "16px",
