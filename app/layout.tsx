@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -33,11 +34,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body>
-        <Header />
+        <ClerkProvider>
+          <Header />
 
-        <div className="bttb-page-content">{children}</div>
+          <div className="bttb-page-content">{children}</div>
 
-        <Footer />
+          <Footer />
+        </ClerkProvider>
       </body>
     </html>
   );

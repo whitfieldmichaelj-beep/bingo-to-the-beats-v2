@@ -6,7 +6,7 @@ import {
   BillingPeriod,
   getPlanPrice,
   ratePlans,
-} from "@/lib/ratePlans";
+} from "@/app/lib/ratePlans";
 
 export default function PricingPage() {
   const [billingPeriod, setBillingPeriod] =

@@ -16,9 +16,14 @@ export async function GET() {
     "user-read-email",
     "playlist-read-private",
     "playlist-read-collaborative",
+    "user-read-playback-state",
+    "user-read-currently-playing",
+    "user-modify-playback-state",
   ];
 
-  const authorizeUrl = new URL("https://accounts.spotify.com/authorize");
+  const authorizeUrl = new URL(
+    "https://accounts.spotify.com/authorize"
+  );
 
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("client_id", clientId);

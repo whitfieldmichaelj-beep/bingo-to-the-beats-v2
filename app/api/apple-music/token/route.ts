@@ -1,30 +1,59 @@
+import { SignJWT, importPKCS8 } from "jose";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { NextResponse } from "next/server";
-import { importPKCS8, SignJWT } from "jose";
 
-export async function GET() {
-  const teamId = process.env.APPLE_MUSIC_TEAM_ID;
-  const keyId = process.env.APPLE_MUSIC_KEY_ID;
-  const privateKey = process.env.APPLE_MUSIC_PRIVATE_KEY;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-  if (!teamId || !keyId || !privateKey) {
-    return NextResponse.json(
-      {
-        error: "Apple Music is not configured yet.",
-        configured: false,
-      },
-      { status: 503 }
+function normalizePrivateKey(value: string) {
+  return value.replace(/\\n/g, "\n").trim();
+}
+
+async function loadPrivateKey() {
+  const inlinePrivateKey = process.env.APPLE_PRIVATE_KEY;
+
+  if (inlinePrivateKey) {
+    return normalizePrivateKey(inlinePrivateKey);
+  }
+
+  const privateKeyFile = process.env.APPLE_PRIVATE_KEY_FILE;
+
+  if (!privateKeyFile) {
+    throw new Error(
+      "Missing APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_FILE."
     );
   }
 
-  try {
-    const formattedPrivateKey = privateKey.replace(/\\n/g, "\n");
+  const safeFileName = path.basename(privateKeyFile);
+  const fullKeyPath = path.join(
+    process.cwd(),
+    "private-keys",
+    safeFileName
+  );
 
-    const signingKey = await importPKCS8(
-      formattedPrivateKey,
-      "ES256"
-    );
+  return normalizePrivateKey(await readFile(fullKeyPath, "utf8"));
+}
+
+export async function GET() {
+  try {
+    const teamId = process.env.APPLE_TEAM_ID;
+    const keyId = process.env.APPLE_KEY_ID;
+
+    if (!teamId || !keyId) {
+      return NextResponse.json(
+        {
+          error: "Missing APPLE_TEAM_ID or APPLE_KEY_ID.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const privateKeyText = await loadPrivateKey();
+    const privateKey = await importPKCS8(privateKeyText, "ES256");
 
     const now = Math.floor(Date.now() / 1000);
+    const expiration = now + 60 * 60 * 24 * 30;
 
     const developerToken = await new SignJWT({})
       .setProtectedHeader({
@@ -33,20 +62,29 @@ export async function GET() {
       })
       .setIssuer(teamId)
       .setIssuedAt(now)
-      .setExpirationTime(now + 60 * 60)
-      .sign(signingKey);
+      .setExpirationTime(expiration)
+      .sign(privateKey);
 
-    return NextResponse.json({
-      developerToken,
-      configured: true,
-    });
+    return NextResponse.json(
+      {
+        developerToken,
+        expiresAt: expiration,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   } catch (error) {
     console.error("Apple Music token error:", error);
 
     return NextResponse.json(
       {
-        error: "Unable to create Apple Music developer token.",
-        configured: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to generate the Apple Music developer token.",
       },
       { status: 500 }
     );

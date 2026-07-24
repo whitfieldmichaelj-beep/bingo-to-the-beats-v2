@@ -6,7 +6,7 @@ import {
   BillingPeriod,
   getPlanPrice,
   getRatePlan,
-} from "@/lib/ratePlans";
+} from "@/app/lib/ratePlans";
 
 export default function CreateGamePage() {
   const [playerCount, setPlayerCount] = useState(25);

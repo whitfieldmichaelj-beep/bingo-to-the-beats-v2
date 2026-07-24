@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020617;
+  --foreground: #ffffff;
 }
 
 @theme inline {
@@ -12,28 +12,35 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
 }
 
 body {
+  margin: 0;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #020617;
-  color: #ffffff;
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 .bttb-page-content {
   min-height: calc(100vh - 230px);
 }
+
+/* Header */
 
 .bttb-header {
   position: sticky;
@@ -53,7 +60,7 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  color: white;
+  color: #ffffff;
   text-decoration: none;
 }
 
@@ -80,15 +87,62 @@ body {
   gap: 22px;
 }
 
-.bttb-nav a {
+.bttb-nav a,
+.header-logout-button {
   color: #e2e8f0;
   font-weight: 700;
+  line-height: 1.2;
   text-decoration: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    opacity 160ms ease;
 }
 
-.bttb-nav a:hover {
+.bttb-nav a:hover,
+.header-logout-button:hover {
   color: #a3e635;
 }
+
+.bttb-nav .header-register-link {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #a78bfa;
+  color: #1e1b4b;
+}
+
+.bttb-nav .header-register-link:hover {
+  background: #c4b5fd;
+  color: #1e1b4b;
+}
+
+/* Logout button */
+
+.header-logout-button {
+  appearance: none;
+  padding: 10px 18px;
+  border: 1px solid #a78bfa;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.header-logout-button:hover {
+  background: #a78bfa;
+  color: #1e1b4b;
+}
+
+.header-logout-button:focus-visible {
+  outline: 3px solid rgba(167, 139, 250, 0.45);
+  outline-offset: 3px;
+}
+
+.header-logout-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* Footer */
 
 .bttb-footer {
   padding: 28px 20px;
@@ -110,17 +164,28 @@ body {
   text-decoration: none;
 }
 
-.bttb-nav .header-register-link {
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: #a78bfa;
-  color: #1e1b4b;
+.bttb-footer a:hover {
+  color: #c4b5fd;
 }
 
-.bttb-nav .header-register-link:hover {
-  background: #c4b5fd;
-  color: #1e1b4b;
+/* Hero logo */
+
+.hero-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 40px;
 }
+
+.hero-logo img {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  filter: drop-shadow(0 15px 40px rgba(160, 90, 255, 0.45));
+}
+
+/* Mobile */
+
 @media (max-width: 760px) {
   .bttb-header {
     position: static;
@@ -143,19 +208,17 @@ body {
     flex-wrap: wrap;
     gap: 12px 18px;
   }
-  .hero-logo{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    margin-bottom:40px;
-}
 
-.hero-logo img{
-    width:100%;
-    max-width:600px;
-    height:auto;
+  .header-logout-button,
+  .bttb-nav .header-register-link {
+    padding: 9px 15px;
+  }
 
-    filter:
-        drop-shadow(0 15px 40px rgba(160,90,255,.45));
-}
+  .hero-logo {
+    margin-bottom: 28px;
+  }
+
+  .hero-logo img {
+    max-width: 420px;
+  }
 }
