@@ -156,6 +156,10 @@ export default function CsvUploadPage() {
           removeDuplicates(parsedTracks);
 
         setTracks(uniqueTracks);
+        sessionStorage.setItem(
+  "bttbPlaylist",
+  JSON.stringify(uniqueTracks)
+);
         setIsParsing(false);
 
         if (uniqueTracks.length === 0) {
@@ -394,7 +398,7 @@ export default function CsvUploadPage() {
               </div>
 
               <Link
-                href="/game/new"
+  href="/game/cards"
                 style={{
                   padding: "14px 22px",
                   borderRadius: "999px",

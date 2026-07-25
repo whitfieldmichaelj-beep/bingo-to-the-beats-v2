@@ -37,15 +37,17 @@ declare global {
       attributes?: MediaItemAttributes;
     }
 
+    interface ApiError {
+      id?: string;
+      title?: string;
+      detail?: string;
+      status?: string;
+      code?: string;
+    }
+
     interface ApiResponse<T = unknown> {
       data?: T;
-      errors?: Array<{
-        id?: string;
-        title?: string;
-        detail?: string;
-        status?: string;
-        code?: string;
-      }>;
+      errors?: ApiError[];
     }
 
     interface QueueOptions {
@@ -98,17 +100,20 @@ declare global {
     skipToPreviousItem(): Promise<void> | void;
   }
 
-  interface Window {
-    MusicKit?: {
-      configure(configuration: {
-        developerToken: string;
-        app: {
-          name: string;
-          build: string;
-        };
-      }): void | Promise<void>;
+  interface MusicKitGlobal {
+    configure(configuration: {
+      developerToken: string;
+      app: {
+        name: string;
+        build: string;
+      };
+    }): void | Promise<void>;
 
-      getInstance(): MusicKitInstance;
-    };
+    getInstance(): MusicKitInstance;
+  }
+
+  interface Window {
+    MusicKit?: MusicKitGlobal;
   }
 }
+
