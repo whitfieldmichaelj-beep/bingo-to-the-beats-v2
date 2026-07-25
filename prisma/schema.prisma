@@ -1,0 +1,283 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MusicProvider {
+  SPOTIFY
+  APPLE_MUSIC
+  TIDAL
+  SERATO
+  LOCAL_UPLOAD
+}
+
+enum GameStatus {
+  DRAFT
+  READY
+  LIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum CardStatus {
+  AVAILABLE
+  ASSIGNED
+  ACTIVE
+  WINNER
+  VOID
+}
+
+enum PurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model User {
+  id        String  @id @default(cuid())
+  clerkId   String  @unique
+  email     String? @unique
+  firstName String?
+  lastName  String?
+  imageUrl  String?
+
+  musicAccounts MusicAccount[]
+  playlists     Playlist[]
+  games         Game[]         @relation("HostedGames")
+  purchases     Purchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MusicAccount {
+  id       String        @id @default(cuid())
+  provider MusicProvider
+  userId   String
+
+  providerUserId String?
+  displayName    String?
+  email          String?
+
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  scopes                String?
+  isConnected           Boolean   @default(true)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlists Playlist[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+model Playlist {
+  id             String        @id @default(cuid())
+  provider       MusicProvider
+  providerListId String
+  name           String
+  description    String?
+  artworkUrl     String?
+  ownerName      String?
+  trackCount     Int           @default(0)
+  snapshotId     String?
+
+  userId         String
+  musicAccountId String?
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  musicAccount MusicAccount?   @relation(fields: [musicAccountId], references: [id], onDelete: SetNull)
+  tracks       PlaylistTrack[]
+  games        Game[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider, providerListId])
+  @@index([userId])
+  @@index([musicAccountId])
+}
+
+model Track {
+  id              String        @id @default(cuid())
+  provider        MusicProvider
+  providerTrackId String
+  title           String
+  artist          String
+  album           String?
+  artworkUrl      String?
+  previewUrl      String?
+  durationMs      Int?
+  explicit        Boolean       @default(false)
+  uri             String?
+  isrc            String?
+
+  playlists   PlaylistTrack[]
+  cardSquares CardSquare[]
+  gameTracks  GameTrack[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerTrackId])
+  @@index([title])
+  @@index([artist])
+}
+
+model PlaylistTrack {
+  playlistId String
+  trackId    String
+  position   Int
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, trackId])
+  @@unique([playlistId, position])
+  @@index([trackId])
+}
+
+model Game {
+  id          String     @id @default(cuid())
+  hostId      String
+  playlistId  String?
+  title       String
+  joinCode    String     @unique
+  status      GameStatus @default(DRAFT)
+  cardPrice   Decimal?   @db.Decimal(10, 2)
+  currency    String     @default("USD")
+  maxPlayers  Int        @default(200)
+  winningRule String     @default("LINE")
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  host     User      @relation("HostedGames", fields: [hostId], references: [id], onDelete: Cascade)
+  playlist Playlist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+
+  tracks    GameTrack[]
+  cards     BingoCard[]
+  sessions  GameSession[]
+  purchases Purchase[]
+  winners   Winner[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hostId])
+  @@index([playlistId])
+  @@index([status])
+}
+
+model GameTrack {
+  id       String    @id @default(cuid())
+  gameId   String
+  trackId  String
+  position Int
+  playedAt DateTime?
+
+  game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, trackId])
+  @@unique([gameId, position])
+  @@index([trackId])
+}
+
+model BingoCard {
+  id         String     @id @default(cuid())
+  gameId     String
+  cardNumber Int
+  status     CardStatus @default(AVAILABLE)
+  playerName String?
+  playerKey  String?    @unique
+
+  game     Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  squares  CardSquare[]
+  purchase Purchase?
+  winner   Winner?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gameId, cardNumber])
+  @@index([gameId])
+}
+
+model CardSquare {
+  id       String    @id @default(cuid())
+  cardId   String
+  trackId  String
+  position Int
+  marked   Boolean   @default(false)
+  markedAt DateTime?
+
+  card  BingoCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  track Track     @relation(fields: [trackId], references: [id], onDelete: Restrict)
+
+  @@unique([cardId, position])
+  @@unique([cardId, trackId])
+  @@index([trackId])
+}
+
+model GameSession {
+  id         String   @id @default(cuid())
+  gameId     String
+  sessionKey String   @unique
+  playerName String?
+  connected  Boolean  @default(true)
+  joinedAt   DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+}
+
+model Purchase {
+  id              String         @id @default(cuid())
+  gameId          String
+  userId          String?
+  cardId          String?        @unique
+  stripePaymentId String?        @unique
+  amount          Decimal        @db.Decimal(10, 2)
+  currency        String         @default("USD")
+  status          PurchaseStatus @default(PENDING)
+
+  game Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  card BingoCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+  @@index([userId])
+}
+
+model Winner {
+  id          String    @id @default(cuid())
+  gameId      String
+  cardId      String    @unique
+  verified    Boolean   @default(false)
+  winningType String
+  prizeAmount Decimal?  @db.Decimal(10, 2)
+  verifiedAt  DateTime?
+
+  game Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  card BingoCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}

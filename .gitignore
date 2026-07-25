@@ -43,3 +43,6 @@ next-env.d.ts
 /private/
 *.p8
 
+
+/lib/generated/prisma
+app/generated/prisma/
