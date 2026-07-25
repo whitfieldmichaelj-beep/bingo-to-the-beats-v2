@@ -85,8 +85,8 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.redirect(
-  "http://127.0.0.1:3000/spotify?connected=true"
-);
+      new URL("/spotify?connected=true", request.url)
+    );
 
     response.cookies.set(
       "spotify_access_token",
