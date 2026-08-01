@@ -42,6 +42,7 @@ type CallerState = {
   clipLength: number;
   secondsRemaining: number;
   isPlaying: boolean;
+  isRevealed: boolean;
   status: GameSession["status"];
 };
 
@@ -67,18 +68,33 @@ function getPlayableAppleId(track: Track) {
   );
 }
 
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+function clampVolume(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
 export default function GameControlPage() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [appleScriptReady, setAppleScriptReady] = useState(false);
   const [appleReady, setAppleReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const [crossfadeSeconds, setCrossfadeSeconds] = useState(4);
+  const [revealSeconds, setRevealSeconds] = useState(5);
+  const [masterVolume, setMasterVolume] = useState(0.9);
+  const [isRevealed, setIsRevealed] = useState(false);
   const [message, setMessage] = useState("Loading game session...");
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const musicRef = useRef<MusicKitInstance | null>(null);
   const sessionRef = useRef<GameSession | null>(null);
   const advancingRef = useRef(false);
+  const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentTrack =
     session?.tracks[session.currentIndex] ?? null;
@@ -100,7 +116,8 @@ export default function GameControlPage() {
   function broadcastState(
     nextSession = sessionRef.current,
     nextPlaying = isPlaying,
-    nextSeconds = secondsRemaining
+    nextSeconds = secondsRemaining,
+    nextRevealed = isRevealed
   ) {
     if (!nextSession) {
       return;
@@ -117,6 +134,7 @@ export default function GameControlPage() {
       clipLength: nextSession.clipLength,
       secondsRemaining: nextSeconds,
       isPlaying: nextPlaying,
+      isRevealed: nextRevealed,
       status: nextSession.status,
     };
 
@@ -144,6 +162,28 @@ export default function GameControlPage() {
     sessionRef.current = savedSession;
     setSession(savedSession);
     setSecondsRemaining(savedSession.clipLength);
+
+    const savedCrossfade = Number(
+      localStorage.getItem("bttb-v2-crossfade-seconds")
+    );
+    const savedReveal = Number(
+      localStorage.getItem("bttb-v2-reveal-seconds")
+    );
+    const savedVolume = Number(
+      localStorage.getItem("bttb-v2-master-volume")
+    );
+
+    if (Number.isFinite(savedCrossfade)) {
+      setCrossfadeSeconds(Math.min(10, Math.max(0, savedCrossfade)));
+    }
+
+    if (Number.isFinite(savedReveal) && savedReveal > 0) {
+      setRevealSeconds(Math.min(15, Math.max(1, savedReveal)));
+    }
+
+    if (Number.isFinite(savedVolume) && savedVolume >= 0) {
+      setMasterVolume(clampVolume(savedVolume));
+    }
     setMessage(
       `${savedSession.tracks.length} randomized songs are ready.`
     );
@@ -151,10 +191,15 @@ export default function GameControlPage() {
 
   useEffect(() => {
     if (session) {
-      broadcastState(session, isPlaying, secondsRemaining);
+      broadcastState(
+        session,
+        isPlaying,
+        secondsRemaining,
+        isRevealed
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, isPlaying, secondsRemaining]);
+  }, [session, isPlaying, secondsRemaining, isRevealed]);
 
   useEffect(() => {
     if (!appleScriptReady || session?.source !== "apple") {
@@ -232,9 +277,44 @@ export default function GameControlPage() {
   }, [appleScriptReady, session?.source]);
 
   useEffect(() => {
+    localStorage.setItem(
+      "bttb-v2-crossfade-seconds",
+      String(crossfadeSeconds)
+    );
+  }, [crossfadeSeconds]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "bttb-v2-reveal-seconds",
+      String(revealSeconds)
+    );
+  }, [revealSeconds]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "bttb-v2-master-volume",
+      String(masterVolume)
+    );
+
+    const music = musicRef.current;
+
+    if (music) {
+      try {
+        music.volume = clampVolume(masterVolume);
+      } catch {
+        // Some MusicKit versions may not expose volume as writable.
+      }
+    }
+  }, [masterVolume]);
+
+  useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+      }
+
+      if (revealTimeoutRef.current) {
+        clearTimeout(revealTimeoutRef.current);
       }
 
       void pauseMusic();
@@ -329,6 +409,61 @@ export default function GameControlPage() {
     }
   }
 
+  function setMusicVolume(
+    music: MusicKitInstance,
+    volume: number
+  ) {
+    try {
+      music.volume = clampVolume(volume);
+    } catch {
+      // Ignore MusicKit runtimes that do not expose writable volume.
+    }
+  }
+
+  async function fadeMusicVolume(
+    music: MusicKitInstance,
+    from: number,
+    to: number,
+    durationSeconds: number
+  ) {
+    const durationMs = Math.max(0, durationSeconds * 1000);
+
+    if (durationMs === 0) {
+      setMusicVolume(music, to);
+      return;
+    }
+
+    const steps = Math.max(1, Math.round(durationMs / 50));
+    const stepDelay = durationMs / steps;
+
+    for (let step = 0; step <= steps; step += 1) {
+      const progress = step / steps;
+      const nextVolume = from + (to - from) * progress;
+      setMusicVolume(music, nextVolume);
+      await sleep(stepDelay);
+    }
+  }
+
+  function clearRevealTimeout() {
+    if (revealTimeoutRef.current) {
+      clearTimeout(revealTimeoutRef.current);
+      revealTimeoutRef.current = null;
+    }
+  }
+
+  function beginReveal() {
+    clearRevealTimeout();
+    setIsRevealed(true);
+    setMessage(
+      `Song revealed. Moving to the next song in ${revealSeconds} seconds.`
+    );
+
+    revealTimeoutRef.current = window.setTimeout(() => {
+      revealTimeoutRef.current = null;
+      void advanceAutomatically();
+    }, revealSeconds * 1000);
+  }
+
   function markTrackPlayed(activeSession: GameSession) {
     const track = activeSession.tracks[activeSession.currentIndex];
 
@@ -360,7 +495,7 @@ export default function GameControlPage() {
           timerRef.current = null;
         }
 
-        void advanceAutomatically();
+        beginReveal();
       }
     }, 1000);
   }
@@ -376,6 +511,7 @@ export default function GameControlPage() {
       setMessage("Loading the complete randomized Apple Music queue...");
 
       const music = await getAuthorizedMusic();
+      setMusicVolume(music, masterVolume);
       await queueEntirePlaylist(music, activeSession);
       await playMusic();
 
@@ -386,6 +522,8 @@ export default function GameControlPage() {
 
       saveSession(nextSession);
       setIsPlaying(true);
+      setIsRevealed(false);
+      clearRevealTimeout();
       startClipTimer(nextSession);
       setMessage(
         `Game started. Songs will continue automatically until Bingo is called.`
@@ -417,6 +555,7 @@ export default function GameControlPage() {
 
       saveSession(nextSession);
       setIsPlaying(true);
+      clearRevealTimeout();
       startClipTimer(nextSession);
       setMessage("Playback resumed.");
     } catch (error) {
@@ -429,6 +568,8 @@ export default function GameControlPage() {
   }
 
   async function pausePlayback() {
+    clearRevealTimeout();
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -489,9 +630,27 @@ export default function GameControlPage() {
 
       saveSession(completed);
       setIsPlaying(false);
+      setIsRevealed(true);
       setSecondsRemaining(0);
       setMessage("The complete randomized playlist has finished.");
       return;
+    }
+
+    clearRevealTimeout();
+    setIsRevealed(false);
+
+    const halfFade = crossfadeSeconds / 2;
+
+    if (crossfadeSeconds > 0) {
+      setMessage(
+        `Fading into ${updated.tracks[nextIndex].name}...`
+      );
+      await fadeMusicVolume(
+        music,
+        masterVolume,
+        0,
+        halfFade
+      );
     }
 
     if (typeof music.skipToNextItem === "function") {
@@ -502,6 +661,17 @@ export default function GameControlPage() {
         currentIndex: nextIndex,
       });
       await playMusic();
+    }
+
+    setMusicVolume(music, crossfadeSeconds > 0 ? 0 : masterVolume);
+
+    if (crossfadeSeconds > 0) {
+      await fadeMusicVolume(
+        music,
+        0,
+        masterVolume,
+        halfFade
+      );
     }
 
     const nextSession: GameSession = {
@@ -552,6 +722,9 @@ export default function GameControlPage() {
 
     saveSession(nextSession);
     setIsPlaying(true);
+    setIsRevealed(false);
+    clearRevealTimeout();
+    setMusicVolume(music, masterVolume);
     startClipTimer(nextSession);
     setMessage(
       `Now playing: ${nextSession.tracks[previousIndex].name}`
@@ -580,11 +753,16 @@ export default function GameControlPage() {
 
     saveSession(nextSession);
     setIsPlaying(true);
+    setIsRevealed(false);
+    clearRevealTimeout();
+    setMusicVolume(music, masterVolume);
     startClipTimer(nextSession);
     setMessage(`Now playing: ${nextSession.tracks[index].name}`);
   }
 
   async function stopForBingo() {
+    clearRevealTimeout();
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -724,8 +902,8 @@ export default function GameControlPage() {
               </h1>
 
               <p style={{ color: "#cbd5e1" }}>
-                {session.tracks.length} songs · Continuous automatic play ·{" "}
-                {session.clipLength}-second clips
+                {session.tracks.length} songs · Automatic reveal ·{" "}
+                {crossfadeSeconds}-second fade · {session.clipLength}-second clips
               </p>
             </div>
 
@@ -802,6 +980,78 @@ export default function GameControlPage() {
                 </p>
               </article>
             ))}
+          </section>
+
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: "16px",
+              marginTop: "20px",
+              padding: "22px",
+              borderRadius: "22px",
+              background: "rgba(15, 23, 42, 0.92)",
+              border: "1px solid #334155",
+            }}
+          >
+            <label style={{ display: "grid", gap: "10px" }}>
+              <span style={{ fontWeight: 900 }}>
+                Fade Time: {crossfadeSeconds}s
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={crossfadeSeconds}
+                onChange={(event) =>
+                  setCrossfadeSeconds(Number(event.target.value))
+                }
+              />
+              <span style={{ color: "#94a3b8", fontSize: "13px" }}>
+                Fades the current song down, switches tracks, then fades
+                the next song up.
+              </span>
+            </label>
+
+            <label style={{ display: "grid", gap: "10px" }}>
+              <span style={{ fontWeight: 900 }}>
+                Reveal Time: {revealSeconds}s
+              </span>
+              <input
+                type="range"
+                min="1"
+                max="15"
+                step="1"
+                value={revealSeconds}
+                onChange={(event) =>
+                  setRevealSeconds(Number(event.target.value))
+                }
+              />
+              <span style={{ color: "#94a3b8", fontSize: "13px" }}>
+                Keeps the title and artist visible before the next song.
+              </span>
+            </label>
+
+            <label style={{ display: "grid", gap: "10px" }}>
+              <span style={{ fontWeight: 900 }}>
+                Master Volume: {Math.round(masterVolume * 100)}%
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={masterVolume}
+                onChange={(event) =>
+                  setMasterVolume(Number(event.target.value))
+                }
+              />
+              <span style={{ color: "#94a3b8", fontSize: "13px" }}>
+                Controls Apple Music playback volume.
+              </span>
+            </label>
           </section>
 
           <section

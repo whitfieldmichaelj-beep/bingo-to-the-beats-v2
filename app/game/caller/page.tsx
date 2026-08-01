@@ -20,6 +20,7 @@ type CallerState = {
   clipLength: number;
   secondsRemaining: number;
   isPlaying: boolean;
+  isRevealed: boolean;
   status: "ready" | "playing" | "paused" | "complete";
 };
 
@@ -136,7 +137,11 @@ export default function CallerPage() {
             textTransform: "uppercase",
           }}
         >
-          {state.isPlaying ? "Now Playing" : "Current Song"}
+          {state.isRevealed
+            ? "Song Revealed"
+            : state.isPlaying
+              ? "Listen and Mark Your Card"
+              : "Current Song"}
         </p>
 
         <p style={{ marginTop: "12px", color: "#94a3b8" }}>
@@ -144,20 +149,37 @@ export default function CallerPage() {
           {state.totalTracks}
         </p>
 
-        {track.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={track.image}
-            alt=""
-            style={{
-              width: "min(42vw, 420px)",
-              height: "min(42vw, 420px)",
-              marginTop: "28px",
-              borderRadius: "30px",
-              objectFit: "cover",
-              boxShadow: "0 30px 90px rgba(0,0,0,.45)",
-            }}
-          />
+        {state.isRevealed ? (
+          track.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={track.image}
+              alt=""
+              style={{
+                width: "min(42vw, 420px)",
+                height: "min(42vw, 420px)",
+                marginTop: "28px",
+                borderRadius: "30px",
+                objectFit: "cover",
+                boxShadow: "0 30px 90px rgba(0,0,0,.45)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "min(42vw, 420px)",
+                height: "min(42vw, 420px)",
+                display: "grid",
+                placeItems: "center",
+                margin: "28px auto 0",
+                borderRadius: "30px",
+                background: "rgba(167,139,250,.18)",
+                fontSize: "140px",
+              }}
+            >
+              ♫
+            </div>
+          )
         ) : (
           <div
             style={{
@@ -167,11 +189,14 @@ export default function CallerPage() {
               placeItems: "center",
               margin: "28px auto 0",
               borderRadius: "30px",
-              background: "rgba(167,139,250,.18)",
+              background:
+                "linear-gradient(145deg, rgba(167,139,250,.24), rgba(15,23,42,.92))",
+              border: "1px solid rgba(196,181,253,.4)",
               fontSize: "140px",
+              boxShadow: "0 30px 90px rgba(0,0,0,.35)",
             }}
           >
-            ♫
+            ?
           </div>
         )}
 
@@ -182,7 +207,7 @@ export default function CallerPage() {
             lineHeight: 1,
           }}
         >
-          {track.name}
+          {state.isRevealed ? track.name : "SONG HIDDEN"}
         </h1>
 
         <p
@@ -192,18 +217,22 @@ export default function CallerPage() {
             fontSize: "clamp(24px, 3vw, 42px)",
           }}
         >
-          {track.artist}
+          {state.isRevealed
+            ? track.artist
+            : "Listen carefully and mark your bingo card"}
         </p>
 
-        <p
-          style={{
-            margin: "10px 0 0",
-            color: "#94a3b8",
-            fontSize: "clamp(17px, 2vw, 26px)",
-          }}
-        >
-          {track.album}
-        </p>
+        {state.isRevealed && (
+          <p
+            style={{
+              margin: "10px 0 0",
+              color: "#94a3b8",
+              fontSize: "clamp(17px, 2vw, 26px)",
+            }}
+          >
+            {track.album}
+          </p>
+        )}
 
         <div
           style={{
@@ -218,7 +247,7 @@ export default function CallerPage() {
             style={{
               width: `${progress}%`,
               height: "100%",
-              background: "#a3e635",
+              background: state.isRevealed ? "#c4b5fd" : "#a3e635",
               transition: "width 1s linear",
             }}
           />
@@ -248,9 +277,11 @@ export default function CallerPage() {
         <p style={{ color: "#94a3b8", fontSize: "20px" }}>
           {state.status === "complete"
             ? "Game playlist complete"
-            : state.isPlaying
-              ? "Listen and mark your bingo card"
-              : "Paused by host"}
+            : state.isRevealed
+              ? "Check your card — the next song is coming"
+              : state.isPlaying
+                ? "Listen and mark your bingo card"
+                : "Paused by host"}
         </p>
       </section>
     </main>

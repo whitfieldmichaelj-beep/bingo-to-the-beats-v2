@@ -1,4 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+import {
+  clearSpotifyTokenCookies,
+  getValidSpotifyAccessToken,
+  setSpotifyTokenCookies,
+} from "@/app/lib/spotify";
+
+export const dynamic = "force-dynamic";
 
 type SpotifyErrorResponse = {
   error?: {
@@ -7,27 +17,31 @@ type SpotifyErrorResponse = {
   };
 };
 
-export async function GET(request: NextRequest) {
-  const accessToken =
-    request.cookies.get("spotify_access_token")?.value;
-
-  if (!accessToken) {
-    return NextResponse.json(
-      {
-        error: "Spotify is not connected.",
-      },
-      {
-        status: 401,
-      }
-    );
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 10000);
-
+export async function GET(
+  request: NextRequest
+) {
   try {
+    const {
+      accessToken,
+      refreshedTokens,
+    } =
+      await getValidSpotifyAccessToken(
+        request
+      );
+
+    if (!accessToken) {
+      return NextResponse.json(
+        {
+          error:
+            "Spotify is not connected.",
+          reconnectRequired: true,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     const spotifyResponse = await fetch(
       "https://api.spotify.com/v1/me/playlists?limit=50",
       {
@@ -37,16 +51,18 @@ export async function GET(request: NextRequest) {
           Accept: "application/json",
         },
         cache: "no-store",
-        signal: controller.signal,
       }
     );
 
-    const responseText = await spotifyResponse.text();
+    const responseText =
+      await spotifyResponse.text();
 
-    let data: SpotifyErrorResponse & {
-      items?: unknown[];
-      total?: number;
-    };
+    let data:
+      | (SpotifyErrorResponse & {
+          items?: unknown[];
+          total?: number;
+        })
+      | undefined;
 
     try {
       data = responseText
@@ -55,8 +71,8 @@ export async function GET(request: NextRequest) {
     } catch {
       return NextResponse.json(
         {
-          error: "Spotify returned an invalid response.",
-          status: spotifyResponse.status,
+          error:
+            "Spotify returned an invalid response.",
         },
         {
           status: 502,
@@ -65,57 +81,71 @@ export async function GET(request: NextRequest) {
     }
 
     if (!spotifyResponse.ok) {
-      const message =
-        data.error?.message ||
-        "Unable to load Spotify playlists.";
+      const response =
+        NextResponse.json(
+          {
+            error:
+              data?.error?.message ||
+              "Unable to load Spotify playlists.",
+            spotifyStatus:
+              spotifyResponse.status,
+            reconnectRequired:
+              spotifyResponse.status === 401,
+          },
+          {
+            status:
+              spotifyResponse.status,
+          }
+        );
 
-      return NextResponse.json(
-        {
-          error: message,
-          spotifyStatus: spotifyResponse.status,
-        },
-        {
-          status: spotifyResponse.status,
-        }
-      );
+      if (
+        spotifyResponse.status === 401
+      ) {
+        clearSpotifyTokenCookies(
+          response
+        );
+      }
+
+      return response;
     }
 
-    return NextResponse.json({
-      items: Array.isArray(data.items)
+    const response = NextResponse.json({
+      items: Array.isArray(data?.items)
         ? data.items
         : [],
       total:
-        typeof data.total === "number"
+        typeof data?.total === "number"
           ? data.total
           : 0,
     });
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === "AbortError"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Spotify took too long to respond. Please try again.",
-        },
-        {
-          status: 504,
-        }
+
+    if (refreshedTokens) {
+      setSpotifyTokenCookies(
+        response,
+        refreshedTokens
       );
     }
 
-    console.error("Spotify playlists error:", error);
+    return response;
+  } catch (error) {
+    console.error(
+      "Spotify playlists error:",
+      error
+    );
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
-        error: "Unable to contact Spotify.",
+        error:
+          "Unable to refresh or contact Spotify.",
+        reconnectRequired: true,
       },
       {
-        status: 500,
+        status: 401,
       }
     );
-  } finally {
-    clearTimeout(timeout);
+
+    clearSpotifyTokenCookies(response);
+
+    return response;
   }
 }

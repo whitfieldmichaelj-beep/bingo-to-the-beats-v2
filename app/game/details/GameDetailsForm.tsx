@@ -4,19 +4,51 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+type WinningPattern =
+  | "any-line"
+  | "across"
+  | "down"
+  | "diagonal"
+  | "x-pattern"
+  | "blackout";
+
+const VALID_PATTERNS: WinningPattern[] = [
+  "any-line",
+  "across",
+  "down",
+  "diagonal",
+  "x-pattern",
+  "blackout",
+];
+
+function getWinningPattern(value: string | null): WinningPattern {
+  if (
+    value &&
+    VALID_PATTERNS.includes(value as WinningPattern)
+  ) {
+    return value as WinningPattern;
+  }
+
+  return "any-line";
+}
+
 export default function GameDetailsForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const players = searchParams.get("players") || "25";
   const billing = searchParams.get("billing") || "monthly";
+  const winningPattern = getWinningPattern(
+    searchParams.get("pattern")
+  );
 
   const [gameName, setGameName] = useState("");
   const [venueName, setVenueName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
   const [hostName, setHostName] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#a78bfa");
+  const [primaryColor, setPrimaryColor] =
+    useState("#a78bfa");
   const [error, setError] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -33,9 +65,32 @@ export default function GameDetailsForm() {
       return;
     }
 
+    const gameDetails = {
+      players: Number(players),
+      billing,
+      winningPattern,
+      gameName: gameName.trim(),
+      venueName: venueName.trim(),
+      eventDate,
+      eventTime,
+      hostName: hostName.trim(),
+      primaryColor,
+    };
+
+    sessionStorage.setItem(
+      "bttb-game-details",
+      JSON.stringify(gameDetails)
+    );
+
+    sessionStorage.setItem(
+      "bttbWinningPattern",
+      winningPattern
+    );
+
     const nextParams = new URLSearchParams({
       players,
       billing,
+      pattern: winningPattern,
       gameName: gameName.trim(),
       venueName: venueName.trim(),
       eventDate,
@@ -46,6 +101,12 @@ export default function GameDetailsForm() {
 
     router.push(`/music?${nextParams.toString()}`);
   }
+
+  const backParams = new URLSearchParams({
+    players,
+    billing,
+    pattern: winningPattern,
+  });
 
   return (
     <main
@@ -64,9 +125,7 @@ export default function GameDetailsForm() {
         }}
       >
         <Link
-          href={`/game/new?players=${encodeURIComponent(
-            players
-          )}&billing=${encodeURIComponent(billing)}`}
+          href={`/game/new?${backParams.toString()}`}
           style={{
             color: "#c4b5fd",
             textDecoration: "none",
@@ -140,11 +199,12 @@ export default function GameDetailsForm() {
           >
             <label style={labelStyle}>
               Game or event name *
-
               <input
                 type="text"
                 value={gameName}
-                onChange={(event) => setGameName(event.target.value)}
+                onChange={(event) =>
+                  setGameName(event.target.value)
+                }
                 placeholder="90s Hip-Hop Bingo Night"
                 style={inputStyle}
               />
@@ -152,11 +212,12 @@ export default function GameDetailsForm() {
 
             <label style={labelStyle}>
               Venue name
-
               <input
                 type="text"
                 value={venueName}
-                onChange={(event) => setVenueName(event.target.value)}
+                onChange={(event) =>
+                  setVenueName(event.target.value)
+                }
                 placeholder="Aloft Harlem"
                 style={inputStyle}
               />
@@ -164,33 +225,36 @@ export default function GameDetailsForm() {
 
             <label style={labelStyle}>
               Event date *
-
               <input
                 type="date"
                 value={eventDate}
-                onChange={(event) => setEventDate(event.target.value)}
+                onChange={(event) =>
+                  setEventDate(event.target.value)
+                }
                 style={inputStyle}
               />
             </label>
 
             <label style={labelStyle}>
               Start time
-
               <input
                 type="time"
                 value={eventTime}
-                onChange={(event) => setEventTime(event.target.value)}
+                onChange={(event) =>
+                  setEventTime(event.target.value)
+                }
                 style={inputStyle}
               />
             </label>
 
             <label style={labelStyle}>
               DJ or host name
-
               <input
                 type="text"
                 value={hostName}
-                onChange={(event) => setHostName(event.target.value)}
+                onChange={(event) =>
+                  setHostName(event.target.value)
+                }
                 placeholder="DJ Mike Doelo"
                 style={inputStyle}
               />
@@ -198,7 +262,6 @@ export default function GameDetailsForm() {
 
             <label style={labelStyle}>
               Event accent color
-
               <div
                 style={{
                   display: "flex",
@@ -259,35 +322,49 @@ export default function GameDetailsForm() {
                 textTransform: "uppercase",
               }}
             >
-              Current Plan Selection
+              Current Game Selection
             </p>
 
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: "12px",
-                marginTop: "12px",
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "14px",
+                marginTop: "16px",
               }}
             >
-              <strong style={{ fontSize: "20px" }}>
-                {players} expected players
-              </strong>
+              <div>
+                <span style={summaryLabelStyle}>
+                  Expected players
+                </span>
+                <strong style={summaryValueStyle}>
+                  {players}
+                </strong>
+              </div>
 
-              <span
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: "999px",
-                  background: "rgba(163, 230, 53, 0.12)",
-                  color: "#bef264",
-                  fontSize: "13px",
-                  fontWeight: 900,
-                  textTransform: "capitalize",
-                }}
-              >
-                {billing}
-              </span>
+              <div>
+                <span style={summaryLabelStyle}>
+                  Billing period
+                </span>
+                <strong
+                  style={{
+                    ...summaryValueStyle,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {billing}
+                </strong>
+              </div>
+
+              <div>
+                <span style={summaryLabelStyle}>
+                  Winning pattern
+                </span>
+                <strong style={summaryValueStyle}>
+                  {formatPattern(winningPattern)}
+                </strong>
+              </div>
             </div>
           </section>
 
@@ -298,7 +375,8 @@ export default function GameDetailsForm() {
                 padding: "16px",
                 borderRadius: "14px",
                 background: "rgba(244, 63, 94, 0.12)",
-                border: "1px solid rgba(244, 63, 94, 0.35)",
+                border:
+                  "1px solid rgba(244, 63, 94, 0.35)",
                 color: "#fda4af",
               }}
             >
@@ -329,6 +407,23 @@ export default function GameDetailsForm() {
   );
 }
 
+function formatPattern(pattern: WinningPattern) {
+  switch (pattern) {
+    case "across":
+      return "Across Only";
+    case "down":
+      return "Down Only";
+    case "diagonal":
+      return "Diagonal Only";
+    case "x-pattern":
+      return "X Pattern";
+    case "blackout":
+      return "Blackout";
+    default:
+      return "Any 5 in a Row";
+  }
+}
+
 const labelStyle = {
   display: "block",
   color: "#e2e8f0",
@@ -347,4 +442,20 @@ const inputStyle = {
   color: "white",
   fontSize: "16px",
   outline: "none",
+};
+
+const summaryLabelStyle = {
+  display: "block",
+  color: "#94a3b8",
+  fontSize: "12px",
+  fontWeight: 800,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
+};
+
+const summaryValueStyle = {
+  display: "block",
+  marginTop: "6px",
+  color: "#f8fafc",
+  fontSize: "18px",
 };
