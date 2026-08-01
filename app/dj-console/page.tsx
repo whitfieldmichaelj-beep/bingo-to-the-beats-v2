@@ -671,17 +671,17 @@ export default function DjConsolePage() {
     : 0;
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="logo">♫</div>
+    <main className="dj-shell">
+      <header className="dj-topbar">
+        <div className="dj-brand">
+          <div className="dj-logo">♫</div>
           <div>
             <p>Bingo to the Beats</p>
             <h1>DJ Console</h1>
           </div>
         </div>
 
-        <nav>
+        <nav className="dj-nav">
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/game/control">Game Control</Link>
           <button type="button" onClick={openCallerScreen}>
@@ -690,366 +690,389 @@ export default function DjConsolePage() {
         </nav>
       </header>
 
-      <section className="layout">
-        <aside className="column">
-          <section className="panel connection">
-            <div className="heading">
-              <div>
-                <span className="label">Music Source</span>
-                <h2>Serato Live Sync</h2>
-              </div>
+      <div className="dj-page">
+        <section className="dj-access-strip">
+          <div className="dj-access-copy">
+            <span className="dj-eyebrow">Live Game Access</span>
+            <h2>Players Join Here</h2>
+            <p>
+              Keep this code and QR visible while players are entering the game.
+            </p>
+          </div>
 
-              <span
-                className={`pill ${
-                  isConnected ? "online" : "offline"
-                }`}
-              >
-                ●{" "}
-                {isConnected
-                  ? isPolling
-                    ? "Checking"
-                    : "Connected"
-                  : "Not Connected"}
-              </span>
-            </div>
-
-            <label htmlFor="serato-url">Live Playlist URL</label>
-            <input
-              id="serato-url"
-              type="url"
-              value={seratoUrl}
-              onChange={(event) => setSeratoUrl(event.target.value)}
-              placeholder="https://serato.com/playlists/your-name/live"
+          <div className="dj-access-panel">
+            <GameAccessPanel
+              joinCode={session?.joinCode}
+              title="Players Join"
+              showOpenButton
             />
-
-            <div className="button-row">
-              <button
-                className="primary"
-                type="button"
-                onClick={() => void connectSerato()}
-              >
-                Connect Serato
-              </button>
-
-              <button
-                className="secondary"
-                type="button"
-                onClick={disconnectSerato}
-              >
-                Disconnect
-              </button>
-            </div>
-
-            <div className="meta">
-              <span>
-                DJ <strong>IAMDJMIKEDOELO</strong>
-              </span>
-              <span>
-                Last Update <strong>{lastUpdate}</strong>
-              </span>
-            </div>
-          </section>
-
-          <section className="panel automation">
-            <span className="label">Automation</span>
-
-            <label className="toggle">
-              <span>
-                <strong>Auto Detect</strong>
-                <small>Detect new Serato songs</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={autoDetect}
-                onChange={(event) =>
-                  setAutoDetect(event.target.checked)
-                }
-              />
-            </label>
-
-            <label className="toggle">
-              <span>
-                <strong>Auto Reveal</strong>
-                <small>Reveal at zero</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={autoReveal}
-                onChange={(event) =>
-                  setAutoReveal(event.target.checked)
-                }
-              />
-            </label>
-
-            <label className="toggle">
-              <span>
-                <strong>Auto Next</strong>
-                <small>Advance after reveal</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={autoNext}
-                onChange={(event) =>
-                  setAutoNext(event.target.checked)
-                }
-              />
-            </label>
-          </section>
-
-          <section className="panel stats">
-            <span className="label">Live Game</span>
-            <div className="stats-grid">
-              <div>
-                <strong>{session?.cardCount ?? 0}</strong>
-                <span>Cards</span>
-              </div>
-              <div>
-                <strong>
-                  {session?.playedTrackIds.length ?? 0}
-                </strong>
-                <span>Played</span>
-              </div>
-              <div>
-                <strong>{session?.tracks.length ?? 0}</strong>
-                <span>Songs</span>
-              </div>
-              <div>
-                <strong>
-                  {session
-                    ? Math.max(
-                        0,
-                        session.tracks.length -
-                          session.currentIndex -
-                          1
-                      )
-                    : 0}
-                </strong>
-                <span>Remaining</span>
-              </div>
-            </div>
-          </section>
-
-          <GameAccessPanel
-            joinCode={session?.joinCode}
-            title="Players Join"
-            compact
-          />
-        </aside>
-
-        <section className="column center">
-          <section className="panel now-playing">
-            <div className="heading">
-              <span className="label">Now Playing</span>
-              <span
-                className={`pill ${isPlaying ? "online" : ""}`}
-              >
-                {session?.status ?? "No Game"}
-              </span>
-            </div>
-
-            <div className="track-display">
-              <div className="art">
-                {currentTrack?.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={currentTrack.image} alt="" />
-                ) : (
-                  <span>♫</span>
-                )}
-              </div>
-
-              <div className="track-copy">
-                <p>
-                  {currentTrack?.artist ?? "Waiting for Serato"}
-                </p>
-                <h2>
-                  {currentTrack?.name ?? "No song detected"}
-                </h2>
-                <span>
-                  {currentTrack?.album ??
-                    "Start Live Playlist in Serato DJ Pro."}
-                </span>
-              </div>
-            </div>
-
-            <div className="timer">
-              <strong>{secondsRemaining}</strong>
-              <div>
-                <h3>
-                  {isRevealed
-                    ? "Song Revealed"
-                    : isPlaying
-                      ? "Countdown Running"
-                      : "Countdown Ready"}
-                </h3>
-                <p>
-                  {session?.clipLength ?? 30}-second game timer
-                </p>
-              </div>
-            </div>
-
-            <div className="progress">
-              <span style={{ width: `${progress}%` }} />
-            </div>
-
-            <div className="waveform">
-              {Array.from({ length: 46 }, (_, index) => (
-                <i
-                  key={index}
-                  style={{
-                    height: `${15 + ((index * 13) % 38)}px`,
-                    opacity:
-                      index / 46 <= progress / 100 ? 1 : 0.23,
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-
-          <section className="panel controls">
-            <span className="label">Game Controls</span>
-            <div className="control-grid">
-              <button
-                className="purple"
-                type="button"
-                onClick={() => {
-                  void updateStatus(
-                    isPlaying ? "paused" : "playing"
-                  );
-                  setMessage(
-                    isPlaying
-                      ? "Game paused."
-                      : playback.status === "ready"
-                        ? "Game started."
-                        : "Game resumed."
-                  );
-                }}
-              >
-                <b>{isPlaying ? "Ⅱ" : "▶"}</b>
-                {isPlaying ? "Pause Game" : "Resume Game"}
-              </button>
-
-              <button
-                className="blue"
-                type="button"
-                onClick={revealNow}
-              >
-                <b>◉</b>Reveal Now
-              </button>
-
-              <button
-                className="orange"
-                type="button"
-                onClick={skipSong}
-              >
-                <b>»</b>Skip Song
-              </button>
-
-              <button
-                className="green"
-                type="button"
-                onClick={() => {
-                  void updateStatus("paused");
-                  setMessage(
-                    "BINGO called. Game paused for verification."
-                  );
-                }}
-              >
-                <b>★</b>BINGO
-              </button>
-
-              <button
-                className="cyan"
-                type="button"
-                onClick={openCallerScreen}
-              >
-                <b>▣</b>Caller Screen
-              </button>
-
-              <button
-                className="red"
-                type="button"
-                onClick={() => {
-                  void updateStatus("complete");
-                  setMessage("Game ended.");
-                }}
-              >
-                <b>■</b>End Game
-              </button>
-            </div>
-          </section>
-
-          <p className="message">{message}</p>
+          </div>
         </section>
 
-        <aside className="column">
-          <section className="panel list-panel">
-            <div className="heading">
-              <div>
-                <span className="label">Game Playlist</span>
-                <h2>Upcoming Songs</h2>
-              </div>
-              <small>{upcomingTracks.length} shown</small>
-            </div>
+        <section className="dj-stat-strip">
+          <article>
+            <span>Game Status</span>
+            <strong>{session?.status ?? "No Game"}</strong>
+          </article>
+          <article>
+            <span>Cards Generated</span>
+            <strong>{session?.cardCount ?? 0}</strong>
+          </article>
+          <article>
+            <span>Songs Played</span>
+            <strong>{session?.playedTrackIds.length ?? 0}</strong>
+          </article>
+          <article>
+            <span>Total Songs</span>
+            <strong>{session?.tracks.length ?? 0}</strong>
+          </article>
+          <article>
+            <span>Remaining</span>
+            <strong>
+              {session
+                ? Math.max(
+                    0,
+                    session.tracks.length -
+                      session.currentIndex -
+                      1
+                  )
+                : 0}
+            </strong>
+          </article>
+        </section>
 
-            <div className="track-list">
-              {upcomingTracks.length === 0 ? (
-                <p className="empty">
-                  No upcoming songs are available.
-                </p>
-              ) : (
-                upcomingTracks.map((track, index) => (
-                  <div className="mini-track" key={track.id}>
-                    <b>
-                      {session!.currentIndex + index + 2}
-                    </b>
-                    <span>
-                      <strong>{track.name}</strong>
-                      <small>{track.artist}</small>
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+        <section className="dj-main-grid">
+          <aside className="dj-left-stack">
+            <section className="dj-panel dj-serato-panel">
+              <div className="dj-panel-heading">
+                <div>
+                  <span className="dj-eyebrow">Music Source</span>
+                  <h2>Serato Live Sync</h2>
+                </div>
+
+                <span
+                  className={`dj-status-pill ${
+                    isConnected ? "online" : "offline"
+                  }`}
+                >
+                  ●{" "}
+                  {isConnected
+                    ? isPolling
+                      ? "Checking"
+                      : "Connected"
+                    : "Not Connected"}
+                </span>
+              </div>
+
+              <label htmlFor="serato-url">Live Playlist URL</label>
+              <input
+                id="serato-url"
+                type="url"
+                value={seratoUrl}
+                onChange={(event) => setSeratoUrl(event.target.value)}
+                placeholder="https://serato.com/playlists/your-name/live"
+              />
+
+              <div className="dj-button-row">
+                <button
+                  className="dj-primary-button"
+                  type="button"
+                  onClick={() => void connectSerato()}
+                >
+                  Connect Serato
+                </button>
+
+                <button
+                  className="dj-secondary-button"
+                  type="button"
+                  onClick={disconnectSerato}
+                >
+                  Disconnect
+                </button>
+              </div>
+
+              <div className="dj-meta">
+                <span>
+                  DJ <strong>IAMDJMIKEDOELO</strong>
+                </span>
+                <span>
+                  Last Update <strong>{lastUpdate}</strong>
+                </span>
+              </div>
+            </section>
+
+            <section className="dj-panel dj-automation-panel">
+              <span className="dj-eyebrow">Automation</span>
+
+              <label className="dj-toggle">
+                <span>
+                  <strong>Auto Detect</strong>
+                  <small>Detect new Serato songs</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={autoDetect}
+                  onChange={(event) =>
+                    setAutoDetect(event.target.checked)
+                  }
+                />
+              </label>
+
+              <label className="dj-toggle">
+                <span>
+                  <strong>Auto Reveal</strong>
+                  <small>Reveal at zero</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={autoReveal}
+                  onChange={(event) =>
+                    setAutoReveal(event.target.checked)
+                  }
+                />
+              </label>
+
+              <label className="dj-toggle">
+                <span>
+                  <strong>Auto Next</strong>
+                  <small>Advance after reveal</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={autoNext}
+                  onChange={(event) =>
+                    setAutoNext(event.target.checked)
+                  }
+                />
+              </label>
+            </section>
+          </aside>
+
+          <section className="dj-center-stack">
+            <section className="dj-panel dj-now-playing">
+              <div className="dj-panel-heading">
+                <div>
+                  <span className="dj-eyebrow">Now Playing</span>
+                  <h2>Current Track</h2>
+                </div>
+
+                <span
+                  className={`dj-status-pill ${
+                    isPlaying ? "online" : ""
+                  }`}
+                >
+                  {session?.status ?? "No Game"}
+                </span>
+              </div>
+
+              <div className="dj-track-display">
+                <div className="dj-art">
+                  {currentTrack?.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={currentTrack.image} alt="" />
+                  ) : (
+                    <span>♫</span>
+                  )}
+                </div>
+
+                <div className="dj-track-copy">
+                  <p>
+                    {currentTrack?.artist ?? "Waiting for Serato"}
+                  </p>
+                  <h3>
+                    {currentTrack?.name ?? "No song detected"}
+                  </h3>
+                  <span>
+                    {currentTrack?.album ??
+                      "Start Live Playlist in Serato DJ Pro."}
+                  </span>
+                </div>
+              </div>
+
+              <div className="dj-timer-row">
+                <strong>{secondsRemaining}</strong>
+                <div>
+                  <h3>
+                    {isRevealed
+                      ? "Song Revealed"
+                      : isPlaying
+                        ? "Countdown Running"
+                        : "Countdown Ready"}
+                  </h3>
+                  <p>
+                    {session?.clipLength ?? 30}-second game timer
+                  </p>
+                </div>
+              </div>
+
+              <div className="dj-progress">
+                <span style={{ width: `${progress}%` }} />
+              </div>
+
+              <div className="dj-waveform">
+                {Array.from({ length: 46 }, (_, index) => (
+                  <i
+                    key={index}
+                    style={{
+                      height: `${15 + ((index * 13) % 38)}px`,
+                      opacity:
+                        index / 46 <= progress / 100 ? 1 : 0.23,
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+
+            <section className="dj-panel dj-controls-panel">
+              <span className="dj-eyebrow">Game Controls</span>
+
+              <div className="dj-control-grid">
+                <button
+                  className="purple"
+                  type="button"
+                  onClick={() => {
+                    void updateStatus(
+                      isPlaying ? "paused" : "playing"
+                    );
+                    setMessage(
+                      isPlaying
+                        ? "Game paused."
+                        : playback.status === "ready"
+                          ? "Game started."
+                          : "Game resumed."
+                    );
+                  }}
+                >
+                  <b>{isPlaying ? "Ⅱ" : "▶"}</b>
+                  {isPlaying ? "Pause Game" : "Resume Game"}
+                </button>
+
+                <button
+                  className="blue"
+                  type="button"
+                  onClick={revealNow}
+                >
+                  <b>◉</b>
+                  Reveal Now
+                </button>
+
+                <button
+                  className="orange"
+                  type="button"
+                  onClick={skipSong}
+                >
+                  <b>»</b>
+                  Skip Song
+                </button>
+
+                <button
+                  className="green"
+                  type="button"
+                  onClick={() => {
+                    void updateStatus("paused");
+                    setMessage(
+                      "BINGO called. Game paused for verification."
+                    );
+                  }}
+                >
+                  <b>★</b>
+                  BINGO
+                </button>
+
+                <button
+                  className="cyan"
+                  type="button"
+                  onClick={openCallerScreen}
+                >
+                  <b>▣</b>
+                  Caller Screen
+                </button>
+
+                <button
+                  className="red"
+                  type="button"
+                  onClick={() => {
+                    void updateStatus("complete");
+                    setMessage("Game ended.");
+                  }}
+                >
+                  <b>■</b>
+                  End Game
+                </button>
+              </div>
+            </section>
+
+            <p className="dj-message">{message}</p>
           </section>
 
-          <section className="panel list-panel">
-            <div className="heading">
-              <div>
-                <span className="label">Live History</span>
-                <h2>Activity Feed</h2>
+          <aside className="dj-right-stack">
+            <section className="dj-panel dj-list-panel">
+              <div className="dj-panel-heading">
+                <div>
+                  <span className="dj-eyebrow">Game Playlist</span>
+                  <h2>Upcoming Songs</h2>
+                </div>
+                <small>{upcomingTracks.length} shown</small>
               </div>
-            </div>
 
-            <div className="activity-list">
-              {activity.length === 0 ? (
-                <p className="empty">
-                  Detected songs will appear here.
-                </p>
-              ) : (
-                activity.map((item) => (
-                  <div
-                    className="activity-item"
-                    key={item.id}
-                  >
-                    <time>
-                      {new Date(
-                        item.detectedAt
-                      ).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </time>
-                    <span>
-                      <strong>{item.track.name}</strong>
-                      <small>{item.track.artist}</small>
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
-      </section>
+              <div className="dj-track-list">
+                {upcomingTracks.length === 0 ? (
+                  <p className="dj-empty">
+                    No upcoming songs are available.
+                  </p>
+                ) : (
+                  upcomingTracks.map((track, index) => (
+                    <div className="dj-mini-track" key={track.id}>
+                      <b>{session!.currentIndex + index + 2}</b>
+                      <span>
+                        <strong>{track.name}</strong>
+                        <small>{track.artist}</small>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="dj-panel dj-list-panel">
+              <div className="dj-panel-heading">
+                <div>
+                  <span className="dj-eyebrow">Live History</span>
+                  <h2>Activity Feed</h2>
+                </div>
+              </div>
+
+              <div className="dj-activity-list">
+                {activity.length === 0 ? (
+                  <p className="dj-empty">
+                    Detected songs will appear here.
+                  </p>
+                ) : (
+                  activity.map((item) => (
+                    <div
+                      className="dj-activity-item"
+                      key={item.id}
+                    >
+                      <time>
+                        {new Date(
+                          item.detectedAt
+                        ).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                      <span>
+                        <strong>{item.track.name}</strong>
+                        <small>{item.track.artist}</small>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </aside>
+        </section>
+      </div>
     </main>
   );
 }

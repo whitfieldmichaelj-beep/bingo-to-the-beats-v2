@@ -181,13 +181,8 @@ function JoinGameForm() {
     setMessage("");
 
     try {
-      let playerId =
+      const existingPlayerId =
         localStorage.getItem(PLAYER_ID_KEY) ?? "";
-
-      if (!playerId) {
-        playerId = crypto.randomUUID();
-        localStorage.setItem(PLAYER_ID_KEY, playerId);
-      }
 
       const response = await fetch("/api/game/join", {
         method: "POST",
@@ -197,8 +192,10 @@ function JoinGameForm() {
         body: JSON.stringify({
           joinCode: normalizedJoinCode,
           playerName: normalizedPlayerName,
-          playerId,
           cardQuantity,
+          ...(existingPlayerId
+            ? { playerId: existingPlayerId }
+            : {}),
         }),
       });
 
@@ -216,6 +213,11 @@ function JoinGameForm() {
           data.message || "Unable to join the game."
         );
       }
+
+      localStorage.setItem(
+        PLAYER_ID_KEY,
+        data.player.playerId
+      );
 
       localStorage.setItem(
         PLAYER_SESSION_KEY,

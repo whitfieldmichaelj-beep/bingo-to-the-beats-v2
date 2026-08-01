@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getGameByJoinCode } from "@/lib/game/store";
+import { findGameByJoinCode } from "@/lib/game/repository";
 import type { BingoCard } from "@/lib/game/types";
 
 export const runtime = "nodejs";
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const game = getGameByJoinCode(joinCode);
+    const game = await findGameByJoinCode(joinCode);
 
     if (!game) {
       return NextResponse.json(
@@ -380,5 +380,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
 

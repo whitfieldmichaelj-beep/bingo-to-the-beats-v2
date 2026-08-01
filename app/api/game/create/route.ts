@@ -1,7 +1,8 @@
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
+import { createGame as persistGame } from "@/lib/game/repository";
 import { createGameFromPlaylist } from "@/lib/game/service";
-import { saveGame } from "@/lib/game/store";
 import type { BingoPattern } from "@/lib/game/types";
 
 import { loadPlaylist } from "@/lib/serato/playlist-reader";
@@ -26,17 +27,25 @@ const VALID_PATTERNS = new Set<BingoPattern>([
 ]);
 
 function normalizeCardCount(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
     return DEFAULT_CARD_COUNT;
   }
 
   return Math.max(
     1,
-    Math.min(MAX_CARD_COUNT, Math.floor(value))
+    Math.min(
+      MAX_CARD_COUNT,
+      Math.floor(value)
+    )
   );
 }
 
-function normalizeBingoPattern(value: unknown): BingoPattern {
+function normalizeBingoPattern(
+  value: unknown
+): BingoPattern {
   if (
     typeof value === "string" &&
     VALID_PATTERNS.has(value as BingoPattern)
@@ -47,8 +56,26 @@ function normalizeBingoPattern(value: unknown): BingoPattern {
   return "single-line";
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest
+) {
   try {
+    const {
+      isAuthenticated,
+      userId,
+    } = await auth();
+
+    if (!isAuthenticated || !userId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            "You must be logged in to create a game.",
+        },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
 
     const playlistId =
@@ -56,10 +83,15 @@ export async function POST(request: NextRequest) {
         ? body.playlistId.trim()
         : "";
 
-    const cardCount = normalizeCardCount(body.cardCount);
-    const bingoPattern = normalizeBingoPattern(
-      body.bingoPattern ?? body.winningPattern
+    const cardCount = normalizeCardCount(
+      body.cardCount
     );
+
+    const bingoPattern =
+      normalizeBingoPattern(
+        body.bingoPattern ??
+          body.winningPattern
+      );
 
     if (!playlistId) {
       return NextResponse.json(
@@ -71,10 +103,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const playlists = await getSeratoPlaylists();
+    const playlists =
+      await getSeratoPlaylists();
 
     const playlist = playlists.find(
-      (candidate) => candidate.id === playlistId
+      (candidate) =>
+        candidate.id === playlistId
     );
 
     if (!playlist) {
@@ -87,7 +121,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const loadedPlaylist = await loadPlaylist(playlist);
+    const loadedPlaylist =
+      await loadPlaylist(playlist);
 
     const game = createGameFromPlaylist(
       loadedPlaylist,
@@ -95,16 +130,22 @@ export async function POST(request: NextRequest) {
       cardCount
     );
 
-    saveGame(game);
+    await persistGame(game);
 
     return NextResponse.json({
       ok: true,
       game,
-      cardCount: game.cards?.length ?? 0,
-      cardCapacity: game.cardCapacity ?? null,
+      hostClerkId: userId,
+      cardCount:
+        game.cards?.length ?? 0,
+      cardCapacity:
+        game.cardCapacity ?? null,
     });
   } catch (error) {
-    console.error("Unable to create Serato game:", error);
+    console.error(
+      "Unable to create Serato game:",
+      error
+    );
 
     return NextResponse.json(
       {
@@ -119,3 +160,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

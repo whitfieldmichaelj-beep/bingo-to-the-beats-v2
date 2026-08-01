@@ -1,3 +1,6 @@
+Library
+/audio-stream-route.ts
+
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
@@ -5,7 +8,7 @@ import { Readable } from "node:stream";
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getGameById } from "@/lib/game/store";
+import { findGameById } from "@/lib/game/repository";
 import type { GameTrack } from "@/lib/game/types";
 
 export const runtime = "nodejs";
@@ -218,7 +221,7 @@ async function resolveAudioRequest(request: NextRequest) {
     };
   }
 
-  const game = getGameById(gameId);
+  const game = await findGameById(gameId);
 
   if (!game) {
     return {

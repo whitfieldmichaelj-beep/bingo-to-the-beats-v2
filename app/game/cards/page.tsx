@@ -74,10 +74,10 @@ type PlayerSession = {
   joinedAt: string;
 };
 
-type CardMarks = Record<string, number[]>;
+type SelectedSongKeys = string[];
 
 const PLAYER_SESSION_KEY = "bttb-v2-player-session";
-const PLAYER_MARKS_KEY = "bttb-v2-player-card-marks";
+const PLAYER_MARKS_KEY = "bttb-v2-player-selected-songs";
 
 function formatWinningPattern(pattern: WinningPattern) {
   switch (pattern) {
@@ -152,19 +152,53 @@ function hasWinningPattern(
   }
 }
 
-function readMarks(): CardMarks {
+function normalizeSongPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\u0000/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSongKey(square: CardSquare): string {
+  const title = normalizeSongPart(square.title);
+  const artist = normalizeSongPart(square.artist);
+
+  if (title || artist) {
+    return `${title}::${artist}`;
+  }
+
+  return square.trackId || square.gameTrackId;
+}
+
+function readSelectedSongKeys(): string[] {
   try {
     const saved = localStorage.getItem(PLAYER_MARKS_KEY);
-    return saved ? (JSON.parse(saved) as CardMarks) : {};
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (value): value is string =>
+            typeof value === "string"
+        )
+      : [];
   } catch {
-    return {};
+    return [];
   }
 }
 
 export default function CardsPage() {
   const [session, setSession] = useState<PlayerSession | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
-  const [marksByCard, setMarksByCard] = useState<CardMarks>({});
+  const [selectedSongKeys, setSelectedSongKeys] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [winningCardId, setWinningCardId] = useState<string | null>(
     null
@@ -181,7 +215,9 @@ export default function CardsPage() {
 
       const parsed = JSON.parse(savedSession) as PlayerSession;
       setSession(parsed);
-      setMarksByCard(readMarks());
+      setSelectedSongKeys(readSelectedSongKeys());
+      localStorage.removeItem("bttb-v2-player-card-marks");
+      localStorage.removeItem("bttb-v2-player-selected-tracks");
     } catch {
       localStorage.removeItem(PLAYER_SESSION_KEY);
       localStorage.removeItem(PLAYER_MARKS_KEY);
@@ -202,16 +238,26 @@ export default function CardsPage() {
 
   const activeCard = cards[activeCardIndex] ?? null;
 
+  const selectedSongKeySet = useMemo(
+    () => new Set(selectedSongKeys),
+    [selectedSongKeys]
+  );
+
   const activeMarks = useMemo(() => {
-    if (!activeCard) return new Set<number>();
+    if (!activeCard) {
+      return new Set<number>();
+    }
 
     return new Set(
-      marksByCard[activeCard.id] ??
-        activeCard.squares
-          .filter((square) => square.marked)
-          .map((square) => square.squareIndex)
+      activeCard.squares
+        .filter(
+          (square) =>
+            square.marked ||
+            selectedSongKeySet.has(getSongKey(square))
+        )
+        .map((square) => square.squareIndex)
     );
-  }, [activeCard, marksByCard]);
+  }, [activeCard, selectedSongKeySet]);
 
   const winningCardIds = useMemo(() => {
     if (!session) return [];
@@ -219,10 +265,13 @@ export default function CardsPage() {
     return cards
       .filter((card) => {
         const cardMarks = new Set(
-          marksByCard[card.id] ??
-            card.squares
-              .filter((square) => square.marked)
-              .map((square) => square.squareIndex)
+          card.squares
+            .filter(
+              (square) =>
+                square.marked ||
+                selectedSongKeySet.has(getSongKey(square))
+            )
+            .map((square) => square.squareIndex)
         );
 
         return hasWinningPattern(
@@ -232,7 +281,7 @@ export default function CardsPage() {
         );
       })
       .map((card) => card.id);
-  }, [cards, marksByCard, session]);
+  }, [cards, selectedSongKeySet, session]);
 
   useEffect(() => {
     if (
@@ -244,36 +293,29 @@ export default function CardsPage() {
     }
   }, [activeCard, winningCardId, winningCardIds]);
 
-  function saveMarks(nextMarks: CardMarks) {
-    setMarksByCard(nextMarks);
+  function saveSelectedSongKeys(nextSongKeys: string[]) {
+    setSelectedSongKeys(nextSongKeys);
     localStorage.setItem(
       PLAYER_MARKS_KEY,
-      JSON.stringify(nextMarks)
+      JSON.stringify(nextSongKeys)
     );
   }
 
-  function toggleSquare(cardId: string, squareIndex: number) {
-    const current = new Set(marksByCard[cardId] ?? []);
+  function toggleSong(square: CardSquare) {
+    const songKey = getSongKey(square);
+    const current = new Set(selectedSongKeys);
 
-    if (current.has(squareIndex)) {
-      current.delete(squareIndex);
+    if (current.has(songKey)) {
+      current.delete(songKey);
     } else {
-      current.add(squareIndex);
+      current.add(songKey);
     }
 
-    saveMarks({
-      ...marksByCard,
-      [cardId]: Array.from(current),
-    });
+    saveSelectedSongKeys(Array.from(current));
   }
 
-  function clearActiveCard() {
-    if (!activeCard) return;
-
-    saveMarks({
-      ...marksByCard,
-      [activeCard.id]: [],
-    });
+  function clearAllCards() {
+    saveSelectedSongKeys([]);
     setWinningCardId(null);
   }
 
@@ -453,6 +495,17 @@ export default function CardsPage() {
           }}
         >
           <span style={summaryLabelStyle}>Select a Card</span>
+          <p
+            style={{
+              margin: "8px 0 0",
+              color: "#94a3b8",
+              fontSize: "12px",
+              lineHeight: 1.5,
+            }}
+          >
+            Marking a song marks that same song on every card
+            that contains it.
+          </p>
 
           <div
             style={{
@@ -561,10 +614,7 @@ export default function CardsPage() {
                     key={`${activeCard.id}-${square.squareIndex}`}
                     type="button"
                     onClick={() =>
-                      toggleSquare(
-                        activeCard.id,
-                        square.squareIndex
-                      )
+                      toggleSong(square)
                     }
                     aria-pressed={isMarked}
                     style={{
@@ -664,10 +714,10 @@ export default function CardsPage() {
 
               <button
                 type="button"
-                onClick={clearActiveCard}
+                onClick={clearAllCards}
                 style={secondaryActionStyle}
               >
-                Clear This Card
+                Clear All Cards
               </button>
 
               <button
