@@ -136,7 +136,7 @@ function calculateCombination(
     totalItems < 0 ||
     selectedItems > totalItems
   ) {
-    return 0n;
+    return BigInt(0);
   }
 
   const smallerSelection = Math.min(
@@ -144,7 +144,7 @@ function calculateCombination(
     totalItems - selectedItems
   );
 
-  let result = 1n;
+  let result = BigInt(1);
 
   for (
     let index = 1;
@@ -173,10 +173,10 @@ function calculatePermutation(
     totalItems < 0 ||
     selectedItems > totalItems
   ) {
-    return 0n;
+    return BigInt(0);
   }
 
-  let result = 1n;
+  let result = BigInt(1);
 
   for (
     let index = 0;
@@ -192,11 +192,11 @@ function calculatePermutation(
 function formatLargeNumber(
   value: bigint
 ): string {
-  const oneThousand = 1_000n;
-  const oneMillion = 1_000_000n;
-  const oneBillion = 1_000_000_000n;
+  const oneThousand = BigInt(1_000);
+  const oneMillion = BigInt(1_000_000);
+  const oneBillion = BigInt(1_000_000_000);
   const oneTrillion =
-    1_000_000_000_000n;
+    BigInt(1_000_000_000_000);
 
   if (value >= oneTrillion) {
     return "More than 1 trillion unique layouts";
@@ -231,7 +231,7 @@ function createCardCapacity(
           playlistTrackCount,
           SONGS_PER_CARD
         )
-      : 0n;
+      : BigInt(0);
 
   const uniqueCardLayouts =
     canGenerateCards
@@ -239,7 +239,7 @@ function createCardCapacity(
           playlistTrackCount,
           SONGS_PER_CARD
         )
-      : 0n;
+      : BigInt(0);
 
   return {
     playlistTrackCount,
