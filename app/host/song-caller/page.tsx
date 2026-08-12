@@ -156,7 +156,7 @@ function SongCallerWorkspace({
         id: song.id,
         title: song.name,
         artist: song.artist,
-        artwork: song.image,
+        artwork: song.image ?? undefined,
         duration: session.clipLength,
         previewUrl: null,
         source: "apple",
