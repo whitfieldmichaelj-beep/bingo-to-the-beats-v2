@@ -94,7 +94,7 @@ export default function GameControlPage() {
   const musicRef = useRef<MusicKitInstance | null>(null);
   const sessionRef = useRef<GameSession | null>(null);
   const advancingRef = useRef(false);
-  const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimeoutRef = useRef<number | null>(null);
 
   const currentTrack =
     session?.tracks[session.currentIndex] ?? null;
@@ -300,7 +300,7 @@ export default function GameControlPage() {
 
     if (music) {
       try {
-        music.volume = clampVolume(masterVolume);
+        (music as MusicKitInstance & { volume?: number }).volume = clampVolume(masterVolume);
       } catch {
         // Some MusicKit versions may not expose volume as writable.
       }
@@ -414,7 +414,7 @@ export default function GameControlPage() {
     volume: number
   ) {
     try {
-      music.volume = clampVolume(volume);
+      (music as MusicKitInstance & { volume?: number }).volume = clampVolume(volume);
     } catch {
       // Ignore MusicKit runtimes that do not expose writable volume.
     }
