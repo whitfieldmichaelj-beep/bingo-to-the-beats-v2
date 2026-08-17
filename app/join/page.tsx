@@ -47,6 +47,7 @@ type JoinResponse = {
     cardIds: string[];
     cardQuantity: CardQuantity;
     amountCents: number;
+    purchaseStatus: "PENDING" | "PAID";
     joinedAt: string;
   };
   game?: {
@@ -70,8 +71,77 @@ type JoinResponse = {
   };
 };
 
+type CheckoutResponse = {
+  ok: boolean;
+  message?: string;
+  paid?: boolean;
+  processing?: boolean;
+  checkoutUrl?: string;
+  checkoutSessionId?: string;
+  paymentStatus?: string;
+};
+
+type PaymentStatusResponse = {
+  ok: boolean;
+  message?: string;
+  paid?: boolean;
+  purchaseId?: string;
+  joinCode?: string;
+  playerName?: string | null;
+  cardQuantity?: CardQuantity;
+  paymentStatus?: string;
+};
+
 const PLAYER_ID_KEY = "bttb-v2-player-id";
 const PLAYER_SESSION_KEY = "bttb-v2-player-session";
+const LEGACY_MARKS_KEYS = [
+  "bttb-v2-player-selected-songs",
+  "bttb-v2-player-selected-tracks",
+  "bttb-v2-player-card-marks",
+];
+
+function getMarksStorageKey(
+  gameId: string,
+  playerId: string
+) {
+  return `bttb-v2-player-selected-songs:${gameId}:${playerId}`;
+}
+
+function readPreviousPlayerSession(): JoinResponse | null {
+  try {
+    const saved = localStorage.getItem(PLAYER_SESSION_KEY);
+
+    return saved
+      ? (JSON.parse(saved) as JoinResponse)
+      : null;
+  } catch {
+    localStorage.removeItem(PLAYER_SESSION_KEY);
+    return null;
+  }
+}
+
+function clearPreviousGameData(
+  previousSession: JoinResponse | null
+) {
+  const previousGameId = previousSession?.game?.id;
+  const previousPlayerId =
+    previousSession?.player?.playerId;
+
+  if (previousGameId && previousPlayerId) {
+    localStorage.removeItem(
+      getMarksStorageKey(
+        previousGameId,
+        previousPlayerId
+      )
+    );
+  }
+
+  for (const key of LEGACY_MARKS_KEYS) {
+    localStorage.removeItem(key);
+  }
+
+  localStorage.removeItem(PLAYER_SESSION_KEY);
+}
 
 const PACKAGES: Array<{
   quantity: CardQuantity;
@@ -127,6 +197,39 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function createBrowserId() {
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.getRandomValues === "function"
+  ) {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+
+    bytes[6] =
+      (bytes[6] & 0x0f) | 0x40;
+    bytes[8] =
+      (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(
+      bytes,
+      (byte) =>
+        byte.toString(16).padStart(2, "0")
+    );
+
+    return [
+      hex.slice(0, 4).join(""),
+      hex.slice(4, 6).join(""),
+      hex.slice(6, 8).join(""),
+      hex.slice(8, 10).join(""),
+      hex.slice(10, 16).join(""),
+    ].join("-");
+  }
+
+  return `player-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+}
+
 function JoinGameForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -134,7 +237,7 @@ function JoinGameForm() {
   const [joinCode, setJoinCode] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [cardQuantity, setCardQuantity] =
-    useState<CardQuantity>(3);
+    useState<CardQuantity>(1);
   const [message, setMessage] = useState("");
   const [joining, setJoining] = useState(false);
 
@@ -146,7 +249,199 @@ function JoinGameForm() {
     if (codeFromUrl) {
       setJoinCode(codeFromUrl);
     }
+
+    if (
+      searchParams.get("payment") === "cancelled"
+    ) {
+      setMessage(
+        "Payment was cancelled. Your cards are still reserved. Submit again to resume payment."
+      );
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    const payment =
+      searchParams.get("payment");
+
+    const sessionId =
+      searchParams.get("session_id")?.trim() ?? "";
+
+    if (
+      payment !== "success" ||
+      !sessionId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function recoverPaidPurchase() {
+      setJoining(true);
+      setMessage("Confirming payment...");
+
+      try {
+        const statusResponse = await fetch(
+          `/api/checkout/status?session_id=${encodeURIComponent(
+            sessionId
+          )}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const statusData =
+          (await statusResponse.json()) as PaymentStatusResponse;
+
+        if (
+          !statusResponse.ok ||
+          !statusData.ok
+        ) {
+          throw new Error(
+            statusData.message ||
+              "Unable to confirm payment."
+          );
+        }
+
+        if (!statusData.paid) {
+          if (!cancelled) {
+            setMessage(
+              "Payment is still being confirmed. Please try again in a moment."
+            );
+          }
+
+          return;
+        }
+
+        const recoveredJoinCode =
+          normalizeCode(
+            statusData.joinCode ?? ""
+          );
+
+        const recoveredPlayerName =
+          (statusData.playerName ?? "")
+            .trim()
+            .replace(/\s+/g, " ")
+            .slice(0, 50);
+
+        const recoveredQuantity =
+          statusData.cardQuantity;
+
+        if (
+          !recoveredJoinCode ||
+          !recoveredPlayerName ||
+          !recoveredQuantity ||
+          ![1, 2, 3, 5, 10].includes(
+            recoveredQuantity
+          )
+        ) {
+          throw new Error(
+            "Paid game information could not be recovered."
+          );
+        }
+
+        const joinResponse = await fetch(
+          "/api/game/join",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              joinCode: recoveredJoinCode,
+              playerName:
+                recoveredPlayerName,
+              cardQuantity:
+                recoveredQuantity,
+            }),
+          }
+        );
+
+        const joinData =
+          (await joinResponse.json()) as JoinResponse;
+
+        if (
+          !joinResponse.ok ||
+          !joinData.ok ||
+          !joinData.player ||
+          !joinData.game ||
+          joinData.player.purchaseStatus !==
+            "PAID" ||
+          !Array.isArray(joinData.cards) ||
+          joinData.cards.length === 0
+        ) {
+          throw new Error(
+            joinData.message ||
+              "Payment was confirmed, but the cards could not be loaded."
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const previousSession =
+          readPreviousPlayerSession();
+
+        const isDifferentGame =
+          previousSession?.game?.id &&
+          previousSession.game.id !==
+            joinData.game.id;
+
+        if (isDifferentGame) {
+          clearPreviousGameData(
+            previousSession
+          );
+        } else {
+          for (
+            const key of LEGACY_MARKS_KEYS
+          ) {
+            localStorage.removeItem(key);
+          }
+        }
+
+        localStorage.setItem(
+          PLAYER_ID_KEY,
+          joinData.player.playerId
+        );
+
+        localStorage.setItem(
+          PLAYER_SESSION_KEY,
+          JSON.stringify({
+            player: joinData.player,
+            game: joinData.game,
+            cards: joinData.cards,
+            card: joinData.cards[0],
+            pricing: joinData.pricing,
+            availability:
+              joinData.availability,
+            joinedAt:
+              new Date().toISOString(),
+          })
+        );
+
+        router.replace("/game/cards");
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to recover your paid cards."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setJoining(false);
+        }
+      }
+    }
+
+    void recoverPaidPurchase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams]);
 
   const selectedPackage = useMemo(
     () =>
@@ -181,9 +476,6 @@ function JoinGameForm() {
     setMessage("");
 
     try {
-      const existingPlayerId =
-        localStorage.getItem(PLAYER_ID_KEY) ?? "";
-
       const response = await fetch("/api/game/join", {
         method: "POST",
         headers: {
@@ -193,9 +485,6 @@ function JoinGameForm() {
           joinCode: normalizedJoinCode,
           playerName: normalizedPlayerName,
           cardQuantity,
-          ...(existingPlayerId
-            ? { playerId: existingPlayerId }
-            : {}),
         }),
       });
 
@@ -207,17 +496,121 @@ function JoinGameForm() {
         !data.player ||
         !data.game ||
         !Array.isArray(data.cards) ||
-        data.cards.length === 0
+        (
+          data.player.purchaseStatus === "PAID" &&
+          data.cards.length === 0
+        )
       ) {
         throw new Error(
           data.message || "Unable to join the game."
         );
       }
 
+      const previousSession =
+        readPreviousPlayerSession();
+
+      const isDifferentGame =
+        previousSession?.game?.id &&
+        previousSession.game.id !== data.game.id;
+
+      if (isDifferentGame) {
+        clearPreviousGameData(previousSession);
+      } else {
+        for (const key of LEGACY_MARKS_KEYS) {
+          localStorage.removeItem(key);
+        }
+      }
+
       localStorage.setItem(
         PLAYER_ID_KEY,
         data.player.playerId
       );
+
+      const expectedPriceCents =
+        selectedPackage.priceCents;
+
+      const returnedQuantity =
+        data.player.cardQuantity;
+
+      const returnedCardCount =
+        data.cards.length;
+
+      const returnedPriceCents =
+        data.pricing?.amountCents ??
+        data.player.amountCents;
+
+      if (
+        returnedQuantity !== cardQuantity ||
+        (
+          data.player.purchaseStatus === "PAID" &&
+          returnedCardCount !== cardQuantity
+        ) ||
+        returnedPriceCents !== expectedPriceCents
+      ) {
+        localStorage.removeItem(
+          PLAYER_ID_KEY
+        );
+
+        localStorage.removeItem(
+          PLAYER_SESSION_KEY
+        );
+
+        throw new Error(
+          `Card package mismatch. You selected ${cardQuantity} card${
+            cardQuantity === 1 ? "" : "s"
+          } for ${formatMoney(expectedPriceCents)}, but the server returned ${returnedCardCount} card${
+            returnedCardCount === 1 ? "" : "s"
+          } for ${formatMoney(returnedPriceCents)}. Please try again.`
+        );
+      }
+
+      if (data.player.purchaseStatus === "PENDING") {
+        const checkoutResponse = await fetch(
+          "/api/checkout",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              purchaseId: data.player.purchaseId,
+            }),
+          }
+        );
+
+        const checkoutData =
+          (await checkoutResponse.json()) as CheckoutResponse;
+
+        if (
+          checkoutResponse.ok &&
+          checkoutData.paid
+        ) {
+          // Payment was confirmed while checkout was being requested.
+          // Continue below and save the paid player session.
+        } else if (
+          checkoutResponse.ok &&
+          checkoutData.checkoutUrl
+        ) {
+          window.location.assign(
+            checkoutData.checkoutUrl
+          );
+          return;
+        } else if (
+          checkoutResponse.status === 202 &&
+          checkoutData.processing
+        ) {
+          setMessage(
+            checkoutData.message ||
+              "Payment is being confirmed. Please try again in a moment."
+          );
+          return;
+        } else {
+          throw new Error(
+            checkoutData.message ||
+              "Unable to start payment."
+          );
+        }
+      }
 
       localStorage.setItem(
         PLAYER_SESSION_KEY,
@@ -232,7 +625,7 @@ function JoinGameForm() {
         })
       );
 
-      router.push("/game/cards");
+      router.replace("/game/cards");
     } catch (error) {
       setMessage(
         error instanceof Error

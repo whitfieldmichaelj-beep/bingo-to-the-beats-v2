@@ -120,7 +120,7 @@ export default function MusicPage() {
   useEffect(() => {
     async function checkSpotify() {
       try {
-        const response = await fetch("/api/spotify/player", {
+        const response = await fetch("/api/spotify/status", {
           method: "GET",
           cache: "no-store",
         });

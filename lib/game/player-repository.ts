@@ -30,6 +30,7 @@ export type PlayerAssignment = {
   cardIds: string[];
   cardQuantity: CardQuantity;
   amountCents: number;
+  purchaseStatus: "PENDING" | "PAID";
   joinedAt: string;
 };
 
@@ -42,6 +43,7 @@ export type PlayerRosterItem = {
   cardQuantity: number;
   cardIds: string[];
   amountCents: number;
+  paymentStatus: "PENDING" | "PAID" | "NONE";
 };
 
 export type PlayerActivityItem = {
@@ -124,7 +126,9 @@ async function getExistingPurchase(gameId: string, playerId: string) {
     where: {
       gameId,
       playerKey: playerId,
-      status: "PAID",
+      status: {
+        in: ["PENDING", "PAID"],
+      },
     },
     include: {
       cards: {
@@ -254,6 +258,8 @@ async function buildExistingAssignment(
     cardIds: cards.map((card) => card.id),
     cardQuantity: existingPurchase.quantity as CardQuantity,
     amountCents: toAmountCents(existingPurchase.amount),
+    purchaseStatus:
+      existingPurchase.status === "PAID" ? "PAID" : "PENDING",
     joinedAt: existingPurchase.createdAt.toISOString(),
   };
 
@@ -423,7 +429,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
               quantity: input.quantity,
               amount: amountCents / 100,
               currency: "USD",
-              status: "PAID",
+              status: "PENDING",
             },
           });
 
@@ -558,6 +564,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
         ),
         cardQuantity: input.quantity,
         amountCents,
+        purchaseStatus: "PENDING",
         joinedAt:
           transactionResult.joinedAt.toISOString(),
       };
@@ -701,7 +708,9 @@ export async function listPlayers(gameId: string) {
     prisma.purchase.findMany({
       where: {
         gameId,
-        status: "PAID",
+        status: {
+in: ["PENDING", "PAID"],
+},
         playerKey: {
           not: null,
         },
@@ -726,7 +735,8 @@ export async function listPlayers(gameId: string) {
       amountCents: number;
       cardIds: string[];
       playerName: string;
-    }
+    paymentStatus: "PENDING" | "PAID";
+}
   >();
 
   for (const purchase of purchases) {
@@ -738,6 +748,10 @@ export async function listPlayers(gameId: string) {
       current.quantity += purchase.quantity;
       current.amountCents += toAmountCents(purchase.amount);
       current.cardIds.push(...purchase.cards.map((card) => card.id));
+
+if (purchase.status === "PAID") {
+current.paymentStatus = "PAID";
+}
       continue;
     }
 
@@ -746,6 +760,8 @@ export async function listPlayers(gameId: string) {
       amountCents: toAmountCents(purchase.amount),
       cardIds: purchase.cards.map((card) => card.id),
       playerName: purchase.playerName ?? "Player",
+paymentStatus:
+purchase.status === "PAID" ? "PAID" : "PENDING",
     });
   }
 
@@ -762,11 +778,13 @@ export async function listPlayers(gameId: string) {
       cardQuantity: purchase?.quantity ?? 0,
       cardIds: purchase?.cardIds ?? [],
       amountCents: purchase?.amountCents ?? 0,
+paymentStatus: purchase?.paymentStatus ?? "NONE",
     };
   });
 
   const activities: PlayerActivityItem[] = purchases
-    .map((purchase) => ({
+    .filter((purchase) => purchase.status === "PAID")
+.map((purchase) => ({
       id: `joined-${purchase.id}`,
       type: "joined" as const,
       playerId: purchase.playerKey ?? purchase.id,
@@ -779,21 +797,35 @@ export async function listPlayers(gameId: string) {
     )
     .slice(0, 30);
 
-  const totalCards = players.reduce(
-    (sum, player) => sum + player.cardQuantity,
-    0
-  );
+  const paidPlayers = players.filter(
+(player) => player.paymentStatus === "PAID"
+);
 
-  const totalPotCents = players.reduce(
-    (sum, player) => sum + player.amountCents,
-    0
-  );
+const totalCards = paidPlayers.reduce(
+(sum, player) => sum + player.cardQuantity,
+0
+);
+
+const totalPotCents = paidPlayers.reduce(
+(sum, player) => sum + player.amountCents,
+0
+);
+
+  const pendingPlayers = players.filter(
+    (player) => player.paymentStatus === "PENDING"
+  ).length;
+
+  const noPaymentPlayers = players.filter(
+    (player) => player.paymentStatus === "NONE"
+  ).length;
 
   return {
     players,
     activities,
     totals: {
-      totalPlayers: players.length,
+      totalPlayers: paidPlayers.length,
+      pendingPlayers,
+      noPaymentPlayers,
       connectedPlayers: players.filter(
         (player) => player.connected
       ).length,

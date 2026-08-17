@@ -1,0 +1,30 @@
+.bttb-card,
+.bttb-panel {
+  border: 1px solid var(--bttb-border);
+  border-radius: var(--bttb-radius-lg);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(15, 23, 42, 0.98),
+      rgba(7, 12, 23, 0.99)
+    );
+  box-shadow: var(--bttb-shadow-md);
+}
+
+.bttb-card {
+  padding: 20px;
+  transition:
+    transform var(--bttb-transition),
+    border-color var(--bttb-transition),
+    box-shadow var(--bttb-transition);
+}
+
+.bttb-card:hover {
+  transform: translateY(-2px);
+  border-color: #4c5a73;
+  box-shadow: var(--bttb-shadow-lg);
+}
+
+.bttb-panel {
+  padding: 18px;
+}

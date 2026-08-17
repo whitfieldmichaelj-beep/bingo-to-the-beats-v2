@@ -15,6 +15,7 @@ export type PlaybackTrack = {
   album?: string;
   artwork?: string;
   duration?: number;
+  bpm?: number | null;
   audioUrl?: string | null;
   source:
     | "spotify"
@@ -33,608 +34,1264 @@ export type PlaybackStatus =
   | "revealed"
   | "finished";
 
+type PlaybackOptions = {
+  continuous?: boolean;
+};
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function disposeAudio(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+}
+
+
+// BTTB_ONE_MINUTE_BEAT_ALIGNED_START_V3
+const DEFAULT_MUSICAL_START_SECONDS = 60;
+
+function getBeatAlignedStartSeconds(
+  track: PlaybackTrack,
+  duration: number,
+  playtimeSeconds: number
+) {
+  const bpm =
+    typeof track.bpm === "number" &&
+    Number.isFinite(track.bpm) &&
+    track.bpm >= 40 &&
+    track.bpm <= 240
+      ? track.bpm
+      : null;
+
+  // Assume common 4/4 and move 1:00 forward to the next estimated bar.
+  const secondsPerBar =
+    bpm
+      ? 240 / bpm
+      : null;
+
+  let startSeconds =
+    secondsPerBar
+      ? Math.ceil(
+          DEFAULT_MUSICAL_START_SECONDS /
+            secondsPerBar
+        ) * secondsPerBar
+      : DEFAULT_MUSICAL_START_SECONDS;
+
+  // BTTB_ONE_MINUTE_AUDIO_FALLBACK_V1
+  if (
+    !Number.isFinite(duration) ||
+    duration <= 0
+  ) {
+    /*
+     * Some VBR/older MP3 files briefly report NaN/Infinity
+     * while the browser is resolving seek information.
+     * Starting at zero is safer than seeking blindly to 60s.
+     */
+    return 0;
+  }
+
+  const requiredTail =
+    Math.max(
+      playtimeSeconds,
+      10
+    ) + 2;
+
+  if (
+    duration <=
+    DEFAULT_MUSICAL_START_SECONDS +
+      requiredTail
+  ) {
+    return 0;
+  }
+
+  startSeconds =
+    Math.min(
+      startSeconds,
+      Math.max(
+        0,
+        duration -
+          requiredTail
+      )
+    );
+
+  return Math.max(
+    0,
+    startSeconds
+  );
+}
+
+async function waitForAudioMetadata(
+  audio: HTMLAudioElement
+) {
+  if (
+    audio.readyState >= 1 &&
+    Number.isFinite(audio.duration) &&
+    audio.duration > 0
+  ) {
+    return;
+  }
+
+  await new Promise<void>(
+    (resolve) => {
+      let finished = false;
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+
+        audio.removeEventListener(
+          "loadedmetadata",
+          finish
+        );
+        audio.removeEventListener(
+          "durationchange",
+          finish
+        );
+        audio.removeEventListener(
+          "error",
+          finish
+        );
+
+        window.clearTimeout(timeout);
+        resolve();
+      };
+
+      const timeout =
+        window.setTimeout(
+          finish,
+          3000
+        );
+
+      audio.addEventListener(
+        "loadedmetadata",
+        finish,
+        { once: true }
+      );
+
+      audio.addEventListener(
+        "durationchange",
+        finish,
+        { once: true }
+      );
+
+      audio.addEventListener(
+        "error",
+        finish,
+        { once: true }
+      );
+    }
+  );
+}
+
+async function seekAudioToBeatAlignedStart(
+  audio: HTMLAudioElement,
+  track: PlaybackTrack,
+  playtimeSeconds: number
+) {
+  await waitForAudioMetadata(
+    audio
+  );
+
+  const startSeconds =
+    getBeatAlignedStartSeconds(
+      track,
+      audio.duration,
+      playtimeSeconds
+    );
+
+  try {
+    audio.currentTime =
+      startSeconds;
+  } catch {
+    // Playback still works if a stream temporarily rejects seeking.
+  }
+
+  return startSeconds;
+}
+
+async function waitForSeekToSettle(
+  audio: HTMLAudioElement
+) {
+  if (
+    !audio.seeking &&
+    audio.readyState >= 2
+  ) {
+    return;
+  }
+
+  await new Promise<void>(
+    (resolve) => {
+      let finished = false;
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+
+        audio.removeEventListener(
+          "seeked",
+          finish
+        );
+        audio.removeEventListener(
+          "canplay",
+          finish
+        );
+        audio.removeEventListener(
+          "error",
+          finish
+        );
+
+        window.clearTimeout(
+          timeout
+        );
+
+        resolve();
+      };
+
+      const timeout =
+        window.setTimeout(
+          finish,
+          1800
+        );
+
+      audio.addEventListener(
+        "seeked",
+        finish,
+        { once: true }
+      );
+
+      audio.addEventListener(
+        "canplay",
+        finish,
+        { once: true }
+      );
+
+      audio.addEventListener(
+        "error",
+        finish,
+        { once: true }
+      );
+    }
+  );
+}
+
 export function usePlaybackEngine(
   initialTracks: PlaybackTrack[] = [],
-  clipLength = 20
+  playtimeSeconds = 20,
+  options: PlaybackOptions = {}
 ) {
-  const audioRef =
-    useRef<HTMLAudioElement | null>(null);
+  /*
+   * IMPORTANT TIMING RULE
+   * ---------------------
+   * playtimeSeconds is FULL-VOLUME / NON-FADE play time only.
+   * The crossfade is added after that timer reaches zero.
+   * Example: 30 seconds playtime + 4 seconds crossfade means
+   * 30 seconds at full volume, followed by a 4-second overlap.
+   */
 
-  const timerRef =
-    useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const incomingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const incomingIndexRef = useRef<number | null>(null);
+  const activeTrackIdRef = useRef<string | null>(null);
 
-  const fadeTimerRef =
-    useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const phaseEndRef = useRef<number | null>(null);
+  const crossfadeFrameRef = useRef<number | null>(null);
+  const transitionInProgressRef = useRef(false);
+
+  const tracksRef = useRef<PlaybackTrack[]>(initialTracks);
+  const currentIndexRef = useRef(0);
+  const statusRef = useRef<PlaybackStatus>(
+    initialTracks.length > 0 ? "ready" : "idle"
+  );
+  const secondsRemainingRef = useRef(playtimeSeconds);
+  const crossfadeSecondsRef = useRef(4);
+  const continuousRef = useRef(Boolean(options.continuous));
 
   const [tracks, setTracks] =
     useState<PlaybackTrack[]>(initialTracks);
-
-  const [currentIndex, setCurrentIndex] =
-    useState(0);
-
-  const [status, setStatus] =
-    useState<PlaybackStatus>(
-      initialTracks.length > 0 ? "ready" : "idle"
-    );
-
-  const [revealed, setRevealed] =
-    useState(false);
-
-  const [secondsRemaining, setSecondsRemaining] =
-    useState(clipLength);
-
-  const [crossfadeSeconds, setCrossfadeSeconds] =
-    useState(2);
-
+  const [currentIndex, setCurrentIndexState] = useState(0);
+  const [status, setStatusState] = useState<PlaybackStatus>(
+    initialTracks.length > 0 ? "ready" : "idle"
+  );
+  const [revealed, setRevealed] = useState(false);
+  const [secondsRemaining, setSecondsRemainingState] =
+    useState(playtimeSeconds);
+  const [crossfadeSeconds, setCrossfadeSecondsState] =
+    useState(4);
+  const [isCrossfading, setIsCrossfading] = useState(false);
   const [playbackError, setPlaybackError] =
     useState<string | null>(null);
 
-  const currentTrack =
-    tracks[currentIndex] ?? null;
+  useEffect(() => {
+    continuousRef.current = Boolean(options.continuous);
+  }, [options.continuous]);
 
-  const hasPlayableAudio =
-    Boolean(currentTrack?.audioUrl);
+  const currentTrack = tracks[currentIndex] ?? null;
+  const hasPlayableAudio = Boolean(currentTrack?.audioUrl);
 
-  const clearCountdownTimer = useCallback(() => {
+  const setCurrentIndex = useCallback((value: number) => {
+    currentIndexRef.current = value;
+    setCurrentIndexState(value);
+  }, []);
+
+  const setStatus = useCallback((value: PlaybackStatus) => {
+    statusRef.current = value;
+    setStatusState(value);
+  }, []);
+
+  const setSecondsRemaining = useCallback((value: number) => {
+    const safeValue = Math.max(0, value);
+    secondsRemainingRef.current = safeValue;
+    setSecondsRemainingState(safeValue);
+  }, []);
+
+  const clearPlayTimer = useCallback(() => {
     if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
+      window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
+
+    phaseEndRef.current = null;
   }, []);
 
-  const clearFadeTimer = useCallback(() => {
-    if (fadeTimerRef.current !== null) {
-      window.clearInterval(fadeTimerRef.current);
-      fadeTimerRef.current = null;
+  const clearCrossfade = useCallback(() => {
+    if (crossfadeFrameRef.current !== null) {
+      window.cancelAnimationFrame(crossfadeFrameRef.current);
+      crossfadeFrameRef.current = null;
     }
   }, []);
 
-  const pauseAudio = useCallback(() => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    audioRef.current.pause();
+  const clearIncomingAudio = useCallback(() => {
+    disposeAudio(incomingAudioRef.current);
+    incomingAudioRef.current = null;
+    incomingIndexRef.current = null;
   }, []);
 
-  const resetAudio = useCallback(() => {
-    if (!audioRef.current) {
-      return;
+  const stopAllAudio = useCallback(() => {
+    clearPlayTimer();
+    clearCrossfade();
+
+    disposeAudio(audioRef.current);
+    disposeAudio(incomingAudioRef.current);
+
+    audioRef.current = null;
+    incomingAudioRef.current = null;
+    incomingIndexRef.current = null;
+    activeTrackIdRef.current = null;
+    transitionInProgressRef.current = false;
+    setIsCrossfading(false);
+  }, [clearCrossfade, clearPlayTimer]);
+
+  const prepareIncoming = useCallback((index: number) => {
+    const nextTrack = tracksRef.current[index];
+
+    if (!nextTrack?.audioUrl) {
+      disposeAudio(incomingAudioRef.current);
+      incomingAudioRef.current = null;
+      incomingIndexRef.current = null;
+      return null;
     }
 
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    audioRef.current.volume = 1;
+    if (
+      incomingAudioRef.current &&
+      incomingIndexRef.current === index
+    ) {
+      return incomingAudioRef.current;
+    }
+
+    disposeAudio(incomingAudioRef.current);
+
+    const audio = new window.Audio(nextTrack.audioUrl);
+    audio.preload = "auto";
+    audio.volume = 0;
+    audio.load();
+
+    incomingAudioRef.current = audio;
+    incomingIndexRef.current = index;
+
+    return audio;
   }, []);
 
-  const finishAndReveal =
-    useCallback(() => {
-      clearCountdownTimer();
-      clearFadeTimer();
-      pauseAudio();
+  const prepareActiveAudio = useCallback(
+    (index: number) => {
+      const track = tracksRef.current[index];
 
-      if (audioRef.current) {
-        audioRef.current.volume = 1;
+      if (!track?.audioUrl) {
+        disposeAudio(audioRef.current);
+        audioRef.current = null;
+        activeTrackIdRef.current = null;
+        prepareIncoming(index + 1);
+        return null;
       }
 
-      setSecondsRemaining(0);
-      setStatus("revealed");
-      setRevealed(true);
-    }, [
-      clearCountdownTimer,
-      clearFadeTimer,
-      pauseAudio,
-    ]);
+      if (
+        audioRef.current &&
+        activeTrackIdRef.current === track.id
+      ) {
+        prepareIncoming(index + 1);
+        return audioRef.current;
+      }
 
-  /*
-   * Create and prepare the browser audio player whenever
-   * the selected track changes.
-   */
+      disposeAudio(audioRef.current);
 
-  useEffect(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
+      let audio: HTMLAudioElement;
+
+      if (
+        incomingAudioRef.current &&
+        incomingIndexRef.current === index
+      ) {
+        audio = incomingAudioRef.current;
+        incomingAudioRef.current = null;
+        incomingIndexRef.current = null;
+      } else {
+        audio = new window.Audio(track.audioUrl);
+      }
+
+      audio.preload = "auto";
+      audio.volume = 1;
+      audio.currentTime = 0;
+      audio.load();
+
+      audioRef.current = audio;
+      activeTrackIdRef.current = track.id;
+      prepareIncoming(index + 1);
+
+      return audio;
+    },
+    [prepareIncoming]
+  );
+
+  const finishAndReveal = useCallback(() => {
+    clearPlayTimer();
+    clearCrossfade();
+    clearIncomingAudio();
 
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current.load();
-      audioRef.current = null;
+      audioRef.current.volume = 1;
     }
 
-    setPlaybackError(null);
+    transitionInProgressRef.current = false;
+    setIsCrossfading(false);
+    setSecondsRemaining(0);
+    setStatus("revealed");
+    setRevealed(true);
+  }, [
+    clearCrossfade,
+    clearIncomingAudio,
+    clearPlayTimer,
+    setSecondsRemaining,
+    setStatus,
+  ]);
 
-    if (!currentTrack?.audioUrl) {
-      return;
-    }
+  const startNonFadeTimerRef =
+    useRef<(remaining: number) => void>(() => undefined);
+  const beginCrossfadeRef =
+    useRef<() => Promise<void>>(async () => undefined);
 
-    const audio =
-      new window.Audio(currentTrack.audioUrl);
+  const startNonFadeTimer = useCallback(
+    (remaining: number) => {
+      clearPlayTimer();
 
-    audio.preload = "auto";
-    audio.volume = 1;
+      const safeRemaining = Math.max(0, remaining);
+      setSecondsRemaining(safeRemaining);
 
-    const handleEnded = () => {
-      finishAndReveal();
-    };
-
-    const handleError = () => {
-      setPlaybackError(
-        "The audio could not be loaded."
-      );
-
-      setStatus("ready");
-    };
-
-    audio.addEventListener(
-      "ended",
-      handleEnded
-    );
-
-    audio.addEventListener(
-      "error",
-      handleError
-    );
-
-    audioRef.current = audio;
-
-    return () => {
-      audio.removeEventListener(
-        "ended",
-        handleEnded
-      );
-
-      audio.removeEventListener(
-        "error",
-        handleError
-      );
-
-      audio.pause();
-      audio.src = "";
-      audio.load();
-
-      if (audioRef.current === audio) {
-        audioRef.current = null;
+      if (safeRemaining <= 0) {
+        void beginCrossfadeRef.current();
+        return;
       }
-    };
-  }, [
-    currentTrack?.id,
-    currentTrack?.audioUrl,
-    clearCountdownTimer,
-    clearFadeTimer,
-    finishAndReveal,
-  ]);
 
-  /*
-   * Countdown engine.
-   *
-   * Tracks with a audio URL play real audio.
-   * Tracks without a audio URL still use the countdown
-   * and reveal workflow.
-   */
+      phaseEndRef.current = Date.now() + safeRemaining * 1000;
 
-  useEffect(() => {
-    const countdownIsActive =
-      status === "playing" ||
-      status === "countdown";
+      timerRef.current = window.setInterval(() => {
+        const phaseEnd = phaseEndRef.current;
 
-    if (!countdownIsActive) {
-      clearCountdownTimer();
-      return;
-    }
+        if (phaseEnd === null) return;
 
-    if (secondsRemaining <= 0) {
-      finishAndReveal();
-      return;
-    }
+        const nextRemaining = Math.max(
+          0,
+          Math.ceil((phaseEnd - Date.now()) / 1000)
+        );
 
-    timerRef.current = window.setTimeout(() => {
-      setSecondsRemaining((current) =>
-        Math.max(current - 1, 0)
-      );
-    }, 1000);
+        if (nextRemaining !== secondsRemainingRef.current) {
+          setSecondsRemaining(nextRemaining);
+        }
 
-    return clearCountdownTimer;
-  }, [
-    status,
-    secondsRemaining,
-    clearCountdownTimer,
-    finishAndReveal,
-  ]);
+        if (nextRemaining <= 0) {
+          clearPlayTimer();
+          void beginCrossfadeRef.current();
+        }
+      }, 100);
+    }, [clearPlayTimer, setSecondsRemaining]
+  );
 
-  /*
-   * Smoothly fade the audio during the final portion of
-   * the selected clip.
-   */
+  startNonFadeTimerRef.current = startNonFadeTimer;
 
-  useEffect(() => {
-    clearFadeTimer();
+  const finalizeCrossfade = useCallback(
+    (
+      outgoing: HTMLAudioElement | null,
+      incoming: HTMLAudioElement,
+      nextIndex: number,
+      nextTrack: PlaybackTrack
+    ) => {
+      clearCrossfade();
+
+      disposeAudio(outgoing);
+
+      incoming.volume = 1;
+      audioRef.current = incoming;
+      activeTrackIdRef.current = nextTrack.id;
+      incomingAudioRef.current = null;
+      incomingIndexRef.current = null;
+
+      transitionInProgressRef.current = false;
+      setIsCrossfading(false);
+      setRevealed(false);
+      setCurrentIndex(nextIndex);
+      setSecondsRemaining(playtimeSeconds);
+      setStatus("playing");
+
+      prepareIncoming(nextIndex + 1);
+      startNonFadeTimerRef.current(playtimeSeconds);
+    },
+    [
+      clearCrossfade,
+      playtimeSeconds,
+      prepareIncoming,
+      setCurrentIndex,
+      setSecondsRemaining,
+      setStatus,
+    ]
+  );
+
+  const beginCrossfade = useCallback(async () => {
+    if (transitionInProgressRef.current) return;
+
+    const index = currentIndexRef.current;
+    const activeTracks = tracksRef.current;
+    const nextIndex = index + 1;
 
     if (
-      status !== "playing" ||
-      !audioRef.current ||
-      crossfadeSeconds <= 0 ||
-      secondsRemaining > crossfadeSeconds
+      !continuousRef.current ||
+      nextIndex >= activeTracks.length
     ) {
-      if (
-        audioRef.current &&
-        secondsRemaining > crossfadeSeconds
-      ) {
-        audioRef.current.volume = 1;
-      }
-
+      finishAndReveal();
       return;
     }
 
-    const audio = audioRef.current;
+    const nextTrack = activeTracks[nextIndex];
 
-    fadeTimerRef.current =
-      window.setInterval(() => {
-        const fadeDurationMilliseconds =
-          crossfadeSeconds * 1000;
+    if (!nextTrack) {
+      finishAndReveal();
+      return;
+    }
 
-        const millisecondsRemaining =
-          Math.max(
-            secondsRemaining * 1000 -
-              (Date.now() % 1000),
-            0
-          );
+    transitionInProgressRef.current = true;
+    clearPlayTimer();
+    setSecondsRemaining(0);
+    setRevealed(true);
+    setIsCrossfading(true);
+    setStatus("playing");
 
-        const nextVolume =
-          fadeDurationMilliseconds > 0
-            ? Math.min(
-                Math.max(
-                  millisecondsRemaining /
-                    fadeDurationMilliseconds,
-                  0
-                ),
-                1
-              )
-            : 0;
+    const outgoing = audioRef.current;
+    let incoming = prepareIncoming(nextIndex);
 
-        audio.volume = nextVolume;
-      }, 50);
+    if (!nextTrack.audioUrl || !incoming) {
+      /* Countdown-only fallback: advance immediately with no silence timer. */
+      transitionInProgressRef.current = false;
+      setIsCrossfading(false);
+      setRevealed(false);
+      setCurrentIndex(nextIndex);
+      setSecondsRemaining(playtimeSeconds);
+      setStatus("countdown");
+      prepareIncoming(nextIndex + 1);
+      startNonFadeTimerRef.current(playtimeSeconds);
+      return;
+    }
 
-    return clearFadeTimer;
+    try {
+      await seekAudioToBeatAlignedStart(
+        incoming,
+        nextTrack,
+        playtimeSeconds
+      );
+
+      await waitForSeekToSettle(
+        incoming
+      );
+
+      incoming.volume = 0;
+
+      try {
+        await incoming.play();
+      } catch (preferredStartError) {
+        console.warn(
+          "Beat-aligned crossfade start failed; retrying from the beginning.",
+          preferredStartError
+        );
+
+        incoming.pause();
+
+        try {
+          incoming.currentTime = 0;
+        } catch {
+          // Continue; play() below is still worth trying.
+        }
+
+        incoming.volume = 0;
+
+        await incoming.play();
+      }
+    } catch (error) {
+      setPlaybackError(
+        error instanceof Error
+          ? `The next song could not start: ${error.message}`
+          : "The next song could not start."
+      );
+
+      /*
+       * Do not let the outgoing song continue indefinitely when
+       * the next Serato audio file is missing or cannot be played.
+       *
+       * Advance the game state to the failed track in countdown-only
+       * mode. The following transition can then continue normally.
+       */
+      disposeAudio(outgoing);
+      disposeAudio(incoming);
+
+      audioRef.current = null;
+      activeTrackIdRef.current = null;
+      incomingAudioRef.current = null;
+      incomingIndexRef.current = null;
+
+      transitionInProgressRef.current = false;
+      setIsCrossfading(false);
+      setRevealed(false);
+      setCurrentIndex(nextIndex);
+      setSecondsRemaining(playtimeSeconds);
+      setStatus("countdown");
+
+      prepareIncoming(nextIndex + 1);
+      startNonFadeTimerRef.current(playtimeSeconds);
+      return;
+    }
+
+    const fadeMilliseconds =
+      Math.max(1, crossfadeSecondsRef.current) * 1000;
+
+    if (fadeMilliseconds <= 0) {
+      finalizeCrossfade(
+        outgoing,
+        incoming,
+        nextIndex,
+        nextTrack
+      );
+      return;
+    }
+
+    const startedAt = performance.now();
+
+    const step = (now: number) => {
+      const progress = clamp(
+        (now - startedAt) / fadeMilliseconds,
+        0,
+        1
+      );
+
+      if (outgoing) {
+        outgoing.volume = 1 - progress;
+      }
+
+      incoming!.volume = progress;
+
+      if (progress >= 1) {
+        finalizeCrossfade(
+          outgoing,
+          incoming!,
+          nextIndex,
+          nextTrack
+        );
+        return;
+      }
+
+      crossfadeFrameRef.current =
+        window.requestAnimationFrame(step);
+    };
+
+    crossfadeFrameRef.current =
+      window.requestAnimationFrame(step);
   }, [
-    status,
-    secondsRemaining,
-    crossfadeSeconds,
-    clearFadeTimer,
+    clearPlayTimer,
+    finalizeCrossfade,
+    finishAndReveal,
+    playtimeSeconds,
+    prepareIncoming,
+    setCurrentIndex,
+    setSecondsRemaining,
+    setStatus,
   ]);
 
-  /*
-   * Keep clip duration synchronized when the duration
-   * setting changes while playback is stopped.
-   */
+  beginCrossfadeRef.current = beginCrossfade;
+
+  useEffect(() => {
+    tracksRef.current = tracks;
+  }, [tracks]);
+
+  useEffect(() => {
+    if (!tracks[currentIndex]) return;
+
+    if (
+      activeTrackIdRef.current !== tracks[currentIndex].id
+    ) {
+      prepareActiveAudio(currentIndex);
+    } else {
+      prepareIncoming(currentIndex + 1);
+    }
+  }, [currentIndex, prepareActiveAudio, prepareIncoming, tracks]);
 
   useEffect(() => {
     if (
       status === "idle" ||
       status === "ready"
     ) {
-      setSecondsRemaining(clipLength);
+      setSecondsRemaining(playtimeSeconds);
     }
-  }, [clipLength, status]);
-
-  /*
-   * Track loading
-   */
+  }, [playtimeSeconds, setSecondsRemaining, status]);
 
   const loadTracks = useCallback(
-    (newTracks: PlaybackTrack[]) => {
-      clearCountdownTimer();
-      clearFadeTimer();
-      resetAudio();
+    (
+      newTracks: PlaybackTrack[],
+      initialIndex = 0
+    ) => {
+      stopAllAudio();
 
+      const safeIndex =
+        newTracks.length > 0
+          ? clamp(
+              Number.isFinite(initialIndex)
+                ? Math.floor(initialIndex)
+                : 0,
+              0,
+              newTracks.length - 1
+            )
+          : 0;
+
+      tracksRef.current = newTracks;
       setTracks(newTracks);
-      setCurrentIndex(0);
-      setSecondsRemaining(clipLength);
+      setCurrentIndex(safeIndex);
+      setSecondsRemaining(playtimeSeconds);
       setRevealed(false);
       setPlaybackError(null);
-
-      setStatus(
-        newTracks.length > 0
-          ? "ready"
-          : "idle"
-      );
+      setStatus(newTracks.length > 0 ? "ready" : "idle");
     },
     [
-      clipLength,
-      clearCountdownTimer,
-      clearFadeTimer,
-      resetAudio,
+      playtimeSeconds,
+      setCurrentIndex,
+      setSecondsRemaining,
+      setStatus,
+      stopAllAudio,
     ]
   );
 
-  /*
-   * Playback controls
-   */
+  // BTTB_PLAYBACK_CHECKPOINT_RESTORE_V1
+  const restoreCheckpoint = useCallback(
+    async ({
+      secondsRemaining:
+        restoredSecondsRemaining,
+      playbackTime,
+      revealed:
+        restoredRevealed = false,
+    }: {
+      secondsRemaining: number;
+      playbackTime?: number | null;
+      revealed?: boolean;
+    }) => {
+      const safeRemaining =
+        clamp(
+          Number.isFinite(
+            restoredSecondsRemaining
+          )
+            ? restoredSecondsRemaining
+            : playtimeSeconds,
+          0,
+          playtimeSeconds
+        );
+
+      const shouldReveal =
+        restoredRevealed ||
+        safeRemaining <= 0;
+
+      setSecondsRemaining(
+        safeRemaining
+      );
+      setRevealed(
+        shouldReveal
+      );
+      setPlaybackError(null);
+      setStatus(
+        tracksRef.current.length > 0
+          ? shouldReveal
+            ? "revealed"
+            : "paused"
+          : "idle"
+      );
+
+      const safePlaybackTime =
+        typeof playbackTime ===
+          "number" &&
+        Number.isFinite(
+          playbackTime
+        ) &&
+        playbackTime >= 0
+          ? playbackTime
+          : null;
+
+      if (
+        safePlaybackTime ===
+        null
+      ) {
+        return;
+      }
+
+      const track =
+        tracksRef.current[
+          currentIndexRef.current
+        ];
+
+      if (
+        !track?.audioUrl
+      ) {
+        return;
+      }
+
+      const audio =
+        prepareActiveAudio(
+          currentIndexRef.current
+        );
+
+      if (!audio) {
+        return;
+      }
+
+      if (
+        audio.readyState < 1
+      ) {
+        await new Promise<void>(
+          (resolve) => {
+            let settled = false;
+
+            const finish = () => {
+              if (settled) {
+                return;
+              }
+
+              settled = true;
+              resolve();
+            };
+
+            audio.addEventListener(
+              "loadedmetadata",
+              finish,
+              {
+                once: true,
+              }
+            );
+
+            window.setTimeout(
+              finish,
+              1500
+            );
+          }
+        );
+      }
+
+      try {
+        const maxTime =
+          Number.isFinite(
+            audio.duration
+          ) &&
+          audio.duration > 0
+            ? Math.max(
+                0,
+                audio.duration -
+                  0.25
+              )
+            : safePlaybackTime;
+
+        audio.currentTime =
+          Math.min(
+            safePlaybackTime,
+            maxTime
+          );
+      } catch (error) {
+        console.warn(
+          "Unable to restore the saved audio playhead:",
+          error
+        );
+      }
+    },
+    [
+      playtimeSeconds,
+      prepareActiveAudio,
+      setSecondsRemaining,
+      setStatus,
+    ]
+  );
 
   const start = useCallback(async () => {
-    if (!currentTrack) {
-      return;
-    }
+    const track = tracksRef.current[currentIndexRef.current];
 
-    clearCountdownTimer();
-    clearFadeTimer();
+    if (!track) return;
 
+    clearPlayTimer();
+    clearCrossfade();
     setPlaybackError(null);
     setRevealed(false);
 
-    if (
-      secondsRemaining <= 0
-    ) {
-      setSecondsRemaining(clipLength);
-    }
+    const remaining =
+      secondsRemainingRef.current > 0
+        ? secondsRemainingRef.current
+        : playtimeSeconds;
 
-    const audio = audioRef.current;
+    setSecondsRemaining(remaining);
 
-    if (
-      currentTrack.audioUrl &&
-      audio
-    ) {
+    const audio = prepareActiveAudio(currentIndexRef.current);
+
+    if (track.audioUrl && audio) {
       try {
         audio.volume = 1;
 
-        if (
-          secondsRemaining <= 0 ||
-          audio.ended
-        ) {
-          audio.currentTime = 0;
+        const freshStart =
+          audio.ended ||
+          audio.currentTime < 1 ||
+          remaining >= playtimeSeconds;
+
+        if (freshStart) {
+          await seekAudioToBeatAlignedStart(
+            audio,
+            track,
+            playtimeSeconds
+          );
+
+          await waitForSeekToSettle(
+            audio
+          );
         }
 
-        await audio.play();
+        try {
+          await audio.play();
+        } catch (preferredStartError) {
+          /*
+           * Some MP3s can stream normally but reject a mid-file
+           * seek. Never let that create a silent Bingo song.
+           */
+          console.warn(
+            "Beat-aligned audio start failed; retrying from the beginning.",
+            preferredStartError
+          );
+
+          audio.pause();
+
+          try {
+            audio.currentTime = 0;
+          } catch {
+            // Continue; play() below is still worth trying.
+          }
+
+          audio.volume = 1;
+
+          await audio.play();
+        }
+
         setStatus("playing");
+        startNonFadeTimerRef.current(remaining);
         return;
       } catch (error) {
-        console.error(
-          "Audio playback failed:",
-          error
-        );
-
         setPlaybackError(
-          "The browser could not start this audio."
+          error instanceof Error
+            ? `Audio playback failed: ${error.message}`
+            : "The browser could not start this audio."
         );
       }
     }
 
     setStatus("countdown");
+    startNonFadeTimerRef.current(remaining);
   }, [
-    currentTrack,
-    secondsRemaining,
-    clipLength,
-    clearCountdownTimer,
-    clearFadeTimer,
+    clearCrossfade,
+    clearPlayTimer,
+    playtimeSeconds,
+    prepareActiveAudio,
+    setSecondsRemaining,
+    setStatus,
   ]);
 
   const pause = useCallback(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
-    pauseAudio();
+    clearPlayTimer();
+
+    if (transitionInProgressRef.current) {
+      /* Finish the overlap immediately, then pause the incoming track. */
+      clearCrossfade();
+
+      const outgoing = audioRef.current;
+      const incoming = incomingAudioRef.current;
+      const nextIndex = currentIndexRef.current + 1;
+      const nextTrack = tracksRef.current[nextIndex];
+
+      if (incoming && nextTrack) {
+        disposeAudio(outgoing);
+        incoming.volume = 1;
+        incoming.pause();
+        audioRef.current = incoming;
+        activeTrackIdRef.current = nextTrack.id;
+        incomingAudioRef.current = null;
+        incomingIndexRef.current = null;
+        setCurrentIndex(nextIndex);
+        setSecondsRemaining(playtimeSeconds);
+      } else {
+        outgoing?.pause();
+      }
+
+      transitionInProgressRef.current = false;
+      setIsCrossfading(false);
+      setRevealed(false);
+    } else {
+      audioRef.current?.pause();
+    }
 
     setStatus("paused");
   }, [
-    clearCountdownTimer,
-    clearFadeTimer,
-    pauseAudio,
+    clearCrossfade,
+    clearPlayTimer,
+    playtimeSeconds,
+    setCurrentIndex,
+    setSecondsRemaining,
+    setStatus,
   ]);
 
   const resume = useCallback(async () => {
-    if (
-      !currentTrack ||
-      secondsRemaining <= 0
-    ) {
-      return;
-    }
+    if (secondsRemainingRef.current <= 0) return;
 
     setPlaybackError(null);
     setRevealed(false);
 
-    const audio = audioRef.current;
+    const track = tracksRef.current[currentIndexRef.current];
+    const audio = prepareActiveAudio(currentIndexRef.current);
 
-    if (
-      currentTrack.audioUrl &&
-      audio
-    ) {
+    if (track?.audioUrl && audio) {
       try {
+        audio.volume = 1;
         await audio.play();
         setStatus("playing");
+        startNonFadeTimerRef.current(
+          secondsRemainingRef.current
+        );
         return;
       } catch (error) {
-        console.error(
-          "Audio resume failed:",
-          error
-        );
-
         setPlaybackError(
-          "The browser could not resume this audio."
+          error instanceof Error
+            ? `Audio resume failed: ${error.message}`
+            : "The browser could not resume this audio."
         );
       }
     }
 
     setStatus("countdown");
-  }, [
-    currentTrack,
-    secondsRemaining,
-  ]);
+    startNonFadeTimerRef.current(
+      secondsRemainingRef.current
+    );
+  }, [prepareActiveAudio, setStatus]);
 
   const restart = useCallback(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
-    resetAudio();
+    clearPlayTimer();
+    clearCrossfade();
+    clearIncomingAudio();
 
-    setSecondsRemaining(clipLength);
-    setStatus(
-      currentTrack ? "ready" : "idle"
-    );
-    setRevealed(false);
-    setPlaybackError(null);
-  }, [
-    clipLength,
-    currentTrack,
-    clearCountdownTimer,
-    clearFadeTimer,
-    resetAudio,
-  ]);
+    const audio = prepareActiveAudio(currentIndexRef.current);
 
-  const stop = useCallback(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
-    resetAudio();
-
-    setSecondsRemaining(clipLength);
-    setStatus(
-      currentTrack ? "ready" : "idle"
-    );
-    setRevealed(false);
-    setPlaybackError(null);
-  }, [
-    clipLength,
-    currentTrack,
-    clearCountdownTimer,
-    clearFadeTimer,
-    resetAudio,
-  ]);
-
-  const reveal = useCallback(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
-    pauseAudio();
-
-    if (audioRef.current) {
-      audioRef.current.volume = 1;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = 1;
     }
 
-    setStatus("revealed");
-    setRevealed(true);
+    transitionInProgressRef.current = false;
+    setIsCrossfading(false);
+    setSecondsRemaining(playtimeSeconds);
+    setStatus(tracksRef.current.length > 0 ? "ready" : "idle");
+    setRevealed(false);
+    setPlaybackError(null);
   }, [
-    clearCountdownTimer,
-    clearFadeTimer,
-    pauseAudio,
+    clearCrossfade,
+    clearIncomingAudio,
+    clearPlayTimer,
+    playtimeSeconds,
+    prepareActiveAudio,
+    setSecondsRemaining,
+    setStatus,
   ]);
+
+  const stop = restart;
+
+  const reveal = useCallback(() => {
+    if (
+      continuousRef.current &&
+      currentIndexRef.current < tracksRef.current.length - 1 &&
+      (statusRef.current === "playing" ||
+        statusRef.current === "countdown")
+    ) {
+      clearPlayTimer();
+      setSecondsRemaining(0);
+      void beginCrossfadeRef.current();
+      return;
+    }
+
+    finishAndReveal();
+  }, [clearPlayTimer, finishAndReveal, setSecondsRemaining]);
 
   const hide = useCallback(() => {
-    clearCountdownTimer();
-    clearFadeTimer();
-
-    setStatus(
-      currentTrack ? "ready" : "idle"
-    );
+    clearPlayTimer();
+    setStatus(tracksRef.current.length > 0 ? "ready" : "idle");
     setRevealed(false);
-  }, [
-    currentTrack,
-    clearCountdownTimer,
-    clearFadeTimer,
-  ]);
+  }, [clearPlayTimer, setStatus]);
 
   const goToTrack = useCallback(
     (newIndex: number) => {
-      clearCountdownTimer();
-      clearFadeTimer();
-      resetAudio();
+      clearPlayTimer();
+      clearCrossfade();
+      clearIncomingAudio();
 
-      const safeIndex = Math.min(
-        Math.max(newIndex, 0),
-        Math.max(tracks.length - 1, 0)
+      audioRef.current?.pause();
+      transitionInProgressRef.current = false;
+      setIsCrossfading(false);
+
+      const safeIndex = clamp(
+        newIndex,
+        0,
+        Math.max(tracksRef.current.length - 1, 0)
       );
 
       setCurrentIndex(safeIndex);
-      setSecondsRemaining(clipLength);
+      setSecondsRemaining(playtimeSeconds);
       setRevealed(false);
       setPlaybackError(null);
-
       setStatus(
-        tracks.length > 0
-          ? "ready"
-          : "idle"
+        tracksRef.current.length > 0 ? "ready" : "idle"
       );
     },
     [
-      tracks.length,
-      clipLength,
-      clearCountdownTimer,
-      clearFadeTimer,
-      resetAudio,
+      clearCrossfade,
+      clearIncomingAudio,
+      clearPlayTimer,
+      playtimeSeconds,
+      setCurrentIndex,
+      setSecondsRemaining,
+      setStatus,
     ]
   );
 
   const next = useCallback(() => {
-    if (currentIndex >= tracks.length - 1) {
-      clearCountdownTimer();
-      clearFadeTimer();
-      resetAudio();
-
+    if (
+      currentIndexRef.current >=
+      tracksRef.current.length - 1
+    ) {
+      stopAllAudio();
       setStatus("finished");
       setRevealed(true);
       return;
     }
 
-    goToTrack(currentIndex + 1);
+    if (
+      continuousRef.current &&
+      (statusRef.current === "playing" ||
+        statusRef.current === "countdown")
+    ) {
+      clearPlayTimer();
+      setSecondsRemaining(0);
+      void beginCrossfadeRef.current();
+      return;
+    }
+
+    goToTrack(currentIndexRef.current + 1);
   }, [
-    currentIndex,
-    tracks.length,
+    clearPlayTimer,
     goToTrack,
-    clearCountdownTimer,
-    clearFadeTimer,
-    resetAudio,
+    setSecondsRemaining,
+    setStatus,
+    stopAllAudio,
   ]);
 
   const previous = useCallback(() => {
-    goToTrack(currentIndex - 1);
-  }, [
-    currentIndex,
-    goToTrack,
-  ]);
+    goToTrack(currentIndexRef.current - 1);
+  }, [goToTrack]);
 
-  /*
-   * Final cleanup when leaving the page.
-   */
+  const updateCrossfadeSeconds = useCallback((value: number) => {
+    const safeValue = clamp(
+      Number.isFinite(value) ? value : 4,
+      1,
+      15
+    );
+
+    crossfadeSecondsRef.current = safeValue;
+    setCrossfadeSecondsState(safeValue);
+
+    try {
+      localStorage.setItem(
+        "bttb-v2-crossfade-seconds",
+        String(safeValue)
+      );
+    } catch {
+      // Storage is optional; playback still works without it.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = Number(
+        localStorage.getItem("bttb-v2-crossfade-seconds")
+      );
+
+      if (Number.isFinite(saved)) {
+        updateCrossfadeSeconds(saved);
+      }
+    } catch {
+      // Use the default four-second crossfade.
+    }
+  }, [updateCrossfadeSeconds]);
 
   useEffect(() => {
     return () => {
-      clearCountdownTimer();
-      clearFadeTimer();
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      stopAllAudio();
     };
-  }, [
-    clearCountdownTimer,
-    clearFadeTimer,
-  ]);
+  }, [stopAllAudio]);
 
   return useMemo(
     () => ({
       audioRef,
-
       tracks,
       currentTrack,
       currentIndex,
-
       status,
       revealed,
-
       secondsRemaining,
-
       crossfadeSeconds,
-      setCrossfadeSeconds,
-
+      setCrossfadeSeconds: updateCrossfadeSeconds,
+      isCrossfading,
       playbackError,
       hasPlayableAudio,
-
       loadTracks,
-
+      restoreCheckpoint,
       start,
       pause,
       resume,
       restart,
       stop,
-
       reveal,
       hide,
-
       next,
       previous,
       goToTrack,
@@ -647,9 +1304,12 @@ export function usePlaybackEngine(
       revealed,
       secondsRemaining,
       crossfadeSeconds,
+      updateCrossfadeSeconds,
+      isCrossfading,
       playbackError,
       hasPlayableAudio,
       loadTracks,
+      restoreCheckpoint,
       start,
       pause,
       resume,
@@ -663,4 +1323,3 @@ export function usePlaybackEngine(
     ]
   );
 }
-

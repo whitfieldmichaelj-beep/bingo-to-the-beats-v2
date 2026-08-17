@@ -1,0 +1,42 @@
+@import "./variables.css";
+@import "./typography.css";
+@import "./layout.css";
+@import "./cards.css";
+@import "./buttons.css";
+@import "./forms.css";
+@import "./navigation.css";
+@import "./tables.css";
+@import "./animations.css";
+@import "./utilities.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bttb-bg-deep);
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(
+      circle at 50% -20%,
+      rgba(109, 40, 217, 0.28),
+      transparent 42%
+    ),
+    linear-gradient(
+      180deg,
+      var(--bttb-bg),
+      var(--bttb-bg-deep)
+    );
+  color: var(--bttb-text);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}

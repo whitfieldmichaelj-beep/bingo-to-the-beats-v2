@@ -1,5 +1,7 @@
 "use client";
 
+import "../ui/bttb.css";
+
 import QRCode from "react-qr-code";
 import { useEffect, useMemo, useState } from "react";
 
@@ -67,7 +69,7 @@ export default function GameAccessPanel({
 
   if (!normalizedCode) {
     return (
-      <section style={panelStyle}>
+      <section className="bttb-access-panel">
         <p style={labelStyle}>{title}</p>
         <p style={emptyStyle}>
           Create a game to generate its join code and QR code.
@@ -77,7 +79,7 @@ export default function GameAccessPanel({
   }
 
   return (
-    <section style={panelStyle}>
+    <section className="bttb-access-panel">
       <p style={labelStyle}>{title}</p>
 
       <div style={codeBlockStyle}>
@@ -87,10 +89,8 @@ export default function GameAccessPanel({
 
       {joinUrl && (
         <div
-          style={{
-            ...qrWrapStyle,
-            padding: compact ? "12px" : "18px",
-          }}
+          className="bttb-access-qr"
+          style={{ padding: compact ? "12px" : "18px" }}
         >
           <QRCode
             value={joinUrl}
@@ -303,4 +303,3 @@ const emptyStyle = {
   color: "#94a3b8",
   lineHeight: 1.5,
 };
-

@@ -8,11 +8,17 @@ import {
   useState,
 } from "react";
 
+import {
+  evaluateGameBalance,
+  type GameBalanceAnalysis,
+} from "../lib/game/balance-validator";
+
 export type WinningPattern =
   | "any-line"
   | "across"
   | "down"
   | "diagonal"
+  | "four-corners"
   | "x-pattern"
   | "blackout";
 
@@ -63,10 +69,13 @@ type CreateGameResponse = {
   game?: CreatedGame;
   message?: string;
   error?: string;
+  advisor?: GameBalanceAnalysis;
 };
 
 type ConsoleTrack = {
   id: string;
+  gameTrackId?: string;
+  bpm?: number | null;
   name: string;
   artist: string;
   album: string;
@@ -117,6 +126,7 @@ export const WINNING_PATTERNS: Array<{
   { value: "across", label: "Across Only" },
   { value: "down", label: "Down Only" },
   { value: "diagonal", label: "Diagonal Only" },
+  { value: "four-corners", label: "Four Corners" },
   { value: "x-pattern", label: "X Pattern" },
   { value: "blackout", label: "Blackout" },
 ];
@@ -218,17 +228,34 @@ function normalizePlaylists(values: unknown[]): SeratoPlaylist[] {
     .filter((playlist) => playlist.id);
 }
 
-function convertGameTracks(tracks: SeratoTrack[]): ConsoleTrack[] {
-  return tracks.map((track) => ({
-    id: track.id,
-    name: track.title || "Unknown Song",
-    artist: track.artist || "Unknown Artist",
-    album:
-      typeof track.bpm === "number" && track.bpm > 0
-        ? `${track.bpm.toFixed(1)} BPM`
-        : track.fileName || "Serato Library",
-    image: null,
-  }));
+// BTTB_SERATO_CALLER_ARTWORK_V1
+// BTTB_PLAYED_SONG_SYNC_V2
+function convertGameTracks(
+  tracks: SeratoTrack[],
+  gameId: string
+): ConsoleTrack[] {
+  return tracks.map((track) => {
+    const artworkTrackId =
+      track.gameTrackId ?? track.id;
+
+    return {
+      id: track.id,
+    gameTrackId: track.gameTrackId,
+    bpm: track.bpm ?? null,
+      name: track.title || "Unknown Song",
+      artist: track.artist || "Unknown Artist",
+      album:
+        typeof track.bpm === "number" && track.bpm > 0
+          ? `${track.bpm.toFixed(1)} BPM`
+          : track.fileName || "Serato Library",
+      image:
+        `/api/audio/artwork?gameId=${encodeURIComponent(
+          gameId
+        )}&trackId=${encodeURIComponent(
+          artworkTrackId
+        )}`,
+    };
+  });
 }
 
 export function useSeratoWorkspace() {
@@ -268,6 +295,26 @@ export function useSeratoWorkspace() {
       playlist.name.toLowerCase().includes(normalizedSearch)
     );
   }, [playlists, search]);
+
+  const advisor = useMemo(
+    () =>
+      selectedPlaylist
+        ? evaluateGameBalance({
+            uniqueSongCount:
+              selectedPlaylist.trackCount,
+            requestedCardCount: cardCount,
+            bingoPattern:
+              winningPattern,
+            clipLength,
+          })
+        : null,
+    [
+      cardCount,
+      clipLength,
+      selectedPlaylist,
+      winningPattern,
+    ]
+  );
 
   const loadPlaylists = useCallback(async () => {
     try {
@@ -374,12 +421,9 @@ export function useSeratoWorkspace() {
       return;
     }
 
-    if (
-      selectedPlaylist.trackCount > 0 &&
-      selectedPlaylist.trackCount < 25
-    ) {
+    if (advisor?.status === "blocked") {
       setError(
-        "This crate needs at least 25 songs to create standard 5 × 5 bingo cards."
+        advisor.recommendations.join(" ")
       );
       return;
     }
@@ -417,10 +461,20 @@ export function useSeratoWorkspace() {
         );
       }
 
-      const convertedTracks = convertGameTracks(createdGame.tracks);
-      const preparedTracks = shuffle
-        ? shuffleTracks(convertedTracks)
-        : convertedTracks;
+      const convertedTracks = convertGameTracks(
+        createdGame.tracks,
+        createdGame.id
+      );
+      /*
+       * BTTB_CONTINUOUS_NONREPEATING_QUEUE_V1
+       *
+       * Shuffle once when the game is created, then play through
+       * that randomized queue sequentially. Because the server has
+       * already removed duplicates, every song is called once at
+       * most and the next game gets a fresh random order.
+       */
+      const preparedTracks =
+        shuffleTracks(convertedTracks);
 
       const session: GameSession = {
         version: 2,
@@ -466,10 +520,38 @@ export function useSeratoWorkspace() {
     selectedPlaylist,
     shuffle,
     winningPattern,
+    advisor,
   ]);
 
+  const optimizeGame = useCallback(() => {
+    if (
+      !advisor ||
+      advisor.recommendedMaximumCards < 1
+    ) {
+      return;
+    }
+
+    setCardCount(
+      Math.min(
+        500,
+        advisor.recommendedMaximumCards
+      )
+    );
+
+    setError("");
+    setMessage(
+      `Card count optimized to ${advisor.recommendedMaximumCards.toLocaleString(
+        "en-US"
+      )}.`
+    );
+  }, [advisor]);
+
   const createDisabled =
-    !isHydrated || loading || creating || selectedPlaylist === null;
+    !isHydrated ||
+    loading ||
+    creating ||
+    selectedPlaylist === null ||
+    advisor?.status === "blocked";
 
   return {
     hero: {
@@ -497,12 +579,14 @@ export function useSeratoWorkspace() {
       winningPatterns: WINNING_PATTERNS,
       creating,
       createDisabled,
+      advisor,
       message,
       error,
       onClipLengthChange: setClipLength,
       onCardCountChange: updateCardCount,
       onShuffleChange: setShuffle,
       onWinningPatternChange: setWinningPattern,
+      onOptimizeGame: optimizeGame,
       onCreateGame: createGame,
     },
     status: {
@@ -522,4 +606,3 @@ export function useSeratoWorkspace() {
 }
 
 export type SeratoWorkspace = ReturnType<typeof useSeratoWorkspace>;
-

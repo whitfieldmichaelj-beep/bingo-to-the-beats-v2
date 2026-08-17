@@ -1,13 +1,24 @@
-import { spotifyProvider } from "./spotify";
+import {
+  localMusicProvider,
+} from "./local";
 
 import {
+  seratoMusicProvider,
+} from "./serato";
+
+import {
+  spotifyProvider,
+} from "./spotify";
+
+import type {
   MusicPlaylist,
   MusicTrack,
   MusicProvider,
 } from "./types";
 
 class MusicManager {
-  private provider: MusicProvider = "spotify";
+  private provider: MusicProvider =
+    "spotify";
 
   setProvider(provider: MusicProvider) {
     this.provider = provider;
@@ -22,15 +33,29 @@ class MusicManager {
       case "spotify":
         return spotifyProvider.isConnected();
 
+      case "serato":
+        return seratoMusicProvider.isConnected();
+
+      case "local":
+        return localMusicProvider.isConnected();
+
       default:
         return false;
     }
   }
 
-  async getPlaylists(): Promise<MusicPlaylist[]> {
+  async getPlaylists(): Promise<
+    MusicPlaylist[]
+  > {
     switch (this.provider) {
       case "spotify":
         return spotifyProvider.getPlaylists();
+
+      case "serato":
+        return seratoMusicProvider.getPlaylists();
+
+      case "local":
+        return localMusicProvider.getPlaylists();
 
       default:
         return [];
@@ -45,6 +70,12 @@ class MusicManager {
         return spotifyProvider.getTracks(
           playlistId
         );
+
+      case "serato":
+        return seratoMusicProvider.getTracks();
+
+      case "local":
+        return localMusicProvider.getTracks();
 
       default:
         return [];

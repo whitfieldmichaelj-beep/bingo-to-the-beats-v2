@@ -1,0 +1,24 @@
+.bttb-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--bttb-border);
+  border-radius: var(--bttb-radius-lg);
+}
+
+.bttb-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.bttb-table th,
+.bttb-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--bttb-border);
+  text-align: left;
+}
+
+.bttb-table th {
+  color: var(--bttb-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

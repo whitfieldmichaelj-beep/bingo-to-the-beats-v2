@@ -1,0 +1,19 @@
+.bttb-input,
+.bttb-select,
+.bttb-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--bttb-border-strong);
+  border-radius: var(--bttb-radius-md);
+  outline: none;
+  background: #070c16;
+  color: var(--bttb-text);
+}
+
+.bttb-input:focus,
+.bttb-select:focus,
+.bttb-textarea:focus {
+  border-color: var(--bttb-primary);
+  box-shadow:
+    0 0 0 3px rgba(139, 92, 246, 0.16);
+}

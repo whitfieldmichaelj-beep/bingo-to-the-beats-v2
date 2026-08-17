@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -150,6 +151,13 @@ type SongCallerWorkspaceProps = {
 function SongCallerWorkspace({
   session,
 }: SongCallerWorkspaceProps) {
+  const restoreIndexRef = useRef<number | null>(
+    Math.min(
+      Math.max(session.currentIndex, 0),
+      Math.max(session.tracks.length - 1, 0)
+    )
+  );
+
   const playbackTracks =
     useMemo<PlaybackTrack[]>(() => {
       return session.tracks.map((song) => ({
@@ -194,15 +202,29 @@ function SongCallerWorkspace({
   ]);
 
   useEffect(() => {
+    const restoreIndex = restoreIndexRef.current;
+
     if (
-      session.currentIndex > 0 &&
-      session.currentIndex < tracks.length
+      restoreIndex !== null &&
+      restoreIndex > 0 &&
+      restoreIndex < tracks.length &&
+      currentIndex !== restoreIndex
     ) {
-      goToTrack(session.currentIndex);
+      goToTrack(restoreIndex);
     }
-  }, []);
+  }, [currentIndex, goToTrack, tracks.length]);
 
   useEffect(() => {
+    const restoreIndex = restoreIndexRef.current;
+
+    if (restoreIndex !== null) {
+      if (currentIndex !== restoreIndex) {
+        return;
+      }
+
+      restoreIndexRef.current = null;
+    }
+
     try {
       const currentTrackId = tracks[currentIndex]?.id;
       const playedTrackIds = currentTrackId

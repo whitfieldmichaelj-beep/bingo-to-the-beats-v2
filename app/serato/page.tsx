@@ -166,6 +166,7 @@ export default function SeratoWorkspacePage() {
             createDisabled={
               workspace.settings.createDisabled
             }
+            advisor={workspace.settings.advisor}
             error={workspace.settings.error}
             message={workspace.settings.message}
             onCardCountChange={
@@ -179,6 +180,9 @@ export default function SeratoWorkspacePage() {
             }
             onShuffleChange={
               workspace.settings.onShuffleChange
+            }
+            onOptimizeGame={
+              workspace.settings.onOptimizeGame
             }
             onCreateGame={() => {
               void workspace.settings.onCreateGame();
@@ -308,6 +312,8 @@ const workspaceGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
     "minmax(0, 1.55fr) minmax(330px, 0.75fr)",
+  alignItems: "stretch",
+  minWidth: 0,
   gap: "22px",
   marginTop: "22px",
 };

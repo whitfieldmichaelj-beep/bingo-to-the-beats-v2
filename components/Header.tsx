@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useState } from "react";
 
@@ -14,8 +15,32 @@ type MusicKitGlobal = {
 };
 
 export default function Header() {
+  const pathname = usePathname();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  /*
+   * BTTB_PLAYER_GAME_CHROME_LOCK_V1
+   *
+   * Player-facing live-game screens are intentionally isolated from
+   * the normal website navigation. Players should stay focused on
+   * their cards/game instead of navigating to Home, Pricing, Music,
+   * Dashboard, Join, Login, etc.
+   */
+  // BTTB_PLAYER_FLOW_NO_SITE_CHROME_V1
+  const isPlayerFlow =
+    pathname === "/join-access" ||
+    pathname.startsWith("/join-access/") ||
+    pathname === "/join" ||
+    pathname.startsWith("/join/") ||
+    pathname === "/game/cards" ||
+    pathname.startsWith("/game/cards/") ||
+    pathname === "/game/caller" ||
+    pathname.startsWith("/game/caller/");
+
+  if (isPlayerFlow) {
+    return null;
+  }
 
   async function disconnectProviderSessions() {
     try {

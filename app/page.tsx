@@ -97,8 +97,9 @@ export default function HomePage() {
             marginTop: "36px",
           }}
         >
-          <Link
-            href="/music"
+          {/* BTTB_START_HOSTING_ACCESS_V1 */}
+<Link
+            href="/host-access"
             style={{
               padding: "16px 28px",
               borderRadius: "999px",
@@ -113,8 +114,9 @@ export default function HomePage() {
             Start Hosting
           </Link>
 
-          <Link
-            href="/join"
+          {/* BTTB_PLAYER_JOIN_GATEWAY_V1 */}
+<Link
+            href="/join-access"
             style={{
               padding: "16px 28px",
               borderRadius: "999px",

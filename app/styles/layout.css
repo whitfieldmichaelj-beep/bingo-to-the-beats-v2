@@ -1,0 +1,28 @@
+.bttb-page {
+  min-height: 100vh;
+}
+
+.bttb-container {
+  width: min(100% - 32px, 1540px);
+  margin: 0 auto;
+}
+
+.bttb-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.bttb-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bttb-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .bttb-grid-2,
+  .bttb-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}

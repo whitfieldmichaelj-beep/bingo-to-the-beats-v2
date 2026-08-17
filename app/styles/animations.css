@@ -1,0 +1,16 @@
+@keyframes bttb-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bttb-fade-in {
+  animation:
+    bttb-fade-in 220ms ease both;
+}

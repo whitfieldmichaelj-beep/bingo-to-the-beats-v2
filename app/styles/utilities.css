@@ -1,0 +1,19 @@
+.bttb-muted {
+  color: var(--bttb-text-muted);
+}
+
+.bttb-text-center {
+  text-align: center;
+}
+
+.bttb-mt-1 {
+  margin-top: 8px;
+}
+
+.bttb-mt-2 {
+  margin-top: 16px;
+}
+
+.bttb-mt-3 {
+  margin-top: 24px;
+}

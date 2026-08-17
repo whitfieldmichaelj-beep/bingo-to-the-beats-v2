@@ -92,7 +92,7 @@ function createTrackUniqueKey(
   return "";
 }
 
-function removeDuplicateTracks(
+export function removeDuplicateTracks(
   tracks: SeratoTrack[]
 ): SeratoTrack[] {
   const uniqueTracks =
@@ -113,6 +113,12 @@ function removeDuplicateTracks(
   }
 
   return Array.from(uniqueTracks.values());
+}
+
+export function getUniquePlaylistTrackCount(
+  tracks: SeratoTrack[]
+): number {
+  return removeDuplicateTracks(tracks).length;
 }
 
 function createGameTracks(

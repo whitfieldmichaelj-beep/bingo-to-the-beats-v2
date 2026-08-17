@@ -1,0 +1,16 @@
+.bttb-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bttb-nav-link {
+  padding: 10px 14px;
+  border: 1px solid var(--bttb-border);
+  border-radius: var(--bttb-radius-sm);
+  background: #111827;
+  color: var(--bttb-text);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 850;
+}

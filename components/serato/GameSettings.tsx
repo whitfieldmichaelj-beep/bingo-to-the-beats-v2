@@ -2,11 +2,16 @@
 
 import type { CSSProperties } from "react";
 
+import type {
+  GameBalanceAnalysis,
+} from "../../lib/game/balance-validator";
+
 export type WinningPattern =
   | "any-line"
   | "across"
   | "down"
   | "diagonal"
+  | "four-corners"
   | "x-pattern"
   | "blackout";
 
@@ -36,6 +41,7 @@ type GameSettingsProps = {
   createDisabled: boolean;
   error: string;
   message: string;
+  advisor: GameBalanceAnalysis | null;
 
   onCardCountChange: (cardCount: number) => void;
   onClipLengthChange: (clipLength: number) => void;
@@ -43,6 +49,7 @@ type GameSettingsProps = {
     winningPattern: WinningPattern
   ) => void;
   onShuffleChange: (shuffle: boolean) => void;
+  onOptimizeGame: () => void;
   onCreateGame: () => void;
 };
 
@@ -65,6 +72,10 @@ const WINNING_PATTERNS: Array<{
   {
     value: "diagonal",
     label: "Diagonal Only",
+  },
+  {
+    value: "four-corners",
+    label: "Four Corners",
   },
   {
     value: "x-pattern",
@@ -92,10 +103,12 @@ export default function GameSettings({
   createDisabled,
   error,
   message,
+  advisor,
   onCardCountChange,
   onClipLengthChange,
   onWinningPatternChange,
   onShuffleChange,
+  onOptimizeGame,
   onCreateGame,
 }: GameSettingsProps) {
   const eventDescription = [
@@ -228,28 +241,128 @@ export default function GameSettings({
       <label style={toggleStyle}>
         <span>
           <strong style={toggleTitleStyle}>
-            Shuffle crate
+            Continuous Shuffle
           </strong>
 
           <small style={toggleDescriptionStyle}>
-            Randomize the song order before opening the
-            console.
+            Always on — random order with no duplicate song
+            during the game.
           </small>
         </span>
 
         <input
           type="checkbox"
-          checked={shuffle}
-          disabled={loading || creating}
-          onChange={(event) =>
-            onShuffleChange(event.target.checked)
-          }
+          checked={true}
+          disabled={true}
+          readOnly
+          aria-label="Continuous Shuffle is always on"
           style={{
             ...checkboxStyle,
-            opacity: loading || creating ? 0.65 : 1,
+            opacity: 1,
           }}
         />
       </label>
+
+
+      {advisor && (
+        <section
+          style={{
+            ...advisorPanelStyle,
+            borderColor:
+              advisor.status === "ready"
+                ? "rgba(34, 197, 94, 0.5)"
+                : advisor.status === "warning"
+                  ? "rgba(245, 158, 11, 0.55)"
+                  : "rgba(244, 63, 94, 0.55)",
+          }}
+        >
+          <div style={advisorHeadingStyle}>
+            <div>
+              <span style={summaryLabelStyle}>
+                Game Advisor
+              </span>
+
+              <strong style={advisorStatusStyle}>
+                {advisor.status === "ready"
+                  ? "Ready"
+                  : advisor.status === "warning"
+                    ? "Warning"
+                    : "Blocked"}
+              </strong>
+            </div>
+
+            <div style={advisorScoreStyle}>
+              <strong>{advisor.score}</strong>
+              <span>/100</span>
+            </div>
+          </div>
+
+          <div style={advisorMetricsStyle}>
+            <div style={advisorMetricStyle}>
+              <span>Grade</span>
+              <strong>{advisor.grade}</strong>
+            </div>
+
+            <div style={advisorMetricStyle}>
+              <span>Tie risk</span>
+              <strong>{advisor.risk}</strong>
+            </div>
+
+            <div style={advisorMetricStyle}>
+              <span>Recommended cards</span>
+              <strong>
+                {formatNumber(
+                  advisor.recommendedMaximumCards
+                )}
+              </strong>
+            </div>
+
+            <div style={advisorMetricStyle}>
+              <span>Estimated time</span>
+              <strong>
+                {advisor.estimatedDurationMinutes.minimum}–
+                {advisor.estimatedDurationMinutes.maximum} min
+              </strong>
+            </div>
+          </div>
+
+          <p style={advisorSummaryStyle}>
+            {advisor.summary}
+          </p>
+
+          <div style={advisorGuideStyle}>
+            <strong>Pattern guideline</strong>
+            <p>{advisor.patternGuideline}</p>
+          </div>
+
+          <div style={advisorGuideStyle}>
+            <strong>Host recommendations</strong>
+            <ul style={advisorListStyle}>
+              {advisor.recommendations.map(
+                (recommendation) => (
+                  <li key={recommendation}>
+                    {recommendation}
+                  </li>
+                )
+              )}
+            </ul>
+          </div>
+
+          {advisor.status !== "ready" &&
+            advisor.recommendedMaximumCards > 0 &&
+            advisor.recommendedMaximumCards <
+              cardCount && (
+              <button
+                type="button"
+                disabled={loading || creating}
+                onClick={onOptimizeGame}
+                style={optimizeButtonStyle}
+              >
+                Optimize My Game
+              </button>
+            )}
+        </section>
+      )}
 
       {error && <div style={errorStyle}>{error}</div>}
 
@@ -428,4 +541,79 @@ const messageStyle: CSSProperties = {
   color: "#94a3b8",
   fontSize: "12px",
   lineHeight: 1.6,
+};
+
+
+const advisorPanelStyle: CSSProperties = {
+  marginTop: "20px",
+  padding: "18px",
+  border: "1px solid #475569",
+  borderRadius: "18px",
+  background: "rgba(2, 6, 23, 0.72)",
+};
+
+const advisorHeadingStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "16px",
+};
+
+const advisorStatusStyle: CSSProperties = {
+  display: "block",
+  marginTop: "6px",
+  fontSize: "22px",
+  textTransform: "capitalize",
+};
+
+const advisorScoreStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: "3px",
+  color: "#c4b5fd",
+};
+
+const advisorMetricsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  marginTop: "16px",
+};
+
+const advisorMetricStyle: CSSProperties = {
+  padding: "12px",
+  border: "1px solid #334155",
+  borderRadius: "12px",
+  background: "rgba(15, 23, 42, 0.8)",
+};
+
+const advisorSummaryStyle: CSSProperties = {
+  margin: "16px 0 0",
+  color: "#cbd5e1",
+  lineHeight: 1.55,
+};
+
+const advisorGuideStyle: CSSProperties = {
+  marginTop: "15px",
+  color: "#e2e8f0",
+  fontSize: "13px",
+  lineHeight: 1.55,
+};
+
+const advisorListStyle: CSSProperties = {
+  margin: "8px 0 0",
+  paddingLeft: "19px",
+  color: "#cbd5e1",
+};
+
+const optimizeButtonStyle: CSSProperties = {
+  width: "100%",
+  marginTop: "16px",
+  padding: "12px",
+  border: "1px solid #8b5cf6",
+  borderRadius: "12px",
+  background: "rgba(124, 58, 237, 0.18)",
+  color: "#ddd6fe",
+  fontWeight: 900,
+  cursor: "pointer",
 };

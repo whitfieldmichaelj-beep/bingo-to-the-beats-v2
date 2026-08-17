@@ -291,6 +291,7 @@ model Purchase {
   playerKey       String?
   playerName      String?
   stripePaymentId String? @unique
+  stripeCheckoutSessionId String? @unique
 
   quantity Int
   amount   Decimal        @db.Decimal(10, 2)

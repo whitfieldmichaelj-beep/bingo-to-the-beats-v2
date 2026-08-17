@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import GameAccessPanel from "../../../components/game/GameAccessPanel";
+import PlayerBingoClaimPanel from "@/components/game/PlayerBingoClaimPanel";
+// BTTB_BINGO_VERIFICATION_V1
 
 type WinningPattern =
   | "single-line"
@@ -76,8 +78,83 @@ type PlayerSession = {
 
 type SelectedSongKeys = string[];
 
+/*
+ * BTTB_PLAYER_CARD_SONG_SEARCH_V1
+ *
+ * Search only the songs that actually appear in this player's
+ * assigned bingo cards. One result represents a song across all
+ * cards that contain it.
+ */
+type CardSongSearchResult = {
+  songKey: string;
+  title: string;
+  artist: string;
+  square: CardSquare;
+  cardIndexes: number[];
+  cardNumbers: number[];
+};
+
+const PLAYER_ID_KEY = "bttb-v2-player-id";
 const PLAYER_SESSION_KEY = "bttb-v2-player-session";
-const PLAYER_MARKS_KEY = "bttb-v2-player-selected-songs";
+const PLAYER_PRESENCE_ENDPOINT =
+  "/api/game/player/heartbeat";
+const PLAYER_HEARTBEAT_INTERVAL_MS = 10_000;
+const LEGACY_MARKS_KEYS = [
+  "bttb-v2-player-selected-songs",
+  "bttb-v2-player-selected-tracks",
+  "bttb-v2-player-card-marks",
+];
+
+function getMarksStorageKey(
+  gameId: string,
+  playerId: string
+) {
+  return `bttb-v2-player-selected-songs:${gameId}:${playerId}`;
+}
+
+
+function sendPresenceRequest(
+  gameId: string,
+  playerId: string,
+  connected: boolean
+) {
+  const body = JSON.stringify({
+    gameId,
+    playerId,
+    connected,
+  });
+
+  return fetch(PLAYER_PRESENCE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body,
+    cache: "no-store",
+    keepalive: true,
+  });
+}
+
+function sendPresenceBeacon(
+  gameId: string,
+  playerId: string,
+  connected: boolean
+) {
+  const body = JSON.stringify({
+    gameId,
+    playerId,
+    connected,
+  });
+
+  const blob = new Blob([body], {
+    type: "application/json",
+  });
+
+  navigator.sendBeacon(
+    PLAYER_PRESENCE_ENDPOINT,
+    blob
+  );
+}
 
 function formatWinningPattern(pattern: WinningPattern) {
   switch (pattern) {
@@ -174,9 +251,9 @@ function getSongKey(square: CardSquare): string {
   return square.trackId || square.gameTrackId;
 }
 
-function readSelectedSongKeys(): string[] {
+function readSelectedSongKeys(storageKey: string): string[] {
   try {
-    const saved = localStorage.getItem(PLAYER_MARKS_KEY);
+    const saved = localStorage.getItem(storageKey);
 
     if (!saved) {
       return [];
@@ -199,10 +276,30 @@ export default function CardsPage() {
   const [session, setSession] = useState<PlayerSession | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [selectedSongKeys, setSelectedSongKeys] = useState<string[]>([]);
+  const [songSearch, setSongSearch] = useState("");
+  const [marksStorageKey, setMarksStorageKey] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [winningCardId, setWinningCardId] = useState<string | null>(
     null
   );
+  // BTTB_BINGO_PLAYED_LOCK_V1
+  const [
+    calledGameTrackIds,
+    setCalledGameTrackIds,
+  ] = useState<string[]>([]);
+  const [
+    calledTrackIds,
+    setCalledTrackIds,
+  ] = useState<string[]>([]);
+  const [
+    playedSongsLoaded,
+    setPlayedSongsLoaded,
+  ] = useState(false);
+  // BTTB_BINGO_RETURN_TO_CARDS_V2
+  const [
+    dismissedWinningCardIds,
+    setDismissedWinningCardIds,
+  ] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -214,17 +311,94 @@ export default function CardsPage() {
       }
 
       const parsed = JSON.parse(savedSession) as PlayerSession;
+
+      if (
+        !parsed.player?.playerId ||
+        !parsed.game?.id ||
+        parsed.player.gameId !== parsed.game.id
+      ) {
+        throw new Error("The saved player session is invalid.");
+      }
+
+      const storageKey = getMarksStorageKey(
+        parsed.game.id,
+        parsed.player.playerId
+      );
+
       setSession(parsed);
-      setSelectedSongKeys(readSelectedSongKeys());
-      localStorage.removeItem("bttb-v2-player-card-marks");
-      localStorage.removeItem("bttb-v2-player-selected-tracks");
+      setMarksStorageKey(storageKey);
+      setSelectedSongKeys(
+        readSelectedSongKeys(storageKey)
+      );
+
+      for (const key of LEGACY_MARKS_KEYS) {
+        localStorage.removeItem(key);
+      }
     } catch {
-      localStorage.removeItem(PLAYER_SESSION_KEY);
-      localStorage.removeItem(PLAYER_MARKS_KEY);
+      localStorage.removeItem(
+      PLAYER_ID_KEY
+    );
+
+    localStorage.removeItem(
+      PLAYER_SESSION_KEY
+    );
+
+      for (const key of LEGACY_MARKS_KEYS) {
+        localStorage.removeItem(key);
+      }
     } finally {
       setLoaded(true);
     }
   }, []);
+
+
+  useEffect(() => {
+    if (
+      !session?.game.id ||
+      !session.player.playerId
+    ) {
+      return;
+    }
+
+    const gameId = session.game.id;
+    const playerId = session.player.playerId;
+
+    const markOnline = () => {
+      void sendPresenceRequest(
+        gameId,
+        playerId,
+        true
+      ).catch(() => undefined);
+    };
+
+    const markOffline = () => {
+      sendPresenceBeacon(
+        gameId,
+        playerId,
+        false
+      );
+    };
+
+    markOnline();
+
+    const heartbeat = window.setInterval(
+      markOnline,
+      PLAYER_HEARTBEAT_INTERVAL_MS
+    );
+
+    window.addEventListener(
+      "pagehide",
+      markOffline
+    );
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener(
+        "pagehide",
+        markOffline
+      );
+    };
+  }, [session]);
 
   const cards = useMemo(() => {
     if (!session) return [];
@@ -237,6 +411,240 @@ export default function CardsPage() {
   }, [session]);
 
   const activeCard = cards[activeCardIndex] ?? null;
+
+  const calledGameTrackIdSet = useMemo(
+    () => new Set(calledGameTrackIds),
+    [calledGameTrackIds]
+  );
+
+  const calledTrackIdSet = useMemo(
+    () => new Set(calledTrackIds),
+    [calledTrackIds]
+  );
+
+  function isSquarePlayed(
+    square: CardSquare
+  ) {
+    return (
+      calledGameTrackIdSet.has(
+        square.gameTrackId
+      ) ||
+      calledTrackIdSet.has(
+        square.trackId
+      )
+    );
+  }
+
+  useEffect(() => {
+    // BTTB_BINGO_GAMEID_TYPE_FIX_V1
+    const gameId: string =
+      session?.game?.id ?? "";
+
+    if (!gameId) {
+      setCalledGameTrackIds([]);
+      setCalledTrackIds([]);
+      setPlayedSongsLoaded(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshPlayedSongs() {
+      try {
+        const response = await fetch(
+          `/api/game/${encodeURIComponent(
+            gameId
+          )}/called-tracks`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.ok ||
+          cancelled
+        ) {
+          return;
+        }
+
+        setCalledGameTrackIds(
+          Array.isArray(
+            data.calledGameTrackIds
+          )
+            ? data.calledGameTrackIds
+            : []
+        );
+
+        setCalledTrackIds(
+          Array.isArray(
+            data.calledTrackIds
+          )
+            ? data.calledTrackIds
+            : []
+        );
+
+        setPlayedSongsLoaded(true);
+      } catch {
+        // Keep the last known played-song state.
+      }
+    }
+
+    void refreshPlayedSongs();
+
+    const interval =
+      window.setInterval(
+        () => {
+          if (!document.hidden) {
+            void refreshPlayedSongs();
+          }
+        },
+        1000
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [session?.game?.id]);
+
+
+  const normalizedSongSearch =
+    normalizeSongPart(songSearch);
+
+  const cardSongSearchResults =
+    useMemo<CardSongSearchResult[]>(() => {
+      if (!normalizedSongSearch) {
+        return [];
+      }
+
+      const matches =
+        new Map<
+          string,
+          CardSongSearchResult
+        >();
+
+      cards.forEach(
+        (card, cardIndex) => {
+          card.squares.forEach(
+            (square) => {
+              const normalizedTitle =
+                normalizeSongPart(
+                  square.title
+                );
+
+              if (
+                !normalizedTitle.includes(
+                  normalizedSongSearch
+                )
+              ) {
+                return;
+              }
+
+              const songKey =
+                getSongKey(square);
+
+              const existing =
+                matches.get(songKey);
+
+              if (existing) {
+                if (
+                  !existing.cardIndexes.includes(
+                    cardIndex
+                  )
+                ) {
+                  existing.cardIndexes.push(
+                    cardIndex
+                  );
+                }
+
+                if (
+                  !existing.cardNumbers.includes(
+                    card.cardNumber
+                  )
+                ) {
+                  existing.cardNumbers.push(
+                    card.cardNumber
+                  );
+                }
+
+                return;
+              }
+
+              matches.set(
+                songKey,
+                {
+                  songKey,
+                  title:
+                    square.title ||
+                    "Unknown Song",
+                  artist:
+                    square.artist ||
+                    "Unknown Artist",
+                  square,
+                  cardIndexes: [
+                    cardIndex,
+                  ],
+                  cardNumbers: [
+                    card.cardNumber,
+                  ],
+                }
+              );
+            }
+          );
+        }
+      );
+
+      return Array.from(
+        matches.values()
+      ).sort((left, right) => {
+        const leftTitle =
+          normalizeSongPart(
+            left.title
+          );
+
+        const rightTitle =
+          normalizeSongPart(
+            right.title
+          );
+
+        const leftStarts =
+          leftTitle.startsWith(
+            normalizedSongSearch
+          )
+            ? 0
+            : 1;
+
+        const rightStarts =
+          rightTitle.startsWith(
+            normalizedSongSearch
+          )
+            ? 0
+            : 1;
+
+        if (
+          leftStarts !==
+          rightStarts
+        ) {
+          return (
+            leftStarts -
+            rightStarts
+          );
+        }
+
+        return left.title.localeCompare(
+          right.title
+        );
+      });
+    }, [
+      cards,
+      normalizedSongSearch,
+    ]);
 
   const selectedSongKeySet = useMemo(
     () => new Set(selectedSongKeys),
@@ -252,12 +660,20 @@ export default function CardsPage() {
       activeCard.squares
         .filter(
           (square) =>
-            square.marked ||
-            selectedSongKeySet.has(getSongKey(square))
+            isSquarePlayed(square) &&
+            (
+              square.marked ||
+              selectedSongKeySet.has(getSongKey(square))
+            )
         )
         .map((square) => square.squareIndex)
     );
-  }, [activeCard, selectedSongKeySet]);
+  }, [
+    activeCard,
+    selectedSongKeySet,
+    calledGameTrackIds,
+    calledTrackIds,
+  ]);
 
   const winningCardIds = useMemo(() => {
     if (!session) return [];
@@ -268,8 +684,11 @@ export default function CardsPage() {
           card.squares
             .filter(
               (square) =>
-                square.marked ||
-                selectedSongKeySet.has(getSongKey(square))
+                isSquarePlayed(square) &&
+                (
+                  square.marked ||
+                  selectedSongKeySet.has(getSongKey(square))
+                )
             )
             .map((square) => square.squareIndex)
         );
@@ -281,22 +700,64 @@ export default function CardsPage() {
         );
       })
       .map((card) => card.id);
-  }, [cards, selectedSongKeySet, session]);
+  }, [
+    cards,
+    selectedSongKeySet,
+    session,
+    calledGameTrackIds,
+    calledTrackIds,
+  ]);
 
   useEffect(() => {
     if (
       activeCard &&
       winningCardIds.includes(activeCard.id) &&
-      winningCardId !== activeCard.id
+      winningCardId !== activeCard.id &&
+      !dismissedWinningCardIds.includes(activeCard.id)
     ) {
       setWinningCardId(activeCard.id);
     }
-  }, [activeCard, winningCardId, winningCardIds]);
+  }, [
+    activeCard,
+    dismissedWinningCardIds,
+    winningCardId,
+    winningCardIds,
+  ]);
+
+  /*
+   * If a card stops satisfying the winning pattern, remove its
+   * dismissal. If that same card earns BINGO again later, the
+   * BINGO screen is allowed to appear again.
+   */
+  useEffect(() => {
+    setDismissedWinningCardIds((current) =>
+      current.filter((cardId) =>
+        winningCardIds.includes(cardId)
+      )
+    );
+  }, [winningCardIds]);
+
+  function closeWinningCard() {
+    if (winningCardId) {
+      setDismissedWinningCardIds((current) =>
+        current.includes(winningCardId)
+          ? current
+          : [...current, winningCardId]
+      );
+    }
+
+    setWinningCardId(null);
+  }
 
   function saveSelectedSongKeys(nextSongKeys: string[]) {
     setSelectedSongKeys(nextSongKeys);
+
+    if (!marksStorageKey) {
+      return;
+    }
+
     localStorage.setItem(
-      PLAYER_MARKS_KEY,
+      marksStorageKey,
       JSON.stringify(nextSongKeys)
     );
   }
@@ -307,22 +768,116 @@ export default function CardsPage() {
 
     if (current.has(songKey)) {
       current.delete(songKey);
-    } else {
-      current.add(songKey);
+      saveSelectedSongKeys(Array.from(current));
+      return;
     }
 
+    if (
+      !playedSongsLoaded ||
+      !isSquarePlayed(square)
+    ) {
+      window.alert(
+        "That song has not been played yet. You can only mark songs after the DJ plays them."
+      );
+      return;
+    }
+
+    current.add(songKey);
     saveSelectedSongKeys(Array.from(current));
   }
+
+  function selectSongSearchResult(
+    result: CardSongSearchResult
+  ) {
+    toggleSong(result.square);
+
+    const firstCardIndex =
+      result.cardIndexes[0];
+
+    if (
+      typeof firstCardIndex ===
+      "number"
+    ) {
+      setActiveCardIndex(
+        firstCardIndex
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (
+      !playedSongsLoaded ||
+      cards.length === 0 ||
+      selectedSongKeys.length === 0
+    ) {
+      return;
+    }
+
+    const allowedKeys =
+      new Set<string>();
+
+    cards.forEach((card) => {
+      card.squares.forEach(
+        (square) => {
+          if (
+            isSquarePlayed(square)
+          ) {
+            allowedKeys.add(
+              getSongKey(square)
+            );
+          }
+        }
+      );
+    });
+
+    const filtered =
+      selectedSongKeys.filter(
+        (key) =>
+          allowedKeys.has(key)
+      );
+
+    if (
+      filtered.length !==
+      selectedSongKeys.length
+    ) {
+      saveSelectedSongKeys(
+        filtered
+      );
+    }
+  }, [
+    playedSongsLoaded,
+    calledGameTrackIds,
+    calledTrackIds,
+    cards,
+    selectedSongKeys,
+  ]);
 
   function clearAllCards() {
     saveSelectedSongKeys([]);
     setWinningCardId(null);
+    setDismissedWinningCardIds([]);
   }
 
   function leaveGame() {
+    if (session) {
+      sendPresenceBeacon(
+        session.game.id,
+        session.player.playerId,
+        false
+      );
+    }
+
     localStorage.removeItem(PLAYER_SESSION_KEY);
-    localStorage.removeItem(PLAYER_MARKS_KEY);
-    window.location.href = "/join";
+
+    if (marksStorageKey) {
+      localStorage.removeItem(marksStorageKey);
+    }
+
+    for (const key of LEGACY_MARKS_KEYS) {
+      localStorage.removeItem(key);
+    }
+
+    window.location.replace("/join");
   }
 
   if (!loaded) {
@@ -392,17 +947,14 @@ export default function CardsPage() {
             >
               Card #{winningCard.cardNumber}
             </p>
-            <p style={{ margin: "10px 0 0", color: "#e2e8f0" }}>
-              Show this screen to the host for verification.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setWinningCardId(null)}
-              style={modalButtonStyle}
-            >
-              Return to Cards
-            </button>
+            <PlayerBingoClaimPanel
+              gameId={game.id}
+              playerId={player.playerId}
+              playerName={player.playerName}
+              cardId={winningCard.id}
+              cardNumber={winningCard.cardNumber}
+              onClose={closeWinningCard}
+            />
           </section>
         </div>
       )}
@@ -485,7 +1037,328 @@ export default function CardsPage() {
           )}
         </section>
 
-        <section
+                <section
+          style={{
+            marginTop: "22px",
+            padding: "18px",
+            border: "1px solid rgba(167, 139, 250, 0.42)",
+            borderRadius: "18px",
+            background:
+              "linear-gradient(145deg, rgba(76, 29, 149, 0.28), rgba(15, 23, 42, 0.95))",
+          }}
+        >
+          <span
+            style={
+              summaryLabelStyle
+            }
+          >
+            Search Your Cards
+          </span>
+
+          <p
+            style={{
+              margin:
+                "8px 0 0",
+              color:
+                "#cbd5e1",
+              fontSize:
+                "13px",
+              lineHeight:
+                1.5,
+            }}
+          >
+            Type the name of
+            the song you hear.
+            Only songs that are
+            actually on your
+            bingo cards will
+            appear.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              marginTop:
+                "12px",
+            }}
+          >
+            <input
+              type="search"
+              value={songSearch}
+              onChange={(event) =>
+                setSongSearch(
+                  event.target
+                    .value
+                )
+              }
+              placeholder="Search song name..."
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Search songs on your bingo cards"
+              style={{
+                width: "100%",
+                minWidth: 0,
+                padding:
+                  "13px 14px",
+                border:
+                  "1px solid #64748b",
+                borderRadius:
+                  "12px",
+                outline:
+                  "none",
+                background:
+                  "#020617",
+                color:
+                  "#ffffff",
+                fontSize:
+                  "16px",
+              }}
+            />
+
+            {songSearch && (
+              <button
+                type="button"
+                onClick={() =>
+                  setSongSearch(
+                    ""
+                  )
+                }
+                aria-label="Clear song search"
+                style={{
+                  flex:
+                    "0 0 auto",
+                  padding:
+                    "0 15px",
+                  border:
+                    "1px solid #475569",
+                  borderRadius:
+                    "12px",
+                  background:
+                    "#111827",
+                  color:
+                    "#cbd5e1",
+                  fontWeight:
+                    900,
+                  cursor:
+                    "pointer",
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {normalizedSongSearch && (
+            <div
+              style={{
+                marginTop:
+                  "12px",
+              }}
+            >
+              {cardSongSearchResults.length ===
+              0 ? (
+                <div
+                  style={{
+                    padding:
+                      "14px",
+                    border:
+                      "1px solid rgba(248, 113, 113, 0.32)",
+                    borderRadius:
+                      "12px",
+                    background:
+                      "rgba(127, 29, 29, 0.14)",
+                    color:
+                      "#fecaca",
+                    textAlign:
+                      "center",
+                    fontSize:
+                      "13px",
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  That song is
+                  not on any of
+                  your cards.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display:
+                      "grid",
+                    gridTemplateColumns:
+                      "1fr",
+                    gap:
+                      "8px",
+                  }}
+                >
+                  {cardSongSearchResults.map(
+                    (
+                      result
+                    ) => {
+                      const selected =
+                        selectedSongKeySet.has(
+                          result.songKey
+                        );
+
+                      return (
+                        <button
+                          key={
+                            result.songKey
+                          }
+                          type="button"
+                          onClick={() =>
+                            selectSongSearchResult(
+                              result
+                            )
+                          }
+                          aria-pressed={
+                            selected
+                          }
+                          style={{
+                            width:
+                              "100%",
+                            display:
+                              "grid",
+                            gridTemplateColumns:
+                              "minmax(0, 1fr) auto",
+                            alignItems:
+                              "center",
+                            gap:
+                              "12px",
+                            padding:
+                              "12px 14px",
+                            border:
+                              selected
+                                ? "2px solid #a3e635"
+                                : "1px solid #475569",
+                            borderRadius:
+                              "12px",
+                            background:
+                              selected
+                                ? "rgba(77, 124, 15, 0.28)"
+                                : "rgba(2, 6, 23, 0.82)",
+                            color:
+                              "white",
+                            textAlign:
+                              "left",
+                            cursor:
+                              "pointer",
+                          }}
+                        >
+                          <span
+                            style={{
+                              minWidth:
+                                0,
+                            }}
+                          >
+                            <strong
+                              style={{
+                                display:
+                                  "block",
+                                overflow:
+                                  "hidden",
+                                textOverflow:
+                                  "ellipsis",
+                                whiteSpace:
+                                  "nowrap",
+                                fontSize:
+                                  "15px",
+                              }}
+                            >
+                              {
+                                result.title
+                              }
+                            </strong>
+
+                            <span
+                              style={{
+                                display:
+                                  "block",
+                                marginTop:
+                                  "4px",
+                                overflow:
+                                  "hidden",
+                                color:
+                                  "#94a3b8",
+                                textOverflow:
+                                  "ellipsis",
+                                whiteSpace:
+                                  "nowrap",
+                                fontSize:
+                                  "12px",
+                              }}
+                            >
+                              {
+                                result.artist
+                              }
+                            </span>
+
+                            <span
+                              style={{
+                                display:
+                                  "block",
+                                marginTop:
+                                  "4px",
+                                color:
+                                  "#c4b5fd",
+                                fontSize:
+                                  "10px",
+                                fontWeight:
+                                  800,
+                              }}
+                            >
+                              Card
+                              {result.cardNumbers.length >
+                              1
+                                ? "s "
+                                : " "}
+                              {result.cardNumbers.join(
+                                ", "
+                              )}
+                            </span>
+                          </span>
+
+                          <span
+                            style={{
+                              flex:
+                                "0 0 auto",
+                              padding:
+                                "7px 10px",
+                              borderRadius:
+                                "999px",
+                              background:
+                                selected
+                                  ? "#a3e635"
+                                  : "rgba(124, 58, 237, 0.24)",
+                              color:
+                                selected
+                                  ? "#172554"
+                                  : "#ddd6fe",
+                              fontSize:
+                                "11px",
+                              fontWeight:
+                                900,
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {selected
+                              ? "✓ Selected"
+                              : "Select"}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+<section
           style={{
             marginTop: "22px",
             padding: "18px",
@@ -504,7 +1377,8 @@ export default function CardsPage() {
             }}
           >
             Marking a song marks that same song on every card
-            that contains it.
+            that contains it. Only songs already played by the DJ
+            can be selected.
           </p>
 
           <div
@@ -608,15 +1482,27 @@ export default function CardsPage() {
                 const isMarked = activeMarks.has(
                   square.squareIndex
                 );
+                const isPlayed =
+                  isSquarePlayed(square);
 
                 return (
                   <button
                     key={`${activeCard.id}-${square.squareIndex}`}
                     type="button"
+                    disabled={
+                      !isMarked &&
+                      !isPlayed
+                    }
                     onClick={() =>
                       toggleSong(square)
                     }
                     aria-pressed={isMarked}
+                    title={
+                      !isMarked &&
+                      !isPlayed
+                        ? "This song has not been played yet."
+                        : undefined
+                    }
                     style={{
                       display: "flex",
                       flexDirection: "column",
@@ -626,11 +1512,23 @@ export default function CardsPage() {
                       border: "1px solid #475569",
                       background: isMarked
                         ? "linear-gradient(145deg, #84cc16, #4d7c0f)"
-                        : "#020617",
-                      color: "white",
+                        : isPlayed
+                          ? "#020617"
+                          : "#111827",
+                      color:
+                        isMarked || isPlayed
+                          ? "white"
+                          : "#64748b",
+                      opacity:
+                        !isMarked && !isPlayed
+                          ? 0.48
+                          : 1,
                       overflow: "hidden",
                       textAlign: "center",
-                      cursor: "pointer",
+                      cursor:
+                        !isMarked && !isPlayed
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                   >
                     <strong
@@ -742,7 +1640,17 @@ export default function CardsPage() {
 
         <button
           type="button"
-          onClick={leaveGame}
+          onClick={() => {
+            /* BTTB_LEAVE_GAME_CONFIRM_V1 */
+            const confirmed =
+              window.confirm(
+                "Leave this game? Your current card selections on this device will be cleared."
+              );
+
+            if (confirmed) {
+              leaveGame();
+            }
+          }}
           style={{
             width: "100%",
             marginTop: "18px",

@@ -1,477 +1,1529 @@
 "use client";
 
+// BTTB_APPLE_DIRECT_CREATE_NO_HOST_PAGE_V2
+
+
+// BTTB_APPLE_MATCH_SERATO_LIST_V1
+
+// BTTB_APPLE_PLAYLIST_FULL_HEIGHT_V1
+
 import Link from "next/link";
 import Script from "next/script";
-import { useEffect, useMemo, useState } from "react";
+import AppleDirectCreateButton from "@/components/apple/AppleDirectCreateButton";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type ConnectionStatus =
-  | "checking"
-  | "connected"
-  | "disconnected"
-  | "error";
-
-type MusicSourceCardProps = {
-  title: string;
-  description: string;
-  status: string;
-  statusStyle: string;
-  icon: string;
-  children?: React.ReactNode;
+type AppleArtwork = { url?: string };
+type ApplePlaylist = {
+  id: string;
+  attributes?: {
+    name?: string;
+    description?: { standard?: string; short?: string };
+    artwork?: AppleArtwork;
+  };
+};
+// BTTB_APPLE_GAME_ADVISOR_V1
+type AppleAdvisorTrack = {
+  id?: string;
+  attributes?: {
+    name?: string;
+    artistName?: string;
+  };
 };
 
+type AppleAdvisorBody = {
+  data?: AppleAdvisorTrack[];
+  next?: string;
+  errors?: Array<{
+    title?: string;
+    detail?: string;
+  }>;
+};
 
-function MusicSourceCard({
-  title,
-  description,
-  status,
-  statusStyle,
-  icon,
-  children,
-}: MusicSourceCardProps) {
-  return (
-    <section className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-purple-400/40 hover:bg-white/[0.09]">
-      <div className="absolute -right-20 -top-20 h-48 w-48 rounded-full bg-purple-500/10 blur-3xl transition group-hover:bg-purple-500/20" />
+type AppleApiBody = {
+  data?: ApplePlaylist[];
+  errors?: Array<{ title?: string; detail?: string }>;
+};
+type MusicKitApiResponse = {
+  data?: AppleApiBody | ApplePlaylist[];
+  errors?: AppleApiBody["errors"];
+};
+/*
+ * BTTB_MUSICKIT_EXISTING_TYPES_V2
+ *
+ * The project already declares window.MusicKit in types/musickit.d.ts.
+ * Reuse that declaration instead of redeclaring Window.MusicKit here.
+ */
+type MusicKitInstance = ReturnType<
+  NonNullable<Window["MusicKit"]>["getInstance"]
+>;
 
-      <div className="relative">
-        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-3xl shadow-lg">
-              {icon}
-            </div>
+// BTTB_APPLE_SERATO_GAME_SETTINGS_V5
+type WinningPattern =
+  | "any-line"
+  | "across"
+  | "down"
+  | "diagonal"
+  | "x-pattern"
+  | "blackout";
 
-            <div>
-              <h2 className="text-2xl font-black text-white">
-                {title}
-              </h2>
+type StoredGameDetails = {
+  players?: number;
+  billing?: string;
+  winningPattern?: WinningPattern;
+  gameName?: string;
+  venueName?: string;
+  venue?: string;
+  eventDate?: string;
+  eventTime?: string;
+  hostName?: string;
+  primaryColor?: string;
+};
 
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                {description}
-              </p>
-            </div>
-          </div>
+type AppleGameSettings = {
+  cardCount: number;
+  clipLength: number;
+  shuffle: boolean;
+  winningPattern: WinningPattern;
+};
 
-          <span
-            className={`w-fit rounded-full border px-3 py-1.5 text-xs font-bold ${statusStyle}`}
-          >
-            {status}
-          </span>
-        </div>
+const APPLE_GAME_SETTINGS_KEY =
+  "bttb-apple-game-settings";
 
-        {children && (
-          <div className="mt-6 flex flex-wrap gap-3">
-            {children}
-          </div>
-        )}
-      </div>
-    </section>
+const APPLE_GAME_DETAILS_KEY =
+  "bttb-game-details";
+
+const WINNING_PATTERNS: Array<{
+  value: WinningPattern;
+  label: string;
+}> = [
+  {
+    value: "any-line",
+    label: "Any 5 in a Row",
+  },
+  {
+    value: "across",
+    label: "Across Only",
+  },
+  {
+    value: "down",
+    label: "Down Only",
+  },
+  {
+    value: "diagonal",
+    label: "Diagonal Only",
+  },
+  {
+    value: "x-pattern",
+    label: "X Pattern",
+  },
+  {
+    value: "blackout",
+    label: "Blackout",
+  },
+];
+
+function isWinningPattern(
+  value: unknown
+): value is WinningPattern {
+  return WINNING_PATTERNS.some(
+    (pattern) =>
+      pattern.value === value
   );
 }
 
-function getStatusBadge(status: ConnectionStatus) {
-  switch (status) {
-    case "checking":
-      return {
-        label: "Checking",
-        style:
-          "border-yellow-300/30 bg-yellow-400/10 text-yellow-200",
-      };
+type Status =
+  | "loading"
+  | "ready"
+  | "connecting"
+  | "loading-playlists"
+  | "connected"
+  | "error";
 
-    case "connected":
-      return {
-        label: "Connected",
-        style:
-          "border-green-300/30 bg-green-400/10 text-green-200",
-      };
-
-    case "error":
-      return {
-        label: "Connection Error",
-        style:
-          "border-red-300/30 bg-red-400/10 text-red-200",
-      };
-
-    default:
-      return {
-        label: "Not Connected",
-        style:
-          "border-slate-300/20 bg-slate-400/10 text-slate-200",
-      };
-  }
-}
-
-export default function MusicPage() {
-  const [spotifyStatus, setSpotifyStatus] =
-    useState<ConnectionStatus>("checking");
-
-  const [appleStatus, setAppleStatus] =
-    useState<ConnectionStatus>("checking");
-
-  const [appleScriptReady, setAppleScriptReady] =
+export default function AppleMusicPage() {
+  const [status, setStatus] = useState<Status>("loading");
+  const [message, setMessage] = useState("Preparing Apple Music...");
+  const [playlists, setPlaylists] = useState<ApplePlaylist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
+  const [search, setSearch] = useState("");
+  const [advisorTrackCount, setAdvisorTrackCount] =
+    useState<number | null>(null);
+  const [advisorLoading, setAdvisorLoading] =
     useState(false);
+  const [advisorError, setAdvisorError] =
+    useState("");
+  const [cardCount, setCardCount] =
+    useState(25);
+  const [clipLength, setClipLength] =
+    useState(30);
+  const [shuffle, setShuffle] =
+    useState(true);
+  const [winningPattern, setWinningPattern] =
+    useState<WinningPattern>(
+      "any-line"
+    );
+  const [gameDetails, setGameDetails] =
+    useState<StoredGameDetails | null>(
+      null
+    );
+  const [scriptReady, setScriptReady] = useState(false);
+  const configuredRef = useRef(false);
 
-  const [appleConfigured, setAppleConfigured] =
-    useState(false);
+  const extractPlaylists = useCallback((response: MusicKitApiResponse) => {
+    if (Array.isArray(response.data)) return response.data;
+    if (
+      response.data &&
+      !Array.isArray(response.data) &&
+      Array.isArray(response.data.data)
+    ) {
+      return response.data.data;
+    }
+    return [];
+  }, []);
 
-  const [appleMessage, setAppleMessage] =
-    useState("Preparing Apple Music...");
+  const extractError = useCallback((response: MusicKitApiResponse) => {
+    const errors = Array.isArray(response.errors)
+      ? response.errors
+      : response.data && !Array.isArray(response.data)
+        ? response.data.errors
+        : undefined;
+    return errors?.[0]?.detail || errors?.[0]?.title || "";
+  }, []);
 
-  const [connectingApple, setConnectingApple] =
-    useState(false);
+  const loadPlaylists = useCallback(
+    async (music: MusicKitInstance) => {
+      setStatus("loading-playlists");
+      setMessage("Loading your Apple Music playlists...");
+
+      const response =
+        (await music.api.music(
+          "/v1/me/library/playlists",
+          { limit: 100 }
+        )) as unknown as MusicKitApiResponse;
+
+      const apiError = extractError(response);
+      if (apiError) throw new Error(apiError);
+
+      const items = extractPlaylists(response);
+      setPlaylists(items);
+      setStatus("connected");
+      setMessage(
+        items.length
+          ? `${items.length} Apple Music playlist${items.length === 1 ? "" : "s"} loaded.`
+          : "Apple Music is connected, but no library playlists were returned."
+      );
+    },
+    [extractError, extractPlaylists]
+  );
+
+  const configure = useCallback(async () => {
+    if (!window.MusicKit || configuredRef.current) return;
+
+    try {
+      setStatus("loading");
+      setMessage("Preparing Apple Music...");
+
+      const response = await fetch("/api/apple-music/token", {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
+        developerToken?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.developerToken) {
+        throw new Error(data.error || "Apple Music setup is incomplete.");
+      }
+
+      await window.MusicKit.configure({
+        developerToken: data.developerToken,
+        app: { name: "Bingo to the Beats", build: "2.0.0" },
+      });
+
+      const music = window.MusicKit.getInstance();
+      configuredRef.current = true;
+
+      if (music.isAuthorized || music.musicUserToken) {
+        await loadPlaylists(music);
+      } else {
+        setStatus("ready");
+        setMessage("Apple Music is ready. Connect your account to view your playlists.");
+      }
+    } catch (error) {
+      console.error("Apple Music setup error:", error);
+      configuredRef.current = false;
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "Unable to prepare Apple Music.");
+    }
+  }, [loadPlaylists]);
 
   useEffect(() => {
-    async function checkSpotify() {
-      try {
-        const response = await fetch("/api/spotify/player", {
-          method: "GET",
-          cache: "no-store",
-        });
+    if (scriptReady) void configure();
+  }, [configure, scriptReady]);
 
-        const data = (await response.json()) as {
-          connected?: boolean;
-        };
-
-        setSpotifyStatus(
-          response.ok && data.connected === true
-            ? "connected"
-            : "disconnected"
-        );
-      } catch (error) {
-        console.error(
-          "Spotify connection check failed:",
-          error
-        );
-
-        setSpotifyStatus("error");
-      }
+  async function connect() {
+    const musicKit = window.MusicKit;
+    if (!musicKit || !configuredRef.current) {
+      setStatus("error");
+      setMessage("Apple Music is not ready. Retry the connection.");
+      return;
     }
 
-    void checkSpotify();
+    try {
+      setStatus("connecting");
+      setMessage("Waiting for Apple Music authorization...");
+      const music = musicKit.getInstance();
+      const token = music.musicUserToken || (await music.authorize());
+      if (!token) throw new Error("Apple Music authorization was not completed.");
+      await loadPlaylists(music);
+    } catch (error) {
+      console.error("Apple Music authorization error:", error);
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "Unable to authorize Apple Music.");
+    }
+  }
+
+  async function disconnect() {
+    try {
+      await window.MusicKit?.getInstance().unauthorize();
+      setPlaylists([]);
+      setStatus("ready");
+      setMessage("Apple Music is ready. Connect your account to view your playlists.");
+    } catch {
+      setStatus("error");
+      setMessage("Unable to disconnect Apple Music.");
+    }
+  }
+
+  function retry() {
+    configuredRef.current = false;
+    setStatus("loading");
+    setMessage("Retrying Apple Music...");
+    void configure();
+  }
+
+  // BTTB_APPLE_SERATO_WORKSPACE_UI_V2
+  const selectedPlaylist = useMemo(
+    () =>
+      playlists.find(
+        (playlist) =>
+          playlist.id === selectedPlaylistId
+      ) ?? null,
+    [
+      playlists,
+      selectedPlaylistId,
+    ]
+  );
+
+  const gameAdvisor = useMemo(() => {
+    const minimumTrackCount = 25;
+    const idealTrackCount = 75;
+    const requestedTrackCount = 80;
+
+    const availableTrackCount =
+      advisorTrackCount ?? 0;
+
+    const selectedTrackCount =
+      Math.min(
+        requestedTrackCount,
+        availableTrackCount
+      );
+
+    let readiness:
+      | "ready"
+      | "warning"
+      | "blocked" =
+      "ready";
+
+    const issues: string[] = [];
+    const recommendations:
+      string[] = [];
+
+    if (
+      advisorTrackCount !== null &&
+      availableTrackCount <
+        minimumTrackCount
+    ) {
+      readiness = "blocked";
+
+      issues.push(
+        `${availableTrackCount} playable songs are available. At least ${minimumTrackCount} are required.`
+      );
+
+      recommendations.push(
+        `Add ${
+          minimumTrackCount -
+          availableTrackCount
+        } more song${
+          minimumTrackCount -
+            availableTrackCount ===
+          1
+            ? ""
+            : "s"
+        } before creating the game.`
+      );
+    } else if (
+      advisorTrackCount !== null &&
+      availableTrackCount <
+        idealTrackCount
+    ) {
+      readiness = "warning";
+
+      issues.push(
+        `${availableTrackCount} playable songs are available, which is below the recommended ${idealTrackCount}.`
+      );
+
+      recommendations.push(
+        `Add ${
+          idealTrackCount -
+          availableTrackCount
+        } more song${
+          idealTrackCount -
+            availableTrackCount ===
+          1
+            ? ""
+            : "s"
+        } for better card variety.`
+      );
+    } else if (
+      advisorTrackCount !== null
+    ) {
+      recommendations.push(
+        "This Apple Music playlist is ready to create a game."
+      );
+    }
+
+    return {
+      readiness,
+      availableTrackCount,
+      selectedTrackCount,
+      minimumTrackCount,
+      idealTrackCount,
+      issues,
+      recommendations,
+    };
+  }, [
+    advisorTrackCount,
+  ]);
+
+  const filteredPlaylists = useMemo(() => {
+    const normalizedSearch =
+      search.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return playlists;
+    }
+
+    return playlists.filter(
+      (playlist) =>
+        (
+          playlist.attributes?.name ||
+          "Untitled Playlist"
+        )
+          .toLowerCase()
+          .includes(
+            normalizedSearch
+          )
+    );
+  }, [
+    playlists,
+    search,
+  ]);
+
+  useEffect(() => {
+    if (
+      playlists.length === 0
+    ) {
+      setSelectedPlaylistId("");
+      return;
+    }
+
+    setSelectedPlaylistId(
+      (current) =>
+        current &&
+        playlists.some(
+          (playlist) =>
+            playlist.id === current
+        )
+          ? current
+          : playlists[0].id
+    );
+  }, [playlists]);
+
+  useEffect(() => {
+    try {
+      const rawDetails =
+        sessionStorage.getItem(
+          APPLE_GAME_DETAILS_KEY
+        );
+
+      if (rawDetails) {
+        const parsed =
+          JSON.parse(
+            rawDetails
+          ) as StoredGameDetails;
+
+        setGameDetails(
+          parsed
+        );
+
+        if (
+          typeof parsed.players ===
+            "number" &&
+          parsed.players > 0
+        ) {
+          setCardCount(
+            Math.min(
+              500,
+              Math.max(
+                1,
+                Math.floor(
+                  parsed.players
+                )
+              )
+            )
+          );
+        }
+
+        if (
+          isWinningPattern(
+            parsed.winningPattern
+          )
+        ) {
+          setWinningPattern(
+            parsed.winningPattern
+          );
+        }
+      }
+
+      const rawSettings =
+        sessionStorage.getItem(
+          APPLE_GAME_SETTINGS_KEY
+        );
+
+      if (rawSettings) {
+        const parsed =
+          JSON.parse(
+            rawSettings
+          ) as Partial<AppleGameSettings>;
+
+        if (
+          typeof parsed.cardCount ===
+            "number" &&
+          parsed.cardCount > 0
+        ) {
+          setCardCount(
+            Math.min(
+              500,
+              Math.max(
+                1,
+                Math.floor(
+                  parsed.cardCount
+                )
+              )
+            )
+          );
+        }
+
+        if (
+          typeof parsed.clipLength ===
+            "number" &&
+          [15, 20, 30, 45, 60]
+            .includes(
+              parsed.clipLength
+            )
+        ) {
+          setClipLength(
+            parsed.clipLength
+          );
+        }
+
+        if (
+          typeof parsed.shuffle ===
+            "boolean"
+        ) {
+          setShuffle(
+            parsed.shuffle
+          );
+        }
+
+        if (
+          isWinningPattern(
+            parsed.winningPattern
+          )
+        ) {
+          setWinningPattern(
+            parsed.winningPattern
+          );
+        }
+      }
+    } catch {
+      // Keep the Serato-equivalent defaults.
+    }
   }, []);
 
   useEffect(() => {
-    if (!appleScriptReady) {
+    try {
+      const settings:
+        AppleGameSettings = {
+          cardCount,
+          clipLength,
+          shuffle,
+          winningPattern,
+        };
+
+      sessionStorage.setItem(
+        APPLE_GAME_SETTINGS_KEY,
+        JSON.stringify(
+          settings
+        )
+      );
+
+      sessionStorage.setItem(
+        "bttbWinningPattern",
+        winningPattern
+      );
+
+      sessionStorage.setItem(
+        APPLE_GAME_DETAILS_KEY,
+        JSON.stringify({
+          ...(gameDetails ?? {}),
+          players:
+            cardCount,
+          winningPattern,
+        })
+      );
+    } catch {
+      // Browser storage is optional for the UI.
+    }
+  }, [
+    cardCount,
+    clipLength,
+    shuffle,
+    winningPattern,
+    gameDetails,
+  ]);
+
+useEffect(() => {
+    if (
+      status !== "connected" ||
+      !selectedPlaylistId
+    ) {
+      setAdvisorTrackCount(
+        null
+      );
+      setAdvisorError("");
       return;
     }
 
     let cancelled = false;
 
-    async function prepareAppleMusic() {
+    async function loadAdvisor() {
+      setAdvisorLoading(true);
+      setAdvisorError("");
+      setAdvisorTrackCount(
+        null
+      );
+
       try {
-        setAppleStatus("checking");
-        setAppleMessage("Checking Apple Music setup...");
-
-        const tokenResponse = await fetch(
-          "/api/apple-music/token",
-          {
-            method: "GET",
-            cache: "no-store",
-          }
-        );
-
-        const tokenData =
-          (await tokenResponse.json()) as {
-            developerToken?: string;
-            error?: string;
-          };
-
-        if (
-          !tokenResponse.ok ||
-          !tokenData.developerToken
-        ) {
-          throw new Error(
-            tokenData.error ||
-              "Apple Music developer token is unavailable."
-          );
-        }
-
-        if (!window.MusicKit) {
-          throw new Error(
-            "The Apple Music connection library did not load."
-          );
-        }
-
-        await window.MusicKit.configure({
-          developerToken:
-            tokenData.developerToken,
-          app: {
-            name: "Bingo to the Beats",
-            build: "2.0.0",
-          },
-        });
-
         const music =
-          window.MusicKit.getInstance();
+          window.MusicKit?.getInstance();
 
-        if (cancelled) {
-          return;
+        if (!music) {
+          throw new Error(
+            "Apple Music is not ready."
+          );
         }
 
-        setAppleConfigured(true);
+        let nextPath:
+          | string
+          | undefined =
+          `/v1/me/library/playlists/${encodeURIComponent(
+            selectedPlaylistId
+          )}/tracks`;
 
-        const alreadyAuthorized =
-          music.isAuthorized === true ||
-          Boolean(music.musicUserToken);
+        let total = 0;
+        const seenPaths =
+          new Set<string>();
 
-        setAppleStatus(
-          alreadyAuthorized
-            ? "connected"
-            : "disconnected"
-        );
+        while (
+          nextPath &&
+          !seenPaths.has(
+            nextPath
+          )
+        ) {
+          seenPaths.add(
+            nextPath
+          );
 
-        setAppleMessage(
-          alreadyAuthorized
-            ? "Apple Music is connected and ready."
-            : "Apple Music is configured. Connect your account to view playlists."
-        );
-      } catch (error) {
-        console.error(
-          "Apple Music setup check failed:",
-          error
-        );
+          const response =
+            (await music.api.music(
+              nextPath,
+              {
+                limit: 100,
+              }
+            )) as unknown as {
+              data?:
+                | AppleAdvisorBody
+                | AppleAdvisorTrack[];
+              errors?:
+                AppleAdvisorBody["errors"];
+            };
+
+          const body:
+            AppleAdvisorBody =
+            Array.isArray(
+              response.data
+            )
+              ? {
+                  data:
+                    response.data,
+                }
+              : response.data &&
+                  !Array.isArray(
+                    response.data
+                  )
+                ? response.data
+                : {
+                    data: [],
+                    errors:
+                      response.errors,
+                  };
+
+          const errors =
+            Array.isArray(
+              response.errors
+            )
+              ? response.errors
+              : body.errors ?? [];
+
+          if (
+            errors.length > 0
+          ) {
+            const first =
+              errors[0];
+
+            throw new Error(
+              first?.detail ||
+                first?.title ||
+                "Unable to review this Apple Music playlist."
+            );
+          }
+
+          total +=
+            Array.isArray(
+              body.data
+            )
+              ? body.data.length
+              : 0;
+
+          nextPath =
+            typeof body.next ===
+              "string" &&
+            body.next.trim()
+              ? body.next
+              : undefined;
+        }
 
         if (!cancelled) {
-          setAppleConfigured(false);
-          setAppleStatus("error");
-          setAppleMessage(
+          setAdvisorTrackCount(
+            total
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAdvisorTrackCount(
+            null
+          );
+
+          setAdvisorError(
             error instanceof Error
               ? error.message
-              : "Apple Music could not be prepared."
+              : "Unable to review this Apple Music playlist."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setAdvisorLoading(
+            false
           );
         }
       }
     }
 
-    void prepareAppleMusic();
+    void loadAdvisor();
 
     return () => {
       cancelled = true;
     };
-  }, [appleScriptReady]);
+  }, [
+    selectedPlaylistId,
+    status,
+  ]);
 
-  async function connectAppleMusic() {
-    if (
-      !appleConfigured ||
-      !window.MusicKit
-    ) {
-      setAppleStatus("error");
-      setAppleMessage(
-        "Apple Music is not ready yet. Refresh the page and try again."
+  async function refreshPlaylists() {
+    const music =
+      window.MusicKit?.getInstance();
+
+    if (!music) {
+      setMessage(
+        "Apple Music is not ready."
       );
       return;
     }
 
     try {
-      setConnectingApple(true);
-      setAppleStatus("checking");
-      setAppleMessage(
-        "Waiting for Apple Music authorization..."
-      );
-
-      const music =
-        window.MusicKit.getInstance();
-
-      const musicUserToken =
-        await music.authorize();
-
-      if (!musicUserToken) {
-        throw new Error(
-          "Apple Music authorization was not completed."
-        );
-      }
-
-      setAppleStatus("connected");
-      setAppleMessage(
-        "Apple Music is connected and ready."
+      await loadPlaylists(
+        music
       );
     } catch (error) {
-      console.error(
-        "Apple Music authorization failed:",
-        error
-      );
-
-      setAppleStatus("disconnected");
-      setAppleMessage(
+      setStatus("error");
+      setMessage(
         error instanceof Error
           ? error.message
-          : "Apple Music authorization was cancelled."
+          : "Unable to refresh Apple Music playlists."
       );
-    } finally {
-      setConnectingApple(false);
     }
   }
 
-  const spotify = useMemo(
-    () => getStatusBadge(spotifyStatus),
-    [spotifyStatus]
-  );
-
-  const apple = useMemo(
-    () => getStatusBadge(appleStatus),
-    [appleStatus]
-  );
+  const artworkUrl = (url?: string) =>
+    url ? url.replace("{w}", "600").replace("{h}", "600") : "";
 
   return (
     <>
       <Script
+        id="apple-musickit-v3"
         src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"
         strategy="afterInteractive"
-        onLoad={() => {
-          setAppleScriptReady(true);
-        }}
+        onReady={() =>
+          setScriptReady(true)
+        }
+        onLoad={() =>
+          setScriptReady(true)
+        }
         onError={() => {
-          setAppleStatus("error");
-          setAppleMessage(
+          setStatus("error");
+          setMessage(
             "The Apple Music connection library could not be loaded."
           );
         }}
       />
 
-      <main className="relative min-h-screen overflow-hidden bg-[#070713] text-white">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-[-120px] top-20 h-96 w-96 rounded-full bg-purple-700/30 blur-[120px]" />
-          <div className="absolute right-[-120px] top-40 h-96 w-96 rounded-full bg-pink-600/20 blur-[130px]" />
-          <div className="absolute bottom-[-180px] left-1/3 h-[500px] w-[500px] rounded-full bg-blue-700/20 blur-[150px]" />
-        </div>
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#24205f_0%,_#0f172a_42%,_#020617_100%)] text-white">
+        <header className="flex min-h-[78px] flex-wrap items-center justify-between gap-[18px] border-b border-slate-400/20 bg-slate-950/90 px-6 py-[15px] backdrop-blur-xl">
+          <div className="flex items-center gap-[14px]">
+            <div className="grid h-12 w-12 place-items-center rounded-[15px] bg-gradient-to-br from-blue-600 to-purple-600 text-[23px] shadow-[0_12px_30px_rgba(124,58,237,0.3)]">
+              ♫
+            </div>
 
-        <div className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-sm font-bold text-purple-300 transition hover:text-white"
-          >
-            <span>←</span>
-            Back to Dashboard
-          </Link>
-
-          <div className="mt-8 rounded-3xl border border-white/10 bg-gradient-to-br from-purple-950/80 via-[#111126] to-pink-950/50 p-8 shadow-2xl backdrop-blur-xl sm:p-10">
-            <div className="max-w-3xl">
-              <span className="inline-flex rounded-full border border-purple-300/20 bg-purple-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-purple-200">
+            <div>
+              <p className="m-0 text-[11px] font-black uppercase tracking-[0.15em] text-violet-400">
                 Bingo to the Beats
-              </span>
-
-              <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-5xl">
-                Music Sources
-              </h1>
-
-              <p className="mt-4 text-base leading-7 text-slate-300 sm:text-lg">
-                Connect a music platform, choose a playlist,
-                and begin building your Version 2 musical bingo
-                game.
               </p>
+              <h1 className="mt-[3px] text-[22px] font-bold">
+                Apple Music Workspace
+              </h1>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6">
-            <MusicSourceCard
-              title="Spotify"
-              description="Import Spotify playlists and prepare songs for live Bingo to the Beats games."
-              status={spotify.label}
-              statusStyle={spotify.style}
-              icon="●"
+          <nav className="flex flex-wrap gap-[9px]">
+            <Link
+              href="/music"
+              className="rounded-[11px] border border-slate-700 px-[14px] py-[10px] text-[13px] font-extrabold text-slate-200 no-underline"
             >
-              <Link
-                href="/api/spotify/login"
-                className="rounded-xl bg-[#1DB954] px-5 py-3 text-sm font-black text-black shadow-lg transition hover:scale-[1.02] hover:bg-[#25d366]"
-              >
-                {spotifyStatus === "connected"
-                  ? "Reconnect Spotify"
-                  : "Connect Spotify"}
-              </Link>
+              Music Sources
+            </Link>
 
-              <Link
-                href="/spotify"
-                className="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15"
-              >
-                View Spotify Playlists
-              </Link>
-            </MusicSourceCard>
-
-            <MusicSourceCard
-              title="Apple Music"
-              description="Import Apple Music playlists and use your Apple Music subscription to power live Bingo to the Beats games."
-              status={apple.label}
-              statusStyle={apple.style}
-              icon=""
+            <Link
+              href="/dashboard"
+              className="rounded-[11px] border border-slate-700 px-[14px] py-[10px] text-[13px] font-extrabold text-slate-200 no-underline"
             >
-              {appleStatus === "connected" ? (
-                <>
-                  <Link
-                    href="/music/apple"
-                    className="rounded-xl bg-[#FA2D48] px-5 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] hover:bg-[#ff4960]"
+              Dashboard
+            </Link>
+
+            <Link
+              href="/dj-console"
+              className="rounded-[11px] border border-slate-700 px-[14px] py-[10px] text-[13px] font-extrabold text-slate-200 no-underline"
+            >
+              DJ Console
+            </Link>
+          </nav>
+        </header>
+
+        <section className="relative z-[1] mx-auto w-[min(calc(100%-32px),1280px)] max-w-[1280px] px-4 pb-20 pt-[34px] sm:px-0">
+          <section className="flex flex-wrap items-end justify-between gap-7 rounded-[26px] border border-violet-300/20 bg-gradient-to-br from-indigo-950/95 to-slate-900/90 p-[34px] shadow-[0_28px_70px_rgba(0,0,0,0.32)]">
+            <div>
+              <p className="m-0 text-xs font-black uppercase tracking-[0.15em] text-violet-300">
+                Apple Music Integration
+              </p>
+
+              <h2 className="mt-[10px] max-w-[700px] text-[clamp(35px,5vw,58px)] font-black leading-none tracking-[-0.04em]">
+                Build a game from your Apple Music playlists
+              </h2>
+
+              <p className="mt-[18px] max-w-[680px] text-[17px] leading-[1.7] text-slate-300">
+                Choose a playlist, prepare the game, and launch
+                directly into the same Bingo to the Beats workflow
+                used by Serato.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-[10px] max-sm:w-full max-sm:grid-cols-1">
+              <div className="min-w-[115px] rounded-2xl border border-slate-700 bg-slate-950/60 p-[17px] text-center">
+                <strong className="block text-[23px]">
+                  {status ===
+                  "loading-playlists"
+                    ? "—"
+                    : playlists.length}
+                </strong>
+                <span className="mt-[5px] block text-[11px] font-extrabold uppercase text-slate-400">
+                  Playlists
+                </span>
+              </div>
+
+              <div className="min-w-[115px] rounded-2xl border border-slate-700 bg-slate-950/60 p-[17px] text-center">
+                <strong className="block text-[23px]">
+                  Apple
+                </strong>
+                <span className="mt-[5px] block text-[11px] font-extrabold uppercase text-slate-400">
+                  Music Source
+                </span>
+              </div>
+
+              <div className="min-w-[115px] rounded-2xl border border-slate-700 bg-slate-950/60 p-[17px] text-center">
+                <strong
+                  className={`block text-[23px] ${
+                    status === "error"
+                      ? "text-rose-300"
+                      : status ===
+                          "connected"
+                        ? "text-lime-300"
+                        : "text-violet-300"
+                  }`}
+                >
+                  {status === "error"
+                    ? "Issue"
+                    : status ===
+                        "connected"
+                      ? "Ready"
+                      : "Connect"}
+                </strong>
+
+                <span className="mt-[5px] block text-[11px] font-extrabold uppercase text-slate-400">
+                  Library Status
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-[22px] grid grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)] gap-[22px] max-[900px]:grid-cols-1 items-stretch min-w-0">
+            <section className="flex min-h-[680px] min-w-0 self-stretch flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/95 p-[26px] [contain:size]">
+              <div className="flex items-center justify-between gap-[15px]">
+                <div>
+                  <p className="m-0 text-[11px] font-black uppercase tracking-[0.13em] text-violet-400">
+                    Apple Music Library
+                  </p>
+                  <h2 className="mt-[6px] text-[27px] font-bold">
+                    Choose a Playlist
+                  </h2>
+                </div>
+
+                {status ===
+                  "connected" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void refreshPlaylists()
+                    }
+                    className="rounded-[10px] border border-slate-600 bg-slate-900 px-[13px] py-[9px] font-extrabold text-white"
                   >
-                    View Apple Playlists
-                  </Link>
+                    Refresh
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="search"
+                value={search}
+                onChange={(event) =>
+                  setSearch(
+                    event.target.value
+                  )
+                }
+                placeholder="Search Apple Music playlists..."
+                disabled={
+                  status !==
+                  "connected"
+                }
+                className="mt-[22px] w-full rounded-[14px] border border-slate-600 bg-slate-950 px-[17px] py-[15px] text-[15px] text-white outline-none disabled:opacity-50"
+              />
+
+              <div className="mt-4 grid min-h-0 min-w-0 flex-1 auto-rows-max content-start gap-[10px] overflow-y-auto overflow-x-hidden overscroll-x-none pr-[5px] [scrollbar-gutter:stable]">
+                {status ===
+                "loading-playlists" ? (
+                  <div className="rounded-2xl border border-dashed border-slate-600 px-[18px] py-[50px] text-center text-slate-400">
+                    Reading Apple Music playlists...
+                  </div>
+                ) : status !==
+                  "connected" ? (
+                  <div className="rounded-2xl border border-dashed border-slate-600 px-[18px] py-[50px] text-center text-slate-400">
+                    Connect Apple Music to view your playlists.
+                  </div>
+                ) : filteredPlaylists
+                    .length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-600 px-[18px] py-[50px] text-center text-slate-400">
+                    No matching playlists were found.
+                  </div>
+                ) : (
+                  filteredPlaylists.map(
+                    (playlist) => {
+                      const selected =
+                        playlist.id ===
+                        selectedPlaylistId;
+
+                      const name =
+                        playlist
+                          .attributes
+                          ?.name ||
+                        "Untitled Playlist";
+
+                      const description =
+                        playlist
+                          .attributes
+                          ?.description
+                          ?.short ||
+                        playlist
+                          .attributes
+                          ?.description
+                          ?.standard ||
+                        "Apple Music playlist";
+
+                      const art =
+                        artworkUrl(
+                          playlist
+                            .attributes
+                            ?.artwork
+                            ?.url
+                        );
+
+                      return (
+                        <button
+                          key={
+                            playlist.id
+                          }
+                          type="button"
+                          onClick={() => {
+                            setSelectedPlaylistId(
+                              playlist.id
+                            );
+
+                            setMessage(
+                              `${name} selected.`
+                            );
+                          }}
+                          className={`flex h-auto min-h-[72px] w-full min-w-0 max-w-full box-border items-center gap-[14px] overflow-hidden rounded-[15px] border p-[15px] text-left text-white transition ${
+                            selected
+                              ? "border-violet-400 bg-gradient-to-br from-violet-700/30 to-blue-600/20 shadow-[0_0_0_1px_rgba(167,139,250,0.25)]"
+                              : "border-slate-700 bg-slate-950/70"
+                          }`}
+                        >
+                          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center overflow-hidden rounded-xl bg-indigo-500/20 text-lg text-violet-300">
+                            {art ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={art}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              "♫"
+                            )}
+                          </span>
+
+                          <span className="flex min-w-0 flex-1 self-stretch flex-col justify-center overflow-visible">
+                            <strong className="block whitespace-normal break-words text-[15px] leading-[1.3] [overflow-wrap:anywhere]">
+                              {name}
+                            </strong>
+
+                            <small className="mt-[5px] block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.3] text-slate-400">
+                              {description}
+                            </small>
+                          </span>
+
+                          <span
+                            className={`h-[10px] w-[10px] shrink-0 rounded-full ${
+                              selected
+                                ? "bg-lime-400"
+                                : "bg-slate-600"
+                            }`}
+                          />
+                        </button>
+                      );
+                    }
+                  )
+                )}
+              </div>
+            </section>
+
+            <aside className="sticky top-[18px] self-start rounded-3xl border border-slate-700 bg-slate-900/95 p-[26px] max-[900px]:static">
+              <p className="m-0 text-[11px] font-black uppercase tracking-[0.13em] text-violet-400">
+                Game Builder
+              </p>
+
+              <h2 className="mt-[6px] text-[27px] font-bold">
+                Game Settings
+              </h2>
+
+              <div className="mt-5 rounded-2xl border border-violet-300/30 bg-violet-700/10 p-[18px]">
+                <span className="block text-[11px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Selected playlist
+                </span>
+
+                <strong className="mt-[7px] block text-[18px]">
+                  {selectedPlaylist
+                    ?.attributes
+                    ?.name ||
+                    "No playlist selected"}
+                </strong>
+
+                <small className="mt-[6px] block leading-[1.5] text-slate-400">
+                  {selectedPlaylist
+                    ? "Ready for game settings"
+                    : "Choose a playlist from the library"}
+                </small>
+              </div>
+
+              {gameDetails?.gameName && (
+                <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-[18px]">
+                  <span className="block text-[11px] font-black uppercase tracking-[0.1em] text-slate-400">
+                    Event
+                  </span>
+
+                  <strong className="mt-[7px] block text-[18px]">
+                    {gameDetails.gameName}
+                  </strong>
+
+                  <small className="mt-[6px] block leading-[1.5] text-slate-400">
+                    {[
+                      gameDetails.venueName ??
+                        gameDetails.venue,
+                      gameDetails.hostName,
+                    ]
+                      .filter(Boolean)
+                      .join(" • ") ||
+                      "Event setup is ready"}
+                  </small>
+                </div>
+              )}
+
+              <div className="mt-5 grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+                <label className="block text-[13px] font-extrabold text-slate-200">
+                  Bingo cards
+
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={cardCount}
+                    onChange={(event) =>
+                      setCardCount(
+                        Math.max(
+                          1,
+                          Math.min(
+                            500,
+                            Number(
+                              event.target.value
+                            ) || 1
+                          )
+                        )
+                      )
+                    }
+                    className="mt-[9px] w-full rounded-xl border border-slate-600 bg-slate-950 px-[14px] py-[13px] text-[15px] text-white outline-none"
+                  />
+                </label>
+
+                <label className="block text-[13px] font-extrabold text-slate-200">
+                  Clip length
+
+                  <select
+                    value={clipLength}
+                    onChange={(event) =>
+                      setClipLength(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    className="mt-[9px] w-full rounded-xl border border-slate-600 bg-slate-950 px-[14px] py-[13px] text-[15px] text-white outline-none"
+                  >
+                    <option value={15}>
+                      15 seconds
+                    </option>
+                    <option value={20}>
+                      20 seconds
+                    </option>
+                    <option value={30}>
+                      30 seconds
+                    </option>
+                    <option value={45}>
+                      45 seconds
+                    </option>
+                    <option value={60}>
+                      60 seconds
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="mt-[18px] block text-[13px] font-extrabold text-slate-200">
+                Winning pattern
+
+                <select
+                  value={winningPattern}
+                  onChange={(event) =>
+                    setWinningPattern(
+                      event.target
+                        .value as WinningPattern
+                    )
+                  }
+                  className="mt-[9px] w-full rounded-xl border border-slate-600 bg-slate-950 px-[14px] py-[13px] text-[15px] text-white outline-none"
+                >
+                  {WINNING_PATTERNS.map(
+                    (pattern) => (
+                      <option
+                        key={
+                          pattern.value
+                        }
+                        value={
+                          pattern.value
+                        }
+                      >
+                        {pattern.label}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <label className="mt-5 flex items-center justify-between gap-[18px] rounded-[15px] border border-slate-700 bg-slate-950/60 p-[17px]">
+                <span>
+                  <strong className="block text-[15px]">
+                    Shuffle playlist
+                  </strong>
+
+                  <small className="mt-1 block text-slate-400">
+                    Randomize the song
+                    order before opening
+                    the DJ Console.
+                  </small>
+                </span>
+
+                <input
+                  type="checkbox"
+                  checked={shuffle}
+                  onChange={(event) =>
+                    setShuffle(
+                      event.target.checked
+                    )
+                  }
+                  className="h-[22px] w-[22px] accent-violet-500"
+                />
+              </label>
+
+              <section className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-[18px]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="block text-[11px] font-black uppercase tracking-[0.1em] text-violet-400">
+                      Game Advisor
+                    </span>
+
+                    <strong className="mt-[7px] block text-[18px]">
+                      {advisorLoading
+                        ? "Reviewing Playlist..."
+                        : advisorError
+                          ? "Unable to Review"
+                          : advisorTrackCount ===
+                              null
+                            ? "Choose a Playlist"
+                            : gameAdvisor.readiness ===
+                                "ready"
+                              ? "Ready to Create"
+                              : gameAdvisor.readiness ===
+                                  "warning"
+                                ? "Review Recommended"
+                                : "More Songs Required"}
+                    </strong>
+                  </div>
+
+                  {!advisorLoading &&
+                    !advisorError &&
+                    advisorTrackCount !==
+                      null && (
+                      <span
+                        className={`rounded-full px-3 py-[6px] text-[10px] font-black uppercase tracking-[0.1em] ${
+                          gameAdvisor.readiness ===
+                          "ready"
+                            ? "bg-lime-400/15 text-lime-300"
+                            : gameAdvisor.readiness ===
+                                "warning"
+                              ? "bg-amber-400/15 text-amber-300"
+                              : "bg-rose-400/15 text-rose-300"
+                        }`}
+                      >
+                        {gameAdvisor.readiness}
+                      </span>
+                    )}
+                </div>
+
+                {advisorLoading ? (
+                  <p className="mt-3 text-[13px] leading-[1.6] text-slate-400">
+                    Checking the selected Apple Music playlist for game readiness.
+                  </p>
+                ) : advisorError ? (
+                  <p className="mt-3 text-[13px] leading-[1.6] text-rose-300">
+                    {advisorError}
+                  </p>
+                ) : advisorTrackCount ===
+                  null ? (
+                  <p className="mt-3 text-[13px] leading-[1.6] text-slate-400">
+                    Select an Apple Music playlist to check whether it has enough songs for a game.
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+                          Available Songs
+                        </span>
+                        <strong className="mt-1 block text-xl">
+                          {gameAdvisor.availableTrackCount.toLocaleString(
+                            "en-US"
+                          )}
+                        </strong>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+                          Selected Songs
+                        </span>
+                        <strong className="mt-1 block text-xl">
+                          {gameAdvisor.selectedTrackCount.toLocaleString(
+                            "en-US"
+                          )}
+                        </strong>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+                          Minimum Required
+                        </span>
+                        <strong className="mt-1 block text-xl">
+                          {gameAdvisor.minimumTrackCount}
+                        </strong>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+                          Recommended
+                        </span>
+                        <strong className="mt-1 block text-xl">
+                          {gameAdvisor.idealTrackCount}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {gameAdvisor.issues.length >
+                      0 && (
+                      <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3">
+                        <strong className="text-[12px] text-amber-200">
+                          Items to Review
+                        </strong>
+
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] leading-[1.55] text-slate-300">
+                          {gameAdvisor.issues.map(
+                            (issue) => (
+                              <li
+                                key={
+                                  issue
+                                }
+                              >
+                                {issue}
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mt-4">
+                      <strong className="text-[12px] text-slate-200">
+                        Recommendations
+                      </strong>
+
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] leading-[1.55] text-slate-400">
+                        {gameAdvisor.recommendations.map(
+                          (
+                            recommendation
+                          ) => (
+                            <li
+                              key={
+                                recommendation
+                              }
+                            >
+                              {recommendation}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-[18px]">
+                <span className="block text-[11px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Apple Music
+                </span>
+
+                <strong
+                  className={`mt-[7px] block text-[18px] ${
+                    status === "error"
+                      ? "text-rose-300"
+                      : status ===
+                          "connected"
+                        ? "text-lime-300"
+                        : "text-white"
+                  }`}
+                >
+                  {status ===
+                    "connected"
+                    ? "Connected"
+                    : status ===
+                        "error"
+                      ? "Connection issue"
+                      : "Not connected"}
+                </strong>
+
+                <small className="mt-[6px] block leading-[1.5] text-slate-400">
+                  {message}
+                </small>
+              </div>
+
+              {status ===
+                "error" ? (
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="mt-[22px] w-full rounded-full bg-gradient-to-r from-[#FA2D48] to-purple-600 p-4 text-[15px] font-black text-white"
+                >
+                  Retry Apple Music
+                </button>
+              ) : status !==
+                "connected" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void connect()
+                  }
+                  disabled={
+                    status !==
+                    "ready"
+                  }
+                  className="mt-[22px] w-full rounded-full bg-gradient-to-r from-[#FA2D48] to-purple-600 p-4 text-[15px] font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {status === "loading"
+                    ? "Preparing Apple Music..."
+                    : status ===
+                        "connecting"
+                      ? "Authorizing..."
+                      : status ===
+                          "loading-playlists"
+                        ? "Loading Playlists..."
+                        : "Connect Apple Music"}
+                </button>
+              ) : (
+                <>
+                  {selectedPlaylist &&
+                  !(
+                    advisorTrackCount !== null &&
+                    gameAdvisor.readiness === "blocked"
+                  ) ? (
+                    <AppleDirectCreateButton
+                      playlistId={
+                        selectedPlaylist.id
+                      }
+                      playlistName={
+                        selectedPlaylist
+                          .attributes
+                          ?.name ||
+                        "Untitled Playlist"
+                      }
+                      cardCount={
+                        cardCount
+                      }
+                      clipLength={
+                        clipLength
+                      }
+                      winningPattern={
+                        winningPattern
+                      }
+                      shuffle={
+                        shuffle
+                      }
+                      gameName={
+                        gameDetails
+                          ?.gameName
+                      }
+                      venueName={
+                        gameDetails
+                          ?.venueName ??
+                        gameDetails
+                          ?.venue
+                      }
+                      hostName={
+                        gameDetails
+                          ?.hostName
+                      }
+                      eventDate={
+                        gameDetails
+                          ?.eventDate
+                      }
+                      eventTime={
+                        gameDetails
+                          ?.eventTime
+                      }
+                      primaryColor={
+                        gameDetails
+                          ?.primaryColor
+                      }
+                      onMessage={
+                        setMessage
+                      }
+                    />
+                  ) : (
+                    <div className="mt-[22px] w-full cursor-not-allowed rounded-full bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-center text-[15px] font-black text-white opacity-50">
+                      {selectedPlaylist &&
+                      advisorTrackCount !== null &&
+                      gameAdvisor.readiness === "blocked"
+                        ? "More Songs Required"
+                        : "Choose a Playlist"}
+                    </div>
+                  )}
 
                   <button
                     type="button"
-                    onClick={connectAppleMusic}
-                    disabled={connectingApple}
-                    className="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() =>
+                      void disconnect()
+                    }
+                    className="mt-3 w-full rounded-full border border-slate-600 bg-slate-950/60 p-[13px] text-[13px] font-extrabold text-slate-300"
                   >
-                    {connectingApple
-                      ? "Connecting..."
-                      : "Reconnect Apple Music"}
+                    Disconnect Apple Music
                   </button>
                 </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={connectAppleMusic}
-                  disabled={
-                    !appleConfigured ||
-                    appleStatus === "checking" ||
-                    connectingApple
-                  }
-                  className="rounded-xl bg-[#FA2D48] px-5 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] hover:bg-[#ff4960] disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300 disabled:opacity-70"
-                >
-                  {connectingApple
-                    ? "Connecting..."
-                    : appleStatus === "checking"
-                      ? "Checking Apple Music..."
-                      : "Connect Apple Music"}
-                </button>
               )}
-
-              {appleConfigured &&
-                appleStatus !== "connected" && (
-                  <Link
-                    href="/music/apple"
-                    className="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15"
-                  >
-                    Open Apple Music
-                  </Link>
-                )}
-
-              <p className="w-full text-sm leading-6 text-slate-400">
-                {appleMessage}
-              </p>
-            </MusicSourceCard>
-
-            <MusicSourceCard
-              title="TIDAL"
-              description="TIDAL playlist support will be added after the Version 2 Apple Music and Spotify workflows are complete."
-              status="Coming Soon"
-              statusStyle="border-purple-300/30 bg-purple-400/10 text-purple-200"
-              icon="◆"
-            />
-
-            <MusicSourceCard
-              title="Serato"
-              description="Import an exported Serato CSV playlist and use those tracks to generate musical bingo cards."
-              status="Available"
-              statusStyle="border-blue-300/30 bg-blue-400/10 text-blue-200"
-              icon="♫"
-            >
-              <Link
-                href="/serato"
-                className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] hover:from-blue-500 hover:to-purple-500"
-              >
-                Import Serato Playlist
-              </Link>
-            </MusicSourceCard>
-          </div>
-        </div>
+            </aside>
+          </section>
+        </section>
       </main>
     </>
   );
 }
-

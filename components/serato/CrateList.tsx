@@ -154,7 +154,24 @@ export default function CrateList({
 }
 
 const cratePanelStyle: CSSProperties = {
+  // BTTB_SERATO_CRATELIST_EXACT_V5
+  // BTTB_SERATO_MATCH_GAME_BUILDER_HEIGHT_V6
   minHeight: "680px",
+  minWidth: 0,
+  alignSelf: "stretch",
+  display: "flex",
+  flexDirection: "column",
+  boxSizing: "border-box",
+
+  /*
+   * The Game Builder is the height reference for this grid row.
+   * Size containment prevents the full crate collection from making
+   * the left column taller than the Game Builder. The inner list
+   * handles vertical scrolling instead.
+   */
+  contain: "size",
+  overflow: "hidden",
+
   padding: "26px",
   border: "1px solid #334155",
   borderRadius: "24px",
@@ -205,16 +222,39 @@ const searchInputStyle: CSSProperties = {
 };
 
 const crateListStyle: CSSProperties = {
+  // BTTB_SERATO_COMPLETE_PLAYLIST_ROWS_V2
+  gridAutoRows: "max-content",
+  alignItems: "start",
   display: "grid",
+  flex: "1 1 auto",
+  minHeight: 0,
+  minWidth: 0,
+  width: "100%",
+  boxSizing: "border-box",
+  alignContent: "start",
   gap: "10px",
-  maxHeight: "570px",
   marginTop: "16px",
   paddingRight: "5px",
+
+  /*
+   * Scroll only inside the playlist list. Horizontal movement is
+   * explicitly disabled.
+   */
   overflowY: "auto",
+  overflowX: "hidden",
+  overscrollBehaviorX: "none",
+  scrollbarGutter: "stable",
 };
 
 const crateButtonStyle: CSSProperties = {
+  height: "auto",
+  minHeight: "72px",
+  alignSelf: "start",
+  overflow: "visible",
   width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   display: "flex",
   alignItems: "center",
   gap: "14px",
@@ -239,19 +279,32 @@ const crateIconStyle: CSSProperties = {
 };
 
 const crateCopyStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignSelf: "stretch",
+  overflow: "visible",
   minWidth: 0,
   flex: 1,
 };
 
 const crateNameStyle: CSSProperties = {
+  overflow: "visible",
+  textOverflow: "clip",
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  lineHeight: 1.3,
+  // BTTB_SERATO_FULL_PLAYLIST_NAMES_V1
   display: "block",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
+  minWidth: 0,
   fontSize: "15px",
 };
 
 const crateCountStyle: CSSProperties = {
+  lineHeight: 1.3,
+  whiteSpace: "normal",
+  overflow: "visible",
   display: "block",
   marginTop: "5px",
   color: "#94a3b8",

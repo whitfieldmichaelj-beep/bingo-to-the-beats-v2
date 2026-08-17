@@ -2,7 +2,8 @@ export type MusicProvider =
   | "spotify"
   | "apple"
   | "tidal"
-  | "serato";
+  | "serato"
+  | "local";
 
 export type ConnectionStatus =
   | "connected"
@@ -29,21 +30,22 @@ export interface MusicTrack {
   provider: MusicProvider;
 
   /**
-   * Original track ID from Spotify, Apple Music,
-   * TIDAL, Serato, or another provider.
+   * Original track ID from the source provider.
    */
   providerTrackId: string;
 
   bpm?: number | null;
   explicit?: boolean;
+
+  /**
+   * Local providers may supply a readable file path.
+   */
+  filePath?: string;
+  fileName?: string;
 }
 
 export interface MusicPlaylist {
-  /**
-   * Internal or provider playlist ID.
-   */
   id: string;
-
   name: string;
   description?: string;
 

@@ -17,6 +17,7 @@ type SessionMusicSource =
 
 type DisplayTrack = {
   id: string;
+  gameTrackId?: string;
   name: string;
   artist: string;
   album: string;
@@ -219,22 +220,7 @@ function readSessionStorageJson<T>(
   }
 }
 
-function generateJoinCode(): string {
-  const characters =
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-  let code = "";
-
-  for (let index = 0; index < 6; index += 1) {
-    const randomIndex = Math.floor(
-      Math.random() * characters.length
-    );
-
-    code += characters[randomIndex];
-  }
-
-  return code;
-}
 
 function shuffleTracks(
   tracks: DisplayTrack[]
@@ -259,6 +245,43 @@ function shuffleTracks(
   return shuffled;
 }
 
+
+// BTTB_APPLE_HOST_LOADING_HANG_FIX_V1
+async function withTimeout<T>(
+  promise: Promise<T>,
+  milliseconds: number,
+  message: string
+): Promise<T> {
+  let timeoutId:
+    | ReturnType<typeof setTimeout>
+    | undefined;
+
+  const timeoutPromise =
+    new Promise<never>(
+      (_resolve, reject) => {
+        timeoutId = setTimeout(
+          () => {
+            reject(
+              new Error(message)
+            );
+          },
+          milliseconds
+        );
+      }
+    );
+
+  try {
+    return await Promise.race([
+      promise,
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export default function HostPlaylistPage() {
   const params =
     useParams<{ playlistId: string }>();
@@ -280,7 +303,18 @@ export default function HostPlaylistPage() {
   const [appleScriptReady, setAppleScriptReady] =
     useState(source !== "apple");
 
-  const [tracks, setTracks] = useState<
+
+  useEffect(() => {
+    if (
+      source === "apple" &&
+      typeof window !== "undefined" &&
+      window.MusicKit
+    ) {
+      setAppleScriptReady(true);
+    }
+  }, [source]);
+
+const [tracks, setTracks] = useState<
     DisplayTrack[]
   >([]);
 
@@ -295,10 +329,48 @@ export default function HostPlaylistPage() {
   );
 
   const [clipLength, setClipLength] =
-    useState("20");
+    useState(() => {
+      const requested =
+        Number(
+          searchParams.get(
+            "clipLength"
+          )
+        );
+
+      return String(
+        [15, 20, 30, 45, 60]
+          .includes(requested)
+          ? requested
+          : 30
+      );
+    });
 
   const [cardCount, setCardCount] =
-    useState("100");
+    useState(() => {
+      const requested =
+        Number(
+          searchParams.get(
+            "cardCount"
+          )
+        );
+
+      return String(
+        Number.isFinite(
+          requested
+        ) &&
+        requested > 0
+          ? Math.min(
+              500,
+              Math.max(
+                1,
+                Math.floor(
+                  requested
+                )
+              )
+            )
+          : 25
+      );
+    });
 
   useEffect(() => {
     if (
@@ -498,7 +570,11 @@ export default function HostPlaylistPage() {
 
         const loadedTracks =
           source === "apple"
-            ? await loadAppleTracks()
+            ? await withTimeout(
+                loadAppleTracks(),
+                25_000,
+                "Apple Music took too long to load this playlist. Return to Apple Music, reconnect, and try again."
+              )
             : await loadSpotifyTracks();
 
         if (cancelled) {
@@ -557,7 +633,8 @@ export default function HostPlaylistPage() {
     source,
   ]);
 
-  function createGameSession() {
+    // BTTB_STREAMING_GAME_PERSISTENCE_V1
+  async function createGameSession() {
     if (tracks.length === 0) {
       setMessage(
         "The playlist must contain songs before a game can be created."
@@ -568,21 +645,25 @@ export default function HostPlaylistPage() {
     try {
       setCreatingGame(true);
 
-      const safeClipLength = Math.min(
-        300,
-        Math.max(
-          5,
-          Number(clipLength) || 20
-        )
-      );
+      const safeClipLength =
+        Math.min(
+          300,
+          Math.max(
+            5,
+            Number(clipLength) ||
+              20
+          )
+        );
 
-      const safeCardCount = Math.min(
-        200,
-        Math.max(
-          1,
-          Number(cardCount) || 1
-        )
-      );
+      const safeCardCount =
+        Math.min(
+          500,
+          Math.max(
+            1,
+            Number(cardCount) ||
+              25
+          )
+        );
 
       const savedDetails =
         readSessionStorageJson<GameDetails>(
@@ -590,35 +671,172 @@ export default function HostPlaylistPage() {
         ) ?? {};
 
       const savedWinningPattern =
+        searchParams.get(
+          "winningPattern"
+        ) ??
         sessionStorage.getItem(
           "bttbWinningPattern"
         ) ??
         savedDetails.winningPattern ??
         "any-line";
 
-      const sessionId =
-        crypto.randomUUID();
+      const providerName =
+        source === "apple"
+          ? "Apple Music"
+          : "Spotify";
 
-      const joinCode =
-        generateJoinCode();
+      setMessage(
+        `Creating ${providerName} game and generating ${safeCardCount} bingo card${
+          safeCardCount === 1
+            ? ""
+            : "s"
+        }...`
+      );
+
+      const response =
+        await fetch(
+          "/api/game/create-streaming",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                source,
+                playlistId,
+                playlistName,
+                cardCount:
+                  safeCardCount,
+                bingoPattern:
+                  savedWinningPattern,
+                tracks,
+              }),
+          }
+        );
+
+      const data =
+        (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+          game?: {
+            id: string;
+            joinCode: string;
+            playlistId: string;
+            playlistName: string;
+            cards?: unknown[];
+            tracks: Array<{
+              id: string;
+              gameTrackId?: string;
+              title?: string;
+              artist?: string;
+              album?: string;
+            }>;
+          };
+        };
+
+      if (
+        !response.ok ||
+        !data.ok ||
+        !data.game
+      ) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Unable to create the game."
+        );
+      }
+
+      const createdGame =
+        data.game;
+
+      const originalTrackById =
+        new Map(
+          tracks.map(
+            (track) => [
+              track.id,
+              track,
+            ]
+          )
+        );
+
+      const persistedTracks =
+        createdGame.tracks.map(
+          (track) => {
+            const original =
+              originalTrackById.get(
+                track.id
+              );
+
+            return {
+              ...(original ?? {
+                id: track.id,
+                name:
+                  track.title ||
+                  "Unknown Song",
+                artist:
+                  track.artist ||
+                  "Unknown Artist",
+                album:
+                  track.album ||
+                  "",
+                image: null,
+              }),
+              id: track.id,
+              gameTrackId:
+                track.gameTrackId,
+              name:
+                track.title ||
+                original?.name ||
+                "Unknown Song",
+              artist:
+                track.artist ||
+                original?.artist ||
+                "Unknown Artist",
+              album:
+                track.album ||
+                original?.album ||
+                "",
+              image:
+                original?.image ??
+                null,
+            } satisfies DisplayTrack;
+          }
+        );
+
+      const shouldShuffle =
+        searchParams.get(
+          "shuffle"
+        ) !== "0";
 
       const gameTracks =
-        shuffleTracks(tracks);
+        shouldShuffle
+          ? shuffleTracks(
+              persistedTracks
+            )
+          : persistedTracks;
 
       const session: GameSession = {
         version: 2,
-        sessionId,
-        joinCode,
+        sessionId:
+          createdGame.id,
+        joinCode:
+          createdGame.joinCode,
         source,
         playlistId,
         playlistName,
-        clipLength: safeClipLength,
-        cardCount: safeCardCount,
+        clipLength:
+          safeClipLength,
+        cardCount:
+          safeCardCount,
         createdAt:
           new Date().toISOString(),
         currentIndex: 0,
         status: "ready",
-        tracks: gameTracks,
+        tracks:
+          gameTracks,
         playedTrackIds: [],
 
         gameName:
@@ -631,13 +849,16 @@ export default function HostPlaylistPage() {
           "",
 
         hostName:
-          savedDetails.hostName || "",
+          savedDetails.hostName ||
+          "",
 
         eventDate:
-          savedDetails.eventDate || "",
+          savedDetails.eventDate ||
+          "",
 
         eventTime:
-          savedDetails.eventTime || "",
+          savedDetails.eventTime ||
+          "",
 
         primaryColor:
           savedDetails.primaryColor ||
@@ -647,73 +868,65 @@ export default function HostPlaylistPage() {
           savedWinningPattern,
       };
 
-      const callerState: CallerState = {
-        sessionId,
-        playlistName,
-        currentTrack:
-          gameTracks[0] ?? null,
-        currentIndex: 0,
-        totalTracks:
-          gameTracks.length,
-        playedCount: 0,
-        clipLength: safeClipLength,
-        secondsRemaining:
-          safeClipLength,
-        isPlaying: false,
-        isRevealed: false,
-        status: "ready",
-      };
+      const callerState:
+        CallerState = {
+          sessionId:
+            createdGame.id,
+          playlistName,
+          currentTrack:
+            gameTracks[0] ??
+            null,
+          currentIndex: 0,
+          totalTracks:
+            gameTracks.length,
+          playedCount: 0,
+          clipLength:
+            safeClipLength,
+          secondsRemaining:
+            safeClipLength,
+          isPlaying: false,
+          isRevealed: false,
+          status: "ready",
+        };
 
       localStorage.setItem(
         GAME_SESSION_KEY,
-        JSON.stringify(session)
+        JSON.stringify(
+          session
+        )
       );
 
       localStorage.setItem(
         CALLER_STATE_KEY,
-        JSON.stringify(callerState)
+        JSON.stringify(
+          callerState
+        )
       );
 
       localStorage.removeItem(
         ACTIVITY_KEY
       );
 
-      sessionStorage.setItem(
-        "bttbWinningPattern",
-        savedWinningPattern
+      setMessage(
+        `Game created. Join code: ${createdGame.joinCode}`
       );
 
-      sessionStorage.setItem(
-        "bttbPlaylist",
-        JSON.stringify(gameTracks)
+      router.push(
+        "/dj-console"
       );
-
-      try {
-        const channel =
-          new BroadcastChannel(
-            CHANNEL_NAME
-          );
-
-        channel.postMessage(callerState);
-        channel.close();
-      } catch {
-        // localStorage remains the fallback.
-      }
-
-      router.push("/dj-console");
     } catch (error) {
       console.error(
-        "Game session creation error:",
+        "Streaming game creation error:",
         error
       );
 
-      setCreatingGame(false);
-
       setMessage(
         error instanceof Error
-          ? `Unable to create the game: ${error.message}`
+          ? error.message
           : "Unable to create the game."
       );
+    } finally {
+      setCreatingGame(false);
     }
   }
 
@@ -742,6 +955,9 @@ export default function HostPlaylistPage() {
       {source === "apple" && (
         <Script
           src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"
+          onReady={() => {
+            setAppleScriptReady(true);
+          }}
           strategy="afterInteractive"
           onLoad={() => {
             setAppleScriptReady(true);
@@ -849,10 +1065,6 @@ export default function HostPlaylistPage() {
               color: "#111827",
             }}
           >
-            <option value="10">
-              10 seconds
-            </option>
-
             <option value="15">
               15 seconds
             </option>
@@ -863,6 +1075,14 @@ export default function HostPlaylistPage() {
 
             <option value="30">
               30 seconds
+            </option>
+
+            <option value="45">
+              45 seconds
+            </option>
+
+            <option value="60">
+              60 seconds
             </option>
           </select>
 
@@ -881,7 +1101,7 @@ export default function HostPlaylistPage() {
             id="cardCount"
             type="number"
             min="1"
-            max="200"
+            max="500"
             value={cardCount}
             disabled={creatingGame}
             onChange={(event) =>

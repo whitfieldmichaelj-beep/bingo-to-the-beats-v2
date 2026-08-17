@@ -177,10 +177,22 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       ok: true,
       rejoined: result.rejoined,
-      player: result.assignment,
+      player: {
+        ...result.assignment,
+        cardIds:
+          result.assignment.purchaseStatus === "PAID"
+            ? result.assignment.cardIds
+            : [],
+      },
       game: createGameSummary(game),
-      cards: result.cards,
-      card: result.cards[0] ?? null,
+  cards:
+    result.assignment.purchaseStatus === "PAID"
+      ? result.cards
+      : [],
+  card:
+    result.assignment.purchaseStatus === "PAID"
+      ? result.cards[0] ?? null
+      : null,
       pricing: {
         quantity: result.assignment.cardQuantity,
         amountCents: result.assignment.amountCents,
