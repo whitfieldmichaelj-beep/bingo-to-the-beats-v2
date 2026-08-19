@@ -886,6 +886,9 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
             : "paused" as const,
       };
 
+      gameEndedRef.current =
+        restoredSession.status === "complete";
+
       setSession(
         restoredSession
       );
@@ -1344,6 +1347,16 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     if (!session) {
       setMessage(
         `${seratoTrack.displayText} detected. Create a game to start its countdown.`
+      );
+      return;
+    }
+
+    if (
+      gameEndedRef.current ||
+      session.status === "complete"
+    ) {
+      setMessage(
+        `${seratoTrack.displayText} detected. Game is complete, so the Bingo session was not changed.`
       );
       return;
     }
