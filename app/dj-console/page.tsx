@@ -666,7 +666,13 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const elapsedStartedAtRef = useRef<number | null>(null);
   const elapsedSessionIdRef = useRef<string | null>(null);
 
-  const { roster } = useGameRoster(session?.sessionId, 70, 10000);
+  const { roster } = useGameRoster(
+    session?.status === "complete"
+      ? null
+      : session?.sessionId,
+    70,
+    10000
+  );
   const playback = usePlaybackEngine(
     [],
     session?.clipLength ?? 30,
@@ -2603,20 +2609,73 @@ function runAppleTransportAction(
         }
       }
 
+      const wasComplete =
+        session.status ===
+        "complete";
+
       gameEndedRef.current =
         true;
 
       playback.stop();
 
-      const nextSession = {
-        ...session,
-        status:
-          "complete" as const,
-      };
+      try {
+        const response =
+          await fetch(
+            `/api/game/${encodeURIComponent(
+              session.sessionId
+            )}/status`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                status:
+                  "completed",
+              }),
+            }
+          );
 
-      saveSession(
-        nextSession
-      );
+        const data =
+          (await response.json()) as {
+            ok?: boolean;
+            message?: string;
+          };
+
+        if (
+          !response.ok ||
+          !data.ok
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to complete the game."
+          );
+        }
+
+        const nextSession = {
+          ...session,
+          status:
+            "complete" as const,
+        };
+
+        saveSession(
+          nextSession
+        );
+
+        setMessage(
+          "Game ended."
+        );
+      } catch (error) {
+        gameEndedRef.current =
+          wasComplete;
+
+        setMessage(
+          error instanceof Error
+            ? `Unable to end game: ${error.message}`
+            : "Unable to end game."
+        );
+      }
     }
   }
 
@@ -2747,7 +2806,11 @@ function runAppleTransportAction(
         />
       )}
       <BingoVerificationPanel
-        gameId={session?.sessionId}
+        gameId={
+          session?.status === "complete"
+            ? null
+            : session?.sessionId
+        }
         onNewClaim={(claim) => {
           if (isPlaying) {
             playback.pause();
@@ -3117,7 +3180,6 @@ function runAppleTransportAction(
                   type="button"
                   onClick={() => {
                     void updateStatus("complete");
-                    setMessage("Game ended.");
                   }}
                 >
                   <b>■</b>

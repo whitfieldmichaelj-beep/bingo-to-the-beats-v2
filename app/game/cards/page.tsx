@@ -279,6 +279,7 @@ export default function CardsPage() {
   const [songSearch, setSongSearch] = useState("");
   const [marksStorageKey, setMarksStorageKey] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [gameEnded, setGameEnded] = useState(false);
   const [winningCardId, setWinningCardId] = useState<string | null>(
     null
   );
@@ -355,7 +356,8 @@ export default function CardsPage() {
   useEffect(() => {
     if (
       !session?.game.id ||
-      !session.player.playerId
+      !session.player.playerId ||
+      gameEnded
     ) {
       return;
     }
@@ -368,7 +370,21 @@ export default function CardsPage() {
         gameId,
         playerId,
         true
-      ).catch(() => undefined);
+      )
+        .then(async (response) => {
+          const data =
+            (await response.json()) as {
+              gameStatus?: string;
+            };
+
+          if (
+            data.gameStatus ===
+            "COMPLETED"
+          ) {
+            setGameEnded(true);
+          }
+        })
+        .catch(() => undefined);
     };
 
     const markOffline = () => {
@@ -398,7 +414,7 @@ export default function CardsPage() {
         markOffline
       );
     };
-  }, [session]);
+  }, [session, gameEnded]);
 
   const cards = useMemo(() => {
     if (!session) return [];
@@ -444,6 +460,10 @@ export default function CardsPage() {
       setCalledGameTrackIds([]);
       setCalledTrackIds([]);
       setPlayedSongsLoaded(false);
+      return;
+    }
+
+    if (gameEnded) {
       return;
     }
 
@@ -511,7 +531,7 @@ export default function CardsPage() {
         interval
       );
     };
-  }, [session?.game?.id]);
+  }, [session?.game?.id, gameEnded]);
 
 
   const normalizedSongSearch =
@@ -902,6 +922,77 @@ export default function CardsPage() {
           <Link href="/join" style={primaryLinkStyle}>
             Join a Game
           </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (gameEnded) {
+    return (
+      <main style={centeredPageStyle}>
+        <section
+          style={{
+            ...emptyCardStyle,
+            maxWidth: "620px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "72px",
+              lineHeight: 1,
+            }}
+          >
+            🎵
+          </div>
+
+          <p
+            style={{
+              ...eyebrowStyle,
+              marginTop: "22px",
+            }}
+          >
+            Bingo to the Beats
+          </p>
+
+          <h1
+            style={{
+              margin: "10px 0 0",
+              fontSize: "clamp(42px, 10vw, 68px)",
+            }}
+          >
+            Game Ended
+          </h1>
+
+          <p
+            style={{
+              ...mutedTextStyle,
+              fontSize: "18px",
+            }}
+          >
+            Thanks for playing!
+          </p>
+
+          <p
+            style={{
+              ...mutedTextStyle,
+              marginTop: "8px",
+            }}
+          >
+            {session.game.playlistName}
+          </p>
+
+          <button
+            type="button"
+            onClick={leaveGame}
+            style={{
+              ...primaryActionStyle,
+              width: "100%",
+              marginTop: "28px",
+              cursor: "pointer",
+            }}
+          >
+            Return to Join Screen
+          </button>
         </section>
       </main>
     );

@@ -62,6 +62,37 @@ export async function POST(
       );
     }
 
+    const game =
+      await prisma.game.findUnique({
+        where: {
+          id: gameId,
+        },
+        select: {
+          status: true,
+        },
+      });
+
+    if (!game) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Game not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    /*
+     * BTTB_END_GAME_PLAYER_SHUTDOWN_V1
+     *
+     * Once the host completes a game, a player heartbeat
+     * must never keep that player marked online.
+     */
+    const effectiveConnected =
+      game.status === "COMPLETED"
+        ? false
+        : connected;
+
     const result =
       await prisma.gameSession.updateMany({
         where: {
@@ -69,7 +100,7 @@ export async function POST(
           sessionKey: playerSession.playerId,
         },
         data: {
-          connected,
+          connected: effectiveConnected,
           lastSeenAt: new Date(),
         },
       });
@@ -86,7 +117,8 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      connected,
+      connected: effectiveConnected,
+      gameStatus: game.status,
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
