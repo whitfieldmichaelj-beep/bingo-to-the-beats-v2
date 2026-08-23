@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { findGameByJoinCode } from "@/lib/game/repository";
+import { prisma } from "@/lib/prisma";
 import {
   createPlayerSessionToken,
   readPlayerSession,
@@ -170,6 +171,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /*
+     * BTTB_DEVELOPMENT_PAYMENT_BYPASS_V1
+     *
+     * Allows explicit local development testing without Stripe.
+     * This bypass can never run in production.
+     */
+    const bypassPayment =
+      process.env.NODE_ENV !== "production" &&
+      process.env.BTTB_DEV_PAYMENT_BYPASS === "true";
+
+    let purchaseStatus =
+      result.assignment.purchaseStatus;
+
+    if (
+      bypassPayment &&
+      purchaseStatus === "PENDING"
+    ) {
+      const paidPurchase =
+        await prisma.purchase.updateMany({
+          where: {
+            id:
+              result.assignment.purchaseId,
+            playerKey:
+              result.assignment.playerId,
+            gameId: game.id,
+            status: "PENDING",
+          },
+          data: {
+            status: "PAID",
+          },
+        });
+
+      if (paidPurchase.count !== 1) {
+        throw new Error(
+          "Unable to complete development payment bypass."
+        );
+      }
+
+      purchaseStatus = "PAID";
+    }
+
     const availability = await getGameAvailability(
       game.id
     );
@@ -179,18 +221,19 @@ export async function POST(request: NextRequest) {
       rejoined: result.rejoined,
       player: {
         ...result.assignment,
+        purchaseStatus,
         cardIds:
-          result.assignment.purchaseStatus === "PAID"
+          purchaseStatus === "PAID"
             ? result.assignment.cardIds
             : [],
       },
       game: createGameSummary(game),
   cards:
-    result.assignment.purchaseStatus === "PAID"
+    purchaseStatus === "PAID"
       ? result.cards
       : [],
   card:
-    result.assignment.purchaseStatus === "PAID"
+    purchaseStatus === "PAID"
       ? result.cards[0] ?? null
       : null,
       pricing: {
