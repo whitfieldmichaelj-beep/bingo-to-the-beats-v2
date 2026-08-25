@@ -1673,9 +1673,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
         playback.currentIndex >=
         session.tracks.length - 1
       ) {
-        gameEndedRef.current = true;
-        playback.next();
-        setMessage(
+        void updateStatus(
+          "complete",
           "The final song was revealed. Game complete."
         );
         return;
@@ -2487,7 +2486,8 @@ function runAppleTransportAction(
 
   async function updateStatus(
     status:
-      GameSession["status"]
+      GameSession["status"],
+    completeMessage = "Game ended."
   ) {
     if (!session) {
       setMessage(
@@ -2674,7 +2674,7 @@ function runAppleTransportAction(
         );
 
         setMessage(
-          "Game ended."
+          completeMessage
         );
       } catch (error) {
         gameEndedRef.current =
