@@ -133,6 +133,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (game.status === "completed") {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "This game has already ended.",
+        },
+        { status: 409 }
+      );
+    }
+
     const trustedPlayerSession =
       joinAsNewPlayer
         ? null
@@ -201,16 +211,6 @@ export async function POST(request: NextRequest) {
           }
         );
       }
-    }
-
-    if (game.status === "completed") {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: "This game has already ended.",
-        },
-        { status: 409 }
-      );
     }
 
     const result = await joinPlayer({
