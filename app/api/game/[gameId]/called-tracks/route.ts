@@ -162,6 +162,7 @@ export async function POST(
         },
         select: {
           id: true,
+          status: true,
         },
       });
 
@@ -174,6 +175,20 @@ export async function POST(
         },
         {
           status: 404,
+        }
+      );
+    }
+
+    if (game.status === "COMPLETED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "GAME_COMPLETED",
+          message:
+            "This game has already ended. Called songs are locked.",
+        },
+        {
+          status: 409,
         }
       );
     }
