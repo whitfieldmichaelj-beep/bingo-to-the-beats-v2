@@ -37,7 +37,14 @@ type PlayerCard = {
 type JoinResponse = {
   ok: boolean;
   message?: string;
+  code?: string;
   rejoined?: boolean;
+  existingPlayer?: {
+    playerName: string;
+    cardQuantity: CardQuantity;
+    amountCents: number;
+    paymentStatus: "PENDING" | "PAID";
+  };
   player?: {
     playerId: string;
     playerName: string;
@@ -240,6 +247,16 @@ function JoinGameForm() {
     useState<CardQuantity>(1);
   const [message, setMessage] = useState("");
   const [joining, setJoining] = useState(false);
+  const [
+    identityConflict,
+    setIdentityConflict,
+  ] = useState<
+    NonNullable<JoinResponse["existingPlayer"]> | null
+  >(null);
+  const [
+    joinAsNewPlayer,
+    setJoinAsNewPlayer,
+  ] = useState(false);
 
   useEffect(() => {
     const codeFromUrl = normalizeCode(
@@ -474,6 +491,7 @@ function JoinGameForm() {
 
     setJoining(true);
     setMessage("");
+    setIdentityConflict(null);
 
     try {
       const response = await fetch("/api/game/join", {
@@ -485,10 +503,22 @@ function JoinGameForm() {
           joinCode: normalizedJoinCode,
           playerName: normalizedPlayerName,
           cardQuantity,
+          joinAsNewPlayer,
         }),
       });
 
       const data = (await response.json()) as JoinResponse;
+
+      if (
+        response.status === 409 &&
+        data.code === "PLAYER_IDENTITY_CONFLICT" &&
+        data.existingPlayer
+      ) {
+        setIdentityConflict(
+          data.existingPlayer
+        );
+        return;
+      }
 
       if (
         !response.ok ||
@@ -948,6 +978,108 @@ function JoinGameForm() {
               {cardQuantity === 1 ? "card" : "cards"}
             </span>
           </section>
+
+          {identityConflict && (
+            <section
+              style={{
+                marginTop: "18px",
+                padding: "16px",
+                border:
+                  "1px solid rgba(245, 158, 11, 0.45)",
+                borderRadius: "14px",
+                background:
+                  "rgba(245, 158, 11, 0.1)",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  color: "#fcd34d",
+                  fontSize: "16px",
+                }}
+              >
+                This browser is already in this game
+              </strong>
+
+              <p
+                style={{
+                  margin: "8px 0 14px",
+                  color: "#e2e8f0",
+                  lineHeight: 1.5,
+                }}
+              >
+                Existing player:{" "}
+                <strong>
+                  {identityConflict.playerName}
+                </strong>
+                {" — "}
+                {identityConflict.cardQuantity}{" "}
+                {identityConflict.cardQuantity === 1
+                  ? "card"
+                  : "cards"}
+                {" — "}
+                {formatMoney(
+                  identityConflict.amountCents
+                )}
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: "10px",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(190px, 1fr))",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={joining}
+                  onClick={() => {
+                    setPlayerName(
+                      identityConflict.playerName
+                    );
+                    setCardQuantity(
+                      identityConflict.cardQuantity
+                    );
+                    setJoinAsNewPlayer(false);
+                    setIdentityConflict(null);
+                  }}
+                  style={{
+                    padding: "12px 14px",
+                    border: 0,
+                    borderRadius: "999px",
+                    background: "#16a34a",
+                    color: "white",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Continue as {identityConflict.playerName}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={joining}
+                  onClick={() => {
+                    setJoinAsNewPlayer(true);
+                    setIdentityConflict(null);
+                  }}
+                  style={{
+                    padding: "12px 14px",
+                    border:
+                      "1px solid #64748b",
+                    borderRadius: "999px",
+                    background: "#0f172a",
+                    color: "white",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Join as a Different Player
+                </button>
+              </div>
+            </section>
+          )}
 
           {message && (
             <div

@@ -85,6 +85,8 @@ export async function POST(request: NextRequest) {
     const cardQuantity = normalizeCardQuantity(
       body.cardQuantity ?? 1
     );
+    const joinAsNewPlayer =
+      body.joinAsNewPlayer === true;
 
     if (!joinCode) {
       return NextResponse.json(
@@ -132,7 +134,74 @@ export async function POST(request: NextRequest) {
     }
 
     const trustedPlayerSession =
-      await readPlayerSession(request);
+      joinAsNewPlayer
+        ? null
+        : await readPlayerSession(request);
+
+    if (trustedPlayerSession?.playerId) {
+      const existingPurchase =
+        await prisma.purchase.findFirst({
+          where: {
+            gameId: game.id,
+            playerKey:
+              trustedPlayerSession.playerId,
+            status: {
+              in: [
+                "PENDING",
+                "PAID",
+              ],
+            },
+          },
+          select: {
+            playerName: true,
+            quantity: true,
+            amount: true,
+            status: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+      const existingPlayerName =
+        normalizePlayerName(
+          existingPurchase?.playerName
+        );
+
+      if (
+        existingPurchase &&
+        existingPlayerName &&
+        existingPlayerName.toLowerCase() !==
+          playerName.toLowerCase()
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code:
+              "PLAYER_IDENTITY_CONFLICT",
+            message:
+              `This browser is already joined to this game as ${existingPlayerName}.`,
+            existingPlayer: {
+              playerName:
+                existingPlayerName,
+              cardQuantity:
+                existingPurchase.quantity,
+              amountCents:
+                Math.round(
+                  Number(
+                    existingPurchase.amount
+                  ) * 100
+                ),
+              paymentStatus:
+                existingPurchase.status,
+            },
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
 
     if (game.status === "completed") {
       return NextResponse.json(
