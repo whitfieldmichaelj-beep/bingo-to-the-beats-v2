@@ -273,6 +273,11 @@ export async function submitBingoClaim(
     },
     select: {
       id: true,
+      game: {
+        select: {
+          status: true,
+        },
+      },
     },
   });
 
@@ -282,6 +287,15 @@ export async function submitBingoClaim(
       code: "CARD_NOT_OWNED",
       message:
         "This card is not assigned to this player.",
+    };
+  }
+
+  if (card.game.status === "COMPLETED") {
+    return {
+      ok: false as const,
+      code: "GAME_COMPLETED",
+      message:
+        "This game has already ended. BINGO claims are closed.",
     };
   }
 

@@ -96,7 +96,8 @@ export async function POST(
         result,
         {
           status:
-            result.code === "NOT_VERIFIED"
+            result.code === "NOT_VERIFIED" ||
+            result.code === "GAME_COMPLETED"
               ? 409
               : 403,
         }
