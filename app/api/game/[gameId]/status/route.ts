@@ -56,6 +56,8 @@ export async function POST(
         },
         select: {
           id: true,
+          status: true,
+          completedAt: true,
         },
       });
 
@@ -91,6 +93,22 @@ export async function POST(
           status: 400,
         }
       );
+    }
+
+    if (
+      ownedGame.status ===
+      "COMPLETED"
+    ) {
+      return NextResponse.json({
+        ok: true,
+        game: {
+          id: ownedGame.id,
+          status: "completed",
+          completedAt:
+            ownedGame.completedAt?.toISOString() ??
+            null,
+        },
+      });
     }
 
     const completedAt =
