@@ -684,6 +684,10 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   );
   const autoStartNextRef = useRef(false);
   const gameEndedRef = useRef(false);
+  const [
+    showEndGameConfirm,
+    setShowEndGameConfirm,
+  ] = useState(false);
 
   const previousTrackId = useRef<string | null>(null);
   const pollInProgress = useRef(false);
@@ -2836,6 +2840,139 @@ function runAppleTransportAction(
         }}
       />
 
+      {showEndGameConfirm && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="end-game-title"
+          aria-describedby="end-game-description"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 6000,
+            display: "grid",
+            placeItems: "center",
+            padding: "24px",
+            background:
+              "rgba(2, 6, 23, .9)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <section
+            style={{
+              width: "min(100%, 560px)",
+              padding: "30px",
+              border: "2px solid #ef4444",
+              borderRadius: "24px",
+              background:
+                "linear-gradient(145deg, rgba(69, 10, 10, .98), rgba(15, 23, 42, .99))",
+              boxShadow:
+                "0 30px 120px rgba(239, 68, 68, .28)",
+              color: "white",
+              textAlign: "center",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                fontSize: "60px",
+                lineHeight: 1,
+              }}
+            >
+              ⚠️
+            </div>
+
+            <p
+              style={{
+                margin: "18px 0 0",
+                color: "#fca5a5",
+                fontSize: "13px",
+                fontWeight: 950,
+                letterSpacing: ".16em",
+                textTransform: "uppercase",
+              }}
+            >
+              End Game Warning
+            </p>
+
+            <h2
+              id="end-game-title"
+              style={{
+                margin: "10px 0 0",
+                fontSize:
+                  "clamp(32px, 5vw, 46px)",
+              }}
+            >
+              End this game?
+            </h2>
+
+            <p
+              id="end-game-description"
+              style={{
+                margin: "18px auto 0",
+                maxWidth: "460px",
+                color: "#e2e8f0",
+                fontSize: "18px",
+                lineHeight: 1.6,
+              }}
+            >
+              You are about to end the game for all players.
+              This action cannot be undone.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(2, minmax(0, 1fr))",
+                gap: "14px",
+                marginTop: "28px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setShowEndGameConfirm(false)
+                }
+                style={{
+                  minHeight: "54px",
+                  border: "1px solid rgba(255,255,255,.24)",
+                  borderRadius: "14px",
+                  background:
+                    "rgba(255,255,255,.08)",
+                  color: "white",
+                  fontSize: "17px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEndGameConfirm(false);
+                  void updateStatus("complete");
+                }}
+                style={{
+                  minHeight: "54px",
+                  border: "1px solid #f87171",
+                  borderRadius: "14px",
+                  background: "#dc2626",
+                  color: "white",
+                  fontSize: "17px",
+                  fontWeight: 950,
+                  cursor: "pointer",
+                }}
+              >
+                End Game
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <header className="dj-topbar">
         <div className="dj-brand">
           <div className="dj-logo">♫</div>
@@ -3200,7 +3337,17 @@ function runAppleTransportAction(
                   className="red"
                   type="button"
                   onClick={() => {
-                    void updateStatus("complete");
+                    if (
+                      !session ||
+                      session.status === "complete"
+                    ) {
+                      setMessage(
+                        "This game has already ended."
+                      );
+                      return;
+                    }
+
+                    setShowEndGameConfirm(true);
                   }}
                 >
                   <b>■</b>
