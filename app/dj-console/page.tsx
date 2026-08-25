@@ -2867,9 +2867,9 @@ function runAppleTransportAction(
         <div className="dj-game-status-item">
           <span className="dj-game-status-icon" aria-hidden="true">▣</span>
           <span>
-            Cards:{" "}
+            Cards Sold:{" "}
             <strong>
-              {roster.totals.totalCards || session?.cardCount || 0}
+              {roster.totals.totalCards}
             </strong>
           </span>
         </div>
