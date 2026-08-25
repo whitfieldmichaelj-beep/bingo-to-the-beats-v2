@@ -2499,6 +2499,16 @@ function runAppleTransportAction(
     if (
       status === "playing"
     ) {
+      if (
+        gameEndedRef.current ||
+        session.status === "complete"
+      ) {
+        setMessage(
+          "This game has ended and cannot be resumed."
+        );
+        return;
+      }
+
       gameEndedRef.current =
         false;
 
@@ -3118,6 +3128,17 @@ function runAppleTransportAction(
                   className="purple"
                   type="button"
                   onClick={() => {
+                    if (
+                      !isPlaying &&
+                      (gameEndedRef.current ||
+                        session?.status === "complete")
+                    ) {
+                      setMessage(
+                        "This game has ended and cannot be resumed."
+                      );
+                      return;
+                    }
+
                     void updateStatus(
                       isPlaying ? "paused" : "playing"
                     );
