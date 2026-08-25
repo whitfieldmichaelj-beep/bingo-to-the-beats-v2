@@ -437,6 +437,21 @@ export async function updateGame(
         },
       });
 
+      if (
+        updated.status ===
+        "completed"
+      ) {
+        await tx.gameSession.updateMany({
+          where: {
+            gameId,
+            connected: true,
+          },
+          data: {
+            connected: false,
+          },
+        });
+      }
+
       const calledIds =
         new Set(
           updated.calledTrackIds
