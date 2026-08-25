@@ -280,6 +280,10 @@ export default function CardsPage() {
   const [marksStorageKey, setMarksStorageKey] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+  const [
+    playerSessionChanged,
+    setPlayerSessionChanged,
+  ] = useState(false);
   const [winningCardId, setWinningCardId] = useState<string | null>(
     null
   );
@@ -365,6 +369,10 @@ export default function CardsPage() {
     const gameId = session.game.id;
     const playerId = session.player.playerId;
 
+    let heartbeat:
+      | number
+      | null = null;
+
     const markOnline = () => {
       void sendPresenceRequest(
         gameId,
@@ -372,6 +380,23 @@ export default function CardsPage() {
         true
       )
         .then(async (response) => {
+          if (response.status === 403) {
+            setPlayerSessionChanged(true);
+
+            if (heartbeat !== null) {
+              window.clearInterval(
+                heartbeat
+              );
+              heartbeat = null;
+            }
+
+            return;
+          }
+
+          if (!response.ok) {
+            return;
+          }
+
           const data =
             (await response.json()) as {
               gameStatus?: string;
@@ -397,7 +422,7 @@ export default function CardsPage() {
 
     markOnline();
 
-    const heartbeat = window.setInterval(
+    heartbeat = window.setInterval(
       markOnline,
       PLAYER_HEARTBEAT_INTERVAL_MS
     );
@@ -408,7 +433,12 @@ export default function CardsPage() {
     );
 
     return () => {
-      window.clearInterval(heartbeat);
+      if (heartbeat !== null) {
+        window.clearInterval(
+          heartbeat
+        );
+      }
+
       window.removeEventListener(
         "pagehide",
         markOffline
@@ -921,6 +951,59 @@ export default function CardsPage() {
           </p>
           <Link href="/join" style={primaryLinkStyle}>
             Join a Game
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (playerSessionChanged) {
+    return (
+      <main style={centeredPageStyle}>
+        <section
+          style={{
+            ...emptyCardStyle,
+            maxWidth: "620px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "64px",
+              lineHeight: 1,
+            }}
+          >
+            ↻
+          </div>
+
+          <p
+            style={{
+              ...eyebrowStyle,
+              marginTop: "22px",
+            }}
+          >
+            Bingo to the Beats
+          </p>
+
+          <h1
+            style={{
+              margin: "8px 0 0",
+              fontSize: "36px",
+            }}
+          >
+            Player Session Changed
+          </h1>
+
+          <p style={mutedTextStyle}>
+            This browser is now using a different player
+            session. Rejoin the game to continue with the
+            current player.
+          </p>
+
+          <Link
+            href="/join"
+            style={primaryLinkStyle}
+          >
+            Return to Join Page
           </Link>
         </section>
       </main>
