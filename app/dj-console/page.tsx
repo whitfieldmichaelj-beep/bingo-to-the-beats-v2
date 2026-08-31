@@ -1038,10 +1038,18 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
           CALLER_STATE_KEY &&
         event.newValue
       ) {
-        setCallerState(
+        const nextCallerState =
           JSON.parse(
             event.newValue
-          ) as CallerState
+          ) as CallerState;
+
+        setCallerState(
+          (currentCallerState) =>
+            JSON.stringify(
+              currentCallerState
+            ) === event.newValue
+              ? currentCallerState
+              : nextCallerState
         );
       }
     };
@@ -1065,8 +1073,21 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
         event:
           MessageEvent<CallerState>
       ) => {
+        const incomingState =
+          event.data;
+
+        const incomingSerialized =
+          JSON.stringify(
+            incomingState
+          );
+
         setCallerState(
-          event.data
+          (currentCallerState) =>
+            JSON.stringify(
+              currentCallerState
+            ) === incomingSerialized
+              ? currentCallerState
+              : incomingState
         );
       };
     } catch {
@@ -1282,12 +1303,43 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   ]);
 
   function broadcast(nextState: CallerState) {
-    setCallerState(nextState);
-    localStorage.setItem(CALLER_STATE_KEY, JSON.stringify(nextState));
+    const serialized =
+      JSON.stringify(
+        nextState
+      );
+
+    setCallerState(
+      (currentCallerState) =>
+        JSON.stringify(
+          currentCallerState
+        ) === serialized
+          ? currentCallerState
+          : nextState
+    );
+
+    if (
+      localStorage.getItem(
+        CALLER_STATE_KEY
+      ) === serialized
+    ) {
+      return;
+    }
+
+    localStorage.setItem(
+      CALLER_STATE_KEY,
+      serialized
+    );
 
     try {
-      const channel = new BroadcastChannel(CHANNEL_NAME);
-      channel.postMessage(nextState);
+      const channel =
+        new BroadcastChannel(
+          CHANNEL_NAME
+        );
+
+      channel.postMessage(
+        nextState
+      );
+
       channel.close();
     } catch {
       // localStorage remains the fallback.
@@ -1565,7 +1617,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     session?.playlistName,
     session?.tracks,
     session?.playedTrackIds.length,
-    playback.currentTrack,
+    playback.currentTrack?.id,
     playback.currentIndex,
     playback.status,
     playback.secondsRemaining,
@@ -2820,12 +2872,18 @@ function runAppleTransportAction(
         />
       )}
       <BingoVerificationPanel
-        gameId={
-          session?.status === "complete"
-            ? null
-            : session?.sessionId
-        }
+        gameId={session?.sessionId}
         onNewClaim={(claim) => {
+          if (
+            session?.status ===
+            "complete"
+          ) {
+            setMessage(
+              `PENDING BINGO CLAIM: ${claim.playerName} — Card #${claim.cardNumber}. Review the claim before closing the game.`
+            );
+            return;
+          }
+
           if (isPlaying) {
             playback.pause();
           }
@@ -3062,6 +3120,29 @@ function runAppleTransportAction(
       <div className="dj-page">
         <section className="dj-access-strip">
           <div className="dj-access-panel">
+            <Link
+              className="dj-start-new-game"
+              href="/music"
+            >
+              <span className="dj-start-new-game-icon">
+                ＋
+              </span>
+
+              <span className="dj-start-new-game-copy">
+                <strong>Start New Game</strong>
+                <small>
+                  Create a fresh game and generate a new join code
+                </small>
+              </span>
+
+              <span
+                className="dj-start-new-game-arrow"
+                aria-hidden="true"
+              >
+                →
+              </span>
+            </Link>
+
             <GameAccessPanel
               joinCode={session?.joinCode}
               title="Players Join"
