@@ -212,25 +212,75 @@ export async function GET(request: NextRequest) {
             ? checkoutSession.payment_intent.id
             : null;
 
-      await prisma.purchase.updateMany({
-        where: {
-          id: purchase.id,
-          playerKey:
-            trustedPlayerSession.playerId,
-          status: "PENDING",
-          stripeCheckoutSessionId:
-            checkoutSession.id,
-        },
-        data: {
-          status: "PAID",
-          ...(paymentIntentId
-            ? {
-                stripePaymentId:
-                  paymentIntentId,
-              }
-            : {}),
-        },
-      });
+      /*
+       * BTTB_CHECKOUT_STATUS_COMPLETION_RACE_GUARD_V1
+       *
+       * End Game may occur after the earlier status check.
+       * Promote this purchase only while the game is still
+       * open. Stripe's webhook will reconcile a payment if
+       * completion wins this race.
+       */
+      const paidUpdate =
+        await prisma.purchase.updateMany({
+          where: {
+            id: purchase.id,
+            playerKey:
+              trustedPlayerSession.playerId,
+            status: "PENDING",
+            stripeCheckoutSessionId:
+              checkoutSession.id,
+            game: {
+              status: {
+                notIn: [
+                  "COMPLETED",
+                  "CANCELLED",
+                ],
+              },
+            },
+          },
+          data: {
+            status: "PAID",
+            ...(paymentIntentId
+              ? {
+                  stripePaymentId:
+                    paymentIntentId,
+                }
+              : {}),
+          },
+        });
+
+      if (paidUpdate.count !== 1) {
+        const latestGame =
+          await prisma.game.findUnique({
+            where: {
+              id: purchase.gameId,
+            },
+            select: {
+              status: true,
+            },
+          });
+
+        if (
+          !latestGame ||
+          latestGame.status === "COMPLETED" ||
+          latestGame.status === "CANCELLED"
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "GAME_COMPLETED",
+              paid: true,
+              purchaseId: purchase.id,
+              joinCode: purchase.game.joinCode,
+              paymentStatus:
+                checkoutSession.payment_status,
+              message:
+                "Your payment was received, but this game has ended. The payment is being finalized and the game cannot be reopened.",
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     return NextResponse.json({
