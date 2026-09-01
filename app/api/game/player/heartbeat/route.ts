@@ -62,50 +62,104 @@ export async function POST(
       );
     }
 
-    const game =
-      await prisma.game.findUnique({
-        where: {
-          id: gameId,
-        },
-        select: {
-          status: true,
-        },
-      });
-
-    if (!game) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: "Game not found.",
-        },
-        { status: 404 }
-      );
-    }
-
     /*
-     * BTTB_END_GAME_PLAYER_SHUTDOWN_V1
+     * BTTB_PLAYER_HEARTBEAT_ELIGIBILITY_V1
      *
-     * Once the host completes a game, a player heartbeat
-     * must never keep that player marked online.
+     * Lock this player's session while checking game/payment
+     * eligibility. This prevents a heartbeat from reconnecting
+     * the player after a concurrent Stripe refund disconnects it.
      */
-    const effectiveConnected =
-      game.status === "COMPLETED"
-        ? false
-        : connected;
+    const heartbeat =
+      await prisma.$transaction(async (tx) => {
+        const lockedSessions =
+          await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id"
+            FROM "GameSession"
+            WHERE "gameId" = ${gameId}
+              AND "sessionKey" = ${playerSession.playerId}
+            FOR UPDATE
+          `;
 
-    const result =
-      await prisma.gameSession.updateMany({
-        where: {
-          gameId,
-          sessionKey: playerSession.playerId,
-        },
-        data: {
-          connected: effectiveConnected,
-          lastSeenAt: new Date(),
-        },
+        if (lockedSessions.length === 0) {
+          return {
+            sessionFound: false,
+            gameFound: true,
+            refunded: false,
+            connected: false,
+            gameStatus: null as string | null,
+          };
+        }
+
+        const game =
+          await tx.game.findUnique({
+            where: {
+              id: gameId,
+            },
+            select: {
+              status: true,
+            },
+          });
+
+        if (!game) {
+          return {
+            sessionFound: true,
+            gameFound: false,
+            refunded: false,
+            connected: false,
+            gameStatus: null as string | null,
+          };
+        }
+
+        const purchase =
+          await tx.purchase.findUnique({
+            where: {
+              gameId_playerKey: {
+                gameId,
+                playerKey:
+                  playerSession.playerId,
+              },
+            },
+            select: {
+              status: true,
+            },
+          });
+
+        const refunded =
+          purchase?.status === "REFUNDED";
+
+        const gameEnded =
+          game.status === "COMPLETED" ||
+          game.status === "CANCELLED";
+
+        const effectiveConnected =
+          gameEnded || refunded
+            ? false
+            : connected;
+
+        await tx.gameSession.updateMany({
+          where: {
+            gameId,
+            sessionKey:
+              playerSession.playerId,
+          },
+          data: {
+            connected:
+              effectiveConnected,
+            lastSeenAt: new Date(),
+          },
+        });
+
+        return {
+          sessionFound: true,
+          gameFound: true,
+          refunded,
+          connected:
+            effectiveConnected,
+          gameStatus: game.status,
+        };
       });
 
-    if (result.count === 0) {
+    if (!heartbeat.sessionFound) {
       return NextResponse.json(
         {
           ok: false,
@@ -115,10 +169,37 @@ export async function POST(
       );
     }
 
+    if (!heartbeat.gameFound) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Game not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (heartbeat.refunded) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PURCHASE_REFUNDED",
+          message:
+            "This player's purchase has been refunded.",
+          connected: false,
+          gameStatus:
+            heartbeat.gameStatus,
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json({
       ok: true,
-      connected: effectiveConnected,
-      gameStatus: game.status,
+      connected:
+        heartbeat.connected,
+      gameStatus:
+        heartbeat.gameStatus,
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {
