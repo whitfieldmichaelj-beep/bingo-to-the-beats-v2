@@ -204,8 +204,15 @@ async function releaseExpiredPurchase(
         },
         select: {
           id: true,
+          gameId: true,
+          playerKey: true,
           status: true,
           stripeCheckoutSessionId: true,
+          game: {
+            select: {
+              status: true,
+            },
+          },
         },
       });
 
@@ -225,6 +232,63 @@ async function releaseExpiredPurchase(
       return;
     }
 
+    /*
+     * BTTB_EXPIRED_CHECKOUT_GAME_HISTORY_V1
+     *
+     * While a game is open, an expired Checkout releases the
+     * reservation so the player may retry. Once the game has
+     * ended, preserve the historical reservation and void the
+     * cards instead of returning them to the available pool.
+     */
+    if (
+      purchase.game.status === "COMPLETED" ||
+      purchase.game.status === "CANCELLED"
+    ) {
+      const cancelled =
+        await tx.purchase.updateMany({
+          where: {
+            id: purchase.id,
+            status: "PENDING",
+            stripeCheckoutSessionId:
+              session.id,
+          },
+          data: {
+            status: "CANCELLED",
+          },
+        });
+
+      if (cancelled.count !== 1) {
+        return;
+      }
+
+      await tx.bingoCard.updateMany({
+        where: {
+          purchaseId: purchase.id,
+        },
+        data: {
+          status: "VOID",
+        },
+      });
+
+      if (purchase.playerKey) {
+        await tx.gameSession.updateMany({
+          where: {
+            gameId: purchase.gameId,
+            sessionKey: purchase.playerKey,
+          },
+          data: {
+            connected: false,
+          },
+        });
+      }
+
+      return;
+    }
+
+    /*
+     * The host may end the game after the earlier read.
+     * Release the reservation only if the game is still open.
+     */
     const cancelled =
       await tx.purchase.updateMany({
         where: {
@@ -232,28 +296,172 @@ async function releaseExpiredPurchase(
           status: "PENDING",
           stripeCheckoutSessionId:
             session.id,
+          game: {
+            status: {
+              notIn: [
+                "COMPLETED",
+                "CANCELLED",
+              ],
+            },
+          },
         },
         data: {
+          // Keep playerKey until the cards have actually
+          // been released while the game is still open.
           status: "CANCELLED",
-          // Release the one-player/one-game
-          // unique slot so the player can retry.
-          playerKey: null,
         },
       });
 
     if (cancelled.count !== 1) {
+      /*
+       * End Game may have won the race. Preserve history if so.
+       */
+      const latestGame =
+        await tx.game.findUnique({
+          where: {
+            id: purchase.gameId,
+          },
+          select: {
+            status: true,
+          },
+        });
+
+      if (
+        latestGame &&
+        (latestGame.status === "COMPLETED" ||
+          latestGame.status === "CANCELLED")
+      ) {
+        const finishedCancellation =
+          await tx.purchase.updateMany({
+            where: {
+              id: purchase.id,
+              status: "PENDING",
+              stripeCheckoutSessionId:
+                session.id,
+            },
+            data: {
+              status: "CANCELLED",
+            },
+          });
+
+        if (finishedCancellation.count === 1) {
+          await tx.bingoCard.updateMany({
+            where: {
+              purchaseId: purchase.id,
+            },
+            data: {
+              status: "VOID",
+            },
+          });
+
+          if (purchase.playerKey) {
+            await tx.gameSession.updateMany({
+              where: {
+                gameId: purchase.gameId,
+                sessionKey: purchase.playerKey,
+              },
+              data: {
+                connected: false,
+              },
+            });
+          }
+        }
+      }
+
       return;
     }
 
-    await tx.bingoCard.updateMany({
+    const releasedCards =
+      await tx.bingoCard.updateMany({
+        where: {
+          purchaseId: purchase.id,
+          game: {
+            status: {
+              notIn: [
+                "COMPLETED",
+                "CANCELLED",
+              ],
+            },
+          },
+        },
+        data: {
+          purchaseId: null,
+          playerKey: null,
+          playerName: null,
+          status: "AVAILABLE",
+        },
+      });
+
+    if (releasedCards.count > 0) {
+      // The reservation was released while the game was
+      // still open, so the player may retry.
+      await tx.purchase.updateMany({
+        where: {
+          id: purchase.id,
+          status: "CANCELLED",
+          playerKey: purchase.playerKey,
+        },
+        data: {
+          playerKey: null,
+        },
+      });
+
+      return;
+    }
+
+    /*
+     * If no card could be released, End Game may have won
+     * the race after the purchase was cancelled.
+     */
+    const latestGame =
+      await tx.game.findUnique({
+        where: {
+          id: purchase.gameId,
+        },
+        select: {
+          status: true,
+        },
+      });
+
+    if (
+      latestGame &&
+      (latestGame.status === "COMPLETED" ||
+        latestGame.status === "CANCELLED")
+    ) {
+      await tx.bingoCard.updateMany({
+        where: {
+          purchaseId: purchase.id,
+        },
+        data: {
+          status: "VOID",
+        },
+      });
+
+      if (purchase.playerKey) {
+        await tx.gameSession.updateMany({
+          where: {
+            gameId: purchase.gameId,
+            sessionKey: purchase.playerKey,
+          },
+          data: {
+            connected: false,
+          },
+        });
+      }
+
+      return;
+    }
+
+    // No cards remained attached and the game is still open.
+    // Release the player's enrollment slot.
+    await tx.purchase.updateMany({
       where: {
-        purchaseId: purchase.id,
+        id: purchase.id,
+        status: "CANCELLED",
+        playerKey: purchase.playerKey,
       },
       data: {
-        purchaseId: null,
         playerKey: null,
-        playerName: null,
-        status: "AVAILABLE",
       },
     });
   });
