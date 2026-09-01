@@ -184,6 +184,122 @@ async function markPurchasePaid(
   });
 }
 
+function getChargePaymentIntentId(
+  charge: Stripe.Charge
+): string | null {
+  if (typeof charge.payment_intent === "string") {
+    return charge.payment_intent;
+  }
+
+  if (
+    charge.payment_intent &&
+    typeof charge.payment_intent === "object"
+  ) {
+    return charge.payment_intent.id;
+  }
+
+  return null;
+}
+
+async function markPurchaseRefunded(
+  charge: Stripe.Charge
+) {
+  /*
+   * BTTB_STRIPE_FULL_REFUND_V1
+   *
+   * charge.refunded may also be emitted around refund activity,
+   * so only treat the purchase as REFUNDED when the entire
+   * charge has actually been refunded.
+   */
+  const fullyRefunded =
+    charge.refunded ||
+    charge.amount_refunded >= charge.amount;
+
+  if (!fullyRefunded) {
+    return;
+  }
+
+  const paymentIntentId =
+    getChargePaymentIntentId(charge);
+
+  if (!paymentIntentId) {
+    console.warn(
+      `Refunded charge ${charge.id} has no PaymentIntent ID.`
+    );
+    return;
+  }
+
+  const purchase =
+    await prisma.purchase.findUnique({
+      where: {
+        stripePaymentId: paymentIntentId,
+      },
+      select: {
+        id: true,
+        gameId: true,
+        playerKey: true,
+        status: true,
+      },
+    });
+
+  if (
+    !purchase ||
+    purchase.status === "REFUNDED"
+  ) {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const refunded =
+      await tx.purchase.updateMany({
+        where: {
+          id: purchase.id,
+          stripePaymentId:
+            paymentIntentId,
+          status: "PAID",
+        },
+        data: {
+          status: "REFUNDED",
+        },
+      });
+
+    if (refunded.count !== 1) {
+      return;
+    }
+
+    /*
+     * Preserve an already-verified WINNER card as historical
+     * game data. Cards that are still participating become VOID.
+     */
+    await tx.bingoCard.updateMany({
+      where: {
+        purchaseId: purchase.id,
+        status: {
+          in: [
+            "ASSIGNED",
+            "ACTIVE",
+          ],
+        },
+      },
+      data: {
+        status: "VOID",
+      },
+    });
+
+    if (purchase.playerKey) {
+      await tx.gameSession.updateMany({
+        where: {
+          gameId: purchase.gameId,
+          sessionKey: purchase.playerKey,
+        },
+        data: {
+          connected: false,
+        },
+      });
+    }
+  });
+}
+
 async function releaseExpiredPurchase(
   session: Stripe.Checkout.Session
 ) {
@@ -543,6 +659,14 @@ export async function POST(request: NextRequest) {
           event.data.object as Stripe.Checkout.Session;
 
         await releaseExpiredPurchase(session);
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge =
+          event.data.object as Stripe.Charge;
+
+        await markPurchaseRefunded(charge);
         break;
       }
 

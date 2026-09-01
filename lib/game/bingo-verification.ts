@@ -273,6 +273,12 @@ export async function submitBingoClaim(
     },
     select: {
       id: true,
+      status: true,
+      purchase: {
+        select: {
+          status: true,
+        },
+      },
       game: {
         select: {
           status: true,
@@ -290,12 +296,33 @@ export async function submitBingoClaim(
     };
   }
 
-  if (card.game.status === "COMPLETED") {
+  /*
+   * BTTB_REFUNDED_CARD_BINGO_GUARD_V1
+   *
+   * A refunded or voided card may remain linked to the player
+   * for historical reporting, but it may not submit a new claim.
+   */
+  if (
+    card.status === "VOID" ||
+    card.purchase?.status === "REFUNDED"
+  ) {
+    return {
+      ok: false as const,
+      code: "CARD_INACTIVE",
+      message:
+        "This card is no longer eligible to submit a BINGO claim.",
+    };
+  }
+
+  if (
+    card.game.status === "COMPLETED" ||
+    card.game.status === "CANCELLED"
+  ) {
     return {
       ok: false as const,
       code: "GAME_COMPLETED",
       message:
-        "This game has already ended. BINGO claims are closed.",
+        "This game has ended. BINGO claims are closed.",
     };
   }
 
@@ -462,6 +489,20 @@ export async function reviewBingoClaim(
       id: claimId,
       gameId,
     },
+    select: {
+      id: true,
+      cardId: true,
+      card: {
+        select: {
+          status: true,
+          purchase: {
+            select: {
+              status: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!claim) {
@@ -482,6 +523,24 @@ export async function reviewBingoClaim(
     return {
       ok: true as const,
       rejected: true as const,
+    };
+  }
+
+  /*
+   * BTTB_REFUNDED_PENDING_CLAIM_GUARD_V1
+   *
+   * Keep historical pending claims visible so the host may
+   * reject them, but a refunded/voided card cannot be verified.
+   */
+  if (
+    claim.card.status === "VOID" ||
+    claim.card.purchase?.status === "REFUNDED"
+  ) {
+    return {
+      ok: false as const,
+      code: "CARD_INACTIVE",
+      message:
+        "This BINGO claim can no longer be verified because the card is inactive.",
     };
   }
 
@@ -523,26 +582,66 @@ export async function reviewBingoClaim(
     };
   }
 
-  await prisma.$transaction([
-    prisma.winner.update({
-      where: {
-        id: claimId,
-      },
-      data: {
-        verified: true,
-        verifiedAt: new Date(),
-        winningType: verification.pattern,
-      },
-    }),
-    prisma.bingoCard.update({
-      where: {
-        id: claim.cardId,
-      },
-      data: {
-        status: "WINNER",
-      },
-    }),
-  ]);
+  const verified =
+    await prisma.$transaction(async (tx) => {
+      /*
+       * Guard the actual WINNER transition too. If a Stripe
+       * refund changed the purchase to REFUNDED after our
+       * earlier read, this update will no longer match.
+       */
+      const winnerCard =
+        await tx.bingoCard.updateMany({
+          where: {
+            id: claim.cardId,
+            status: {
+              not: "VOID",
+            },
+            OR: [
+              {
+                purchaseId: null,
+              },
+              {
+                purchase: {
+                  is: {
+                    status: {
+                      not: "REFUNDED",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          data: {
+            status: "WINNER",
+          },
+        });
+
+      if (winnerCard.count !== 1) {
+        return false;
+      }
+
+      await tx.winner.update({
+        where: {
+          id: claimId,
+        },
+        data: {
+          verified: true,
+          verifiedAt: new Date(),
+          winningType: verification.pattern,
+        },
+      });
+
+      return true;
+    });
+
+  if (!verified) {
+    return {
+      ok: false as const,
+      code: "CARD_INACTIVE",
+      message:
+        "This BINGO claim can no longer be verified because the card is inactive.",
+    };
+  }
 
   return {
     ok: true as const,
