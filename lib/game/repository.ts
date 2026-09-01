@@ -441,6 +441,44 @@ export async function updateGame(
         updated.status ===
         "completed"
       ) {
+        /*
+         * BTTB_END_GAME_PENDING_PURCHASE_FREEZE_V1
+         *
+         * Once a game ends, unpaid Checkout reservations are
+         * historical records. Cancel them and void their cards
+         * instead of leaving them pending or returning the cards
+         * to the available pool.
+         */
+        await tx.purchase.updateMany({
+          where: {
+            gameId,
+            status: "PENDING",
+          },
+          data: {
+            status: "CANCELLED",
+          },
+        });
+
+        await tx.bingoCard.updateMany({
+          where: {
+            gameId,
+            purchase: {
+              is: {
+                status: "CANCELLED",
+              },
+            },
+            status: {
+              in: [
+                "ASSIGNED",
+                "ACTIVE",
+              ],
+            },
+          },
+          data: {
+            status: "VOID",
+          },
+        });
+
         await tx.gameSession.updateMany({
           where: {
             gameId,
