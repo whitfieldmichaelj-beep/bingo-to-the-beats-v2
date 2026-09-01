@@ -133,11 +133,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (game.status === "completed") {
+    if (
+      game.status === "completed"
+    ) {
       return NextResponse.json(
         {
           ok: false,
-          message: "This game has already ended.",
+          message: "This game has ended.",
         },
         { status: 409 }
       );
@@ -221,6 +223,21 @@ export async function POST(request: NextRequest) {
       playerName,
       quantity: cardQuantity,
     });
+
+    if (
+      "refunded" in result &&
+      result.refunded
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PURCHASE_REFUNDED",
+          message:
+            "This purchase has been refunded and can no longer rejoin this game.",
+        },
+        { status: 409 }
+      );
+    }
 
     if ("soldOut" in result && result.soldOut) {
       const available = result.availableCardCount;

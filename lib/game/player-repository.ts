@@ -127,7 +127,11 @@ async function getExistingPurchase(gameId: string, playerId: string) {
       gameId,
       playerKey: playerId,
       status: {
-        in: ["PENDING", "PAID"],
+        in: [
+          "PENDING",
+          "PAID",
+          "REFUNDED",
+        ],
       },
     },
     include: {
@@ -170,7 +174,11 @@ async function waitForExistingPurchaseWithCards(
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const existing = await getExistingPurchase(gameId, playerId);
 
-    if (existing && existing.cards.length > 0) {
+    if (
+      existing &&
+      (existing.status === "REFUNDED" ||
+        existing.cards.length > 0)
+    ) {
       return existing;
     }
 
@@ -182,85 +190,144 @@ async function waitForExistingPurchaseWithCards(
   return null;
 }
 
-async function upsertPlayerSession(
-  gameId: string,
-  playerId: string,
-  playerName: string,
-  rejoining: boolean
-) {
-  try {
-    return await prisma.gameSession.upsert({
-      where: {
-        sessionKey: playerId,
-      },
-      create: {
-        gameId,
-        sessionKey: playerId,
-        playerName,
-        connected: true,
-      },
-      update: {
-        gameId,
-        playerName,
-        connected: true,
-        lastSeenAt: new Date(),
-        ...(rejoining ? {} : { joinedAt: new Date() }),
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) {
-      throw error;
-    }
-
-    // Defensive fallback if two requests race during session creation.
-    return prisma.gameSession.update({
-      where: {
-        sessionKey: playerId,
-      },
-      data: {
-        gameId,
-        playerName,
-        connected: true,
-        lastSeenAt: new Date(),
-        ...(rejoining ? {} : { joinedAt: new Date() }),
-      },
-    });
-  }
-}
-
 async function buildExistingAssignment(
   input: JoinPlayerInput,
   playerId: string,
   existingPurchase: Awaited<ReturnType<typeof getExistingPurchase>>
 ) {
-  if (!existingPurchase || existingPurchase.cards.length === 0) {
+  if (!existingPurchase) {
     return null;
   }
 
-  await upsertPlayerSession(
-    input.gameId,
-    playerId,
-    input.playerName,
-    true
-  );
+  /*
+   * BTTB_REFUNDED_REJOIN_GUARD_V1
+   *
+   * Lock the existing purchase while deciding whether this
+   * trusted player may reconnect. Stripe's refund handler must
+   * update the same purchase row, so whichever transaction wins
+   * the lock determines the final session state safely.
+   */
+  const currentState =
+    await prisma.$transaction(async (tx) => {
+      const lockedPurchases =
+        await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "Purchase"
+          WHERE "id" = ${existingPurchase.id}
+          FOR UPDATE
+        `;
 
-  const cards = existingPurchase.cards.map((card) =>
-    mapCard(card as DatabaseCardWithSquares)
+      if (lockedPurchases.length === 0) {
+        return null;
+      }
+
+      const currentPurchase =
+        await tx.purchase.findUnique({
+          where: {
+            id: existingPurchase.id,
+          },
+          include: {
+            cards: {
+              include: cardInclude,
+              orderBy: {
+                cardNumber: "asc",
+              },
+            },
+          },
+        });
+
+      if (!currentPurchase) {
+        return null;
+      }
+
+      if (
+        currentPurchase.status ===
+        "REFUNDED"
+      ) {
+        return {
+          refunded: true as const,
+          purchase: currentPurchase,
+        };
+      }
+
+      if (
+        !(
+          currentPurchase.status ===
+            "PENDING" ||
+          currentPurchase.status ===
+            "PAID"
+        ) ||
+        currentPurchase.cards.length === 0
+      ) {
+        return null;
+      }
+
+      await tx.gameSession.upsert({
+        where: {
+          sessionKey: playerId,
+        },
+        create: {
+          gameId: input.gameId,
+          sessionKey: playerId,
+          playerName:
+            input.playerName,
+          connected: true,
+        },
+        update: {
+          gameId: input.gameId,
+          playerName:
+            input.playerName,
+          connected: true,
+          lastSeenAt: new Date(),
+        },
+      });
+
+      return {
+        refunded: false as const,
+        purchase: currentPurchase,
+      };
+    });
+
+  if (!currentState) {
+    return null;
+  }
+
+  if (currentState.refunded) {
+    return {
+      refunded: true as const,
+    };
+  }
+
+  const purchase =
+    currentState.purchase;
+
+  const cards = purchase.cards.map((card) =>
+    mapCard(
+      card as DatabaseCardWithSquares
+    )
   );
 
   const assignment: PlayerAssignment = {
     playerId,
     playerName:
-      existingPurchase.playerName ?? input.playerName,
+      purchase.playerName ??
+      input.playerName,
     gameId: input.gameId,
     joinCode: input.joinCode,
-    purchaseId: existingPurchase.id,
-    cardIds: cards.map((card) => card.id),
-    cardQuantity: existingPurchase.quantity as CardQuantity,
-    amountCents: toAmountCents(existingPurchase.amount),
+    purchaseId: purchase.id,
+    cardIds: cards.map(
+      (card) => card.id
+    ),
+    cardQuantity:
+      purchase.quantity as CardQuantity,
+    amountCents:
+      toAmountCents(purchase.amount),
     purchaseStatus:
-      existingPurchase.status === "PAID" ? "PAID" : "PENDING",
-    joinedAt: existingPurchase.createdAt.toISOString(),
+      purchase.status === "PAID"
+        ? "PAID"
+        : "PENDING",
+    joinedAt:
+      purchase.createdAt.toISOString(),
   };
 
   return {
