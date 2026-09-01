@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
           select: {
             title: true,
             joinCode: true,
+            status: true,
           },
         },
       },
@@ -85,6 +86,28 @@ export async function POST(request: NextRequest) {
           message: "Purchase not found.",
         },
         { status: 404 }
+      );
+    }
+
+    /*
+     * BTTB_COMPLETED_GAME_CHECKOUT_LOCK_V1
+     *
+     * A reserved PENDING purchase may not start or reopen
+     * Checkout after the game has ended.
+     */
+    if (
+      purchase.status === "PENDING" &&
+      (purchase.game.status === "COMPLETED" ||
+        purchase.game.status === "CANCELLED")
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "GAME_COMPLETED",
+          message:
+            "This game has ended. Payment can no longer be started for this game.",
+        },
+        { status: 409 }
       );
     }
 

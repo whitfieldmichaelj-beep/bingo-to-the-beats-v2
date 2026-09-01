@@ -75,6 +75,8 @@ export async function GET(request: NextRequest) {
           game: {
             select: {
               joinCode: true,
+              status: true,
+              completedAt: true,
             },
           },
         },
@@ -169,6 +171,35 @@ export async function GET(request: NextRequest) {
 
     const paid =
       checkoutSession.payment_status === "paid";
+
+    /*
+     * BTTB_COMPLETED_GAME_PAYMENT_RECOVERY_LOCK_V1
+     *
+     * Stripe may redirect a player back after the host has
+     * already ended the game. Do not revive gameplay here.
+     * The Stripe webhook remains responsible for recording
+     * and reconciling an already-completed payment.
+     */
+    if (
+      purchase.game.status === "COMPLETED" ||
+      purchase.game.status === "CANCELLED"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "GAME_COMPLETED",
+          paid,
+          purchaseId: purchase.id,
+          joinCode: purchase.game.joinCode,
+          paymentStatus:
+            checkoutSession.payment_status,
+          message: paid
+            ? "Your payment was received, but this game has ended. The payment is being finalized and the game cannot be reopened."
+            : "This game has ended. Payment can no longer be completed for this game.",
+        },
+        { status: 409 }
+      );
+    }
 
     if (paid && purchase.status !== "PAID") {
       const paymentIntentId =

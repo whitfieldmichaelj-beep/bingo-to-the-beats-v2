@@ -32,7 +32,8 @@ function getPaymentIntentId(
 }
 
 async function markPurchasePaid(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
+  eventCreated: number
 ) {
   if (session.payment_status !== "paid") {
     return;
@@ -61,6 +62,12 @@ async function markPurchasePaid(
       currency: true,
       status: true,
       stripeCheckoutSessionId: true,
+      game: {
+        select: {
+          status: true,
+          completedAt: true,
+        },
+      },
     },
   });
 
@@ -118,19 +125,62 @@ async function markPurchasePaid(
   const paymentIntentId =
     getPaymentIntentId(session);
 
-  await prisma.purchase.update({
-    where: {
-      id: purchase.id,
-    },
-    data: {
-      status: "PAID",
-      stripeCheckoutSessionId: session.id,
-      ...(paymentIntentId
-        ? {
-            stripePaymentId: paymentIntentId,
-          }
-        : {}),
-    },
+  const paymentOccurredAt = new Date(
+    eventCreated * 1000
+  );
+
+  /*
+   * BTTB_LATE_PAYMENT_AFTER_GAME_END_V1
+   *
+   * Stripe's event timestamp represents when the payment
+   * event actually occurred. This avoids treating a delayed
+   * webhook delivery as a late customer payment.
+   */
+  const lateForFinishedGame =
+    purchase.game.status === "CANCELLED" ||
+    (purchase.game.status === "COMPLETED" &&
+      (!purchase.game.completedAt ||
+        paymentOccurredAt >
+          purchase.game.completedAt));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.purchase.update({
+      where: {
+        id: purchase.id,
+      },
+      data: {
+        status: "PAID",
+        stripeCheckoutSessionId: session.id,
+        ...(paymentIntentId
+          ? {
+              stripePaymentId: paymentIntentId,
+            }
+          : {}),
+      },
+    });
+
+    if (lateForFinishedGame) {
+      await tx.bingoCard.updateMany({
+        where: {
+          purchaseId: purchase.id,
+        },
+        data: {
+          status: "VOID",
+        },
+      });
+
+      if (purchase.playerKey) {
+        await tx.gameSession.updateMany({
+          where: {
+            gameId: purchase.gameId,
+            sessionKey: purchase.playerKey,
+          },
+          data: {
+            connected: false,
+          },
+        });
+      }
+    }
   });
 }
 
@@ -273,7 +323,10 @@ export async function POST(request: NextRequest) {
         const session =
           event.data.object as Stripe.Checkout.Session;
 
-        await markPurchasePaid(session);
+        await markPurchasePaid(
+          session,
+          event.created
+        );
         break;
       }
 

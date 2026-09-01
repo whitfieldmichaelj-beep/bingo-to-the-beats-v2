@@ -717,6 +717,11 @@ in: ["PENDING", "PAID"],
       },
       include: {
         cards: {
+          where: {
+            status: {
+              not: "VOID",
+            },
+          },
           select: {
             id: true,
           },
@@ -740,12 +745,17 @@ in: ["PENDING", "PAID"],
   >();
 
   for (const purchase of purchases) {
-    if (!purchase.playerKey) continue;
+    if (
+      !purchase.playerKey ||
+      purchase.cards.length === 0
+    ) {
+      continue;
+    }
 
     const current = purchasesByPlayer.get(purchase.playerKey);
 
     if (current) {
-      current.quantity += purchase.quantity;
+      current.quantity += purchase.cards.length;
       current.amountCents += toAmountCents(purchase.amount);
       current.cardIds.push(...purchase.cards.map((card) => card.id));
 
@@ -756,7 +766,7 @@ current.paymentStatus = "PAID";
     }
 
     purchasesByPlayer.set(purchase.playerKey, {
-      quantity: purchase.quantity,
+      quantity: purchase.cards.length,
       amountCents: toAmountCents(purchase.amount),
       cardIds: purchase.cards.map((card) => card.id),
       playerName: purchase.playerName ?? "Player",
@@ -783,13 +793,17 @@ paymentStatus: purchase?.paymentStatus ?? "NONE",
   });
 
   const activities: PlayerActivityItem[] = purchases
-    .filter((purchase) => purchase.status === "PAID")
+    .filter(
+      (purchase) =>
+        purchase.status === "PAID" &&
+        purchase.cards.length > 0
+    )
 .map((purchase) => ({
       id: `joined-${purchase.id}`,
       type: "joined" as const,
       playerId: purchase.playerKey ?? purchase.id,
       playerName: purchase.playerName ?? "Player",
-      cardQuantity: purchase.quantity,
+      cardQuantity: purchase.cards.length,
       createdAt: purchase.createdAt.toISOString(),
     }))
     .sort((left, right) =>
