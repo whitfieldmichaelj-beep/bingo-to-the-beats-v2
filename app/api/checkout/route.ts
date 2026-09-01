@@ -147,6 +147,39 @@ export async function POST(request: NextRequest) {
         existingSession.status === "open" &&
         existingSession.url
       ) {
+        /*
+         * BTTB_CHECKOUT_EXISTING_SESSION_RACE_GUARD_V1
+         *
+         * The host may have ended the game while Stripe was
+         * being queried. Recheck immediately before returning
+         * an existing Checkout URL.
+         */
+        const latestGame =
+          await prisma.game.findUnique({
+            where: {
+              id: purchase.gameId,
+            },
+            select: {
+              status: true,
+            },
+          });
+
+        if (
+          !latestGame ||
+          latestGame.status === "COMPLETED" ||
+          latestGame.status === "CANCELLED"
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "GAME_COMPLETED",
+              message:
+                "This game has ended. Payment can no longer be started for this game.",
+            },
+            { status: 409 }
+          );
+        }
+
         return NextResponse.json({
           ok: true,
           paid: false,
@@ -245,18 +278,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await prisma.purchase.updateMany({
-      where: {
-        id: purchase.id,
-        playerKey:
-          trustedPlayerSession.playerId,
-        status: "PENDING",
-      },
-      data: {
-        stripeCheckoutSessionId:
-          checkoutSession.id,
-      },
-    });
+    /*
+     * BTTB_CHECKOUT_NEW_SESSION_RACE_GUARD_V1
+     *
+     * Atomically link the new Stripe session only while the
+     * game is still open. If End Game won the race, the Stripe
+     * session is never attached to the purchase.
+     */
+    const linkedCheckout =
+      await prisma.purchase.updateMany({
+        where: {
+          id: purchase.id,
+          playerKey:
+            trustedPlayerSession.playerId,
+          status: "PENDING",
+          game: {
+            status: {
+              notIn: [
+                "COMPLETED",
+                "CANCELLED",
+              ],
+            },
+          },
+        },
+        data: {
+          stripeCheckoutSessionId:
+            checkoutSession.id,
+        },
+      });
+
+    if (linkedCheckout.count !== 1) {
+      /*
+       * This session has not been linked to the purchase, so
+       * its expiration webhook is stale and cannot release the
+       * reserved cards.
+       */
+      try {
+        if (checkoutSession.status === "open") {
+          await stripe.checkout.sessions.expire(
+            checkoutSession.id
+          );
+        }
+      } catch (expireError) {
+        console.error(
+          "Unable to expire unlinked Stripe checkout:",
+          expireError
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "GAME_COMPLETED",
+          message:
+            "This game has ended. Payment can no longer be started for this game.",
+        },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
