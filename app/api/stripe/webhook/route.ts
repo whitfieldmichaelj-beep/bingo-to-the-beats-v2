@@ -50,138 +50,277 @@ async function markPurchasePaid(
     );
   }
 
-  const purchase = await prisma.purchase.findUnique({
-    where: {
-      id: purchaseId,
-    },
-    select: {
-      id: true,
-      gameId: true,
-      playerKey: true,
-      amount: true,
-      currency: true,
-      status: true,
-      stripeCheckoutSessionId: true,
-      game: {
-        select: {
-          status: true,
-          completedAt: true,
-        },
+  /*
+   * We only need the immutable game ID before entering the
+   * transaction so Game and Purchase can be locked in the
+   * same order used by End Game.
+   */
+  const initialPurchase =
+    await prisma.purchase.findUnique({
+      where: {
+        id: purchaseId,
       },
-    },
-  });
+      select: {
+        id: true,
+        gameId: true,
+      },
+    });
 
-  if (!purchase) {
+  if (!initialPurchase) {
     throw new Error(
       `Purchase ${purchaseId} was not found.`
-    );
-  }
-
-  if (
-    purchase.stripeCheckoutSessionId &&
-    purchase.stripeCheckoutSessionId !== session.id
-  ) {
-    throw new Error(
-      `Stripe session does not match purchase ${purchase.id}.`
-    );
-  }
-
-  if (
-    session.metadata?.gameId &&
-    session.metadata.gameId !== purchase.gameId
-  ) {
-    throw new Error(
-      `Stripe game ID does not match purchase ${purchase.id}.`
-    );
-  }
-
-  if (
-    session.metadata?.playerId &&
-    session.metadata.playerId !== purchase.playerKey
-  ) {
-    throw new Error(
-      `Stripe player ID does not match purchase ${purchase.id}.`
-    );
-  }
-
-  const expectedAmountCents =
-    toAmountCents(purchase.amount);
-
-  if (session.amount_total !== expectedAmountCents) {
-    throw new Error(
-      `Stripe amount does not match purchase ${purchase.id}.`
-    );
-  }
-
-  if (
-    session.currency?.toLowerCase() !==
-    purchase.currency.toLowerCase()
-  ) {
-    throw new Error(
-      `Stripe currency does not match purchase ${purchase.id}.`
     );
   }
 
   const paymentIntentId =
     getPaymentIntentId(session);
 
-  const paymentOccurredAt = new Date(
-    eventCreated * 1000
-  );
+  const paymentOccurredAt =
+    new Date(eventCreated * 1000);
 
   /*
-   * BTTB_LATE_PAYMENT_AFTER_GAME_END_V1
+   * BTTB_PAYMENT_END_GAME_SERIALIZATION_V1
    *
-   * Stripe's event timestamp represents when the payment
-   * event actually occurred. This avoids treating a delayed
-   * webhook delivery as a late customer payment.
+   * End Game locks Game first and then changes pending
+   * purchases. Stripe payment completion uses the same lock
+   * order so the two operations cannot leave a purchase/card
+   * combination in an inconsistent state.
    */
-  const lateForFinishedGame =
-    purchase.game.status === "CANCELLED" ||
-    (purchase.game.status === "COMPLETED" &&
-      (!purchase.game.completedAt ||
-        paymentOccurredAt >
-          purchase.game.completedAt));
+  await prisma.$transaction(
+    async (tx) => {
+      const lockedGames =
+        await tx.$queryRaw<
+          Array<{ id: string }>
+        >`
+          SELECT "id"
+          FROM "Game"
+          WHERE "id" = ${initialPurchase.gameId}
+          FOR UPDATE
+        `;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.purchase.update({
-      where: {
-        id: purchase.id,
-      },
-      data: {
-        status: "PAID",
-        stripeCheckoutSessionId: session.id,
-        ...(paymentIntentId
-          ? {
-              stripePaymentId: paymentIntentId,
-            }
-          : {}),
-      },
-    });
+      if (lockedGames.length !== 1) {
+        throw new Error(
+          `Game ${initialPurchase.gameId} was not found.`
+        );
+      }
 
-    if (lateForFinishedGame) {
-      await tx.bingoCard.updateMany({
+      const lockedPurchases =
+        await tx.$queryRaw<
+          Array<{ id: string }>
+        >`
+          SELECT "id"
+          FROM "Purchase"
+          WHERE "id" = ${purchaseId}
+          FOR UPDATE
+        `;
+
+      if (lockedPurchases.length !== 1) {
+        throw new Error(
+          `Purchase ${purchaseId} was not found.`
+        );
+      }
+
+      const purchase =
+        await tx.purchase.findUnique({
+          where: {
+            id: purchaseId,
+          },
+          select: {
+            id: true,
+            gameId: true,
+            playerKey: true,
+            amount: true,
+            currency: true,
+            status: true,
+            stripeCheckoutSessionId:
+              true,
+            game: {
+              select: {
+                status: true,
+                completedAt: true,
+              },
+            },
+          },
+        });
+
+      if (!purchase) {
+        throw new Error(
+          `Purchase ${purchaseId} was not found.`
+        );
+      }
+
+      if (
+        purchase.stripeCheckoutSessionId &&
+        purchase.stripeCheckoutSessionId !==
+          session.id
+      ) {
+        throw new Error(
+          `Stripe session does not match purchase ${purchase.id}.`
+        );
+      }
+
+      if (
+        session.metadata?.gameId &&
+        session.metadata.gameId !==
+          purchase.gameId
+      ) {
+        throw new Error(
+          `Stripe game ID does not match purchase ${purchase.id}.`
+        );
+      }
+
+      if (
+        session.metadata?.playerId &&
+        session.metadata.playerId !==
+          purchase.playerKey
+      ) {
+        throw new Error(
+          `Stripe player ID does not match purchase ${purchase.id}.`
+        );
+      }
+
+      const expectedAmountCents =
+        toAmountCents(
+          purchase.amount
+        );
+
+      if (
+        session.amount_total !==
+        expectedAmountCents
+      ) {
+        throw new Error(
+          `Stripe amount does not match purchase ${purchase.id}.`
+        );
+      }
+
+      if (
+        session.currency?.toLowerCase() !==
+        purchase.currency.toLowerCase()
+      ) {
+        throw new Error(
+          `Stripe currency does not match purchase ${purchase.id}.`
+        );
+      }
+
+      /*
+       * A replayed payment event must never reverse a completed
+       * refund.
+       */
+      if (
+        purchase.status ===
+        "REFUNDED"
+      ) {
+        return;
+      }
+
+      const finishedGame =
+        purchase.game.status ===
+          "COMPLETED" ||
+        purchase.game.status ===
+          "CANCELLED";
+
+      /*
+       * BTTB_DELAYED_PRE_COMPLETION_PAYMENT_V1
+       *
+       * Stripe event.created represents when the payment event
+       * actually occurred. If Stripe delivers the webhook after
+       * End Game, but the payment happened on or before the
+       * game's completedAt timestamp, this was a legitimate
+       * pre-completion payment.
+       */
+      const completionSecond =
+        purchase.game.completedAt
+          ? Math.floor(
+              purchase.game.completedAt.getTime() /
+                1000
+            )
+          : null;
+
+      const paidBeforeCompletion =
+        purchase.game.status ===
+          "COMPLETED" &&
+        completionSecond !== null &&
+        eventCreated <
+          completionSecond;
+
+      const lateForFinishedGame =
+        purchase.game.status ===
+          "CANCELLED" ||
+        (purchase.game.status ===
+          "COMPLETED" &&
+          !paidBeforeCompletion);
+
+      await tx.purchase.update({
         where: {
-          purchaseId: purchase.id,
+          id: purchase.id,
         },
         data: {
-          status: "VOID",
+          status: "PAID",
+          stripeCheckoutSessionId:
+            session.id,
+          ...(paymentIntentId
+            ? {
+                stripePaymentId:
+                  paymentIntentId,
+              }
+            : {}),
         },
       });
 
-      if (purchase.playerKey) {
+      if (paidBeforeCompletion) {
+        /*
+         * End Game may already have changed this reservation
+         * from CANCELLED/VOID. Restore only its VOID cards to
+         * the normal paid-card state used by the application.
+         */
+        await tx.bingoCard.updateMany({
+          where: {
+            purchaseId:
+              purchase.id,
+            status: "VOID",
+          },
+          data: {
+            status: "ASSIGNED",
+          },
+        });
+      } else if (lateForFinishedGame) {
+        await tx.bingoCard.updateMany({
+          where: {
+            purchaseId:
+              purchase.id,
+          },
+          data: {
+            status: "VOID",
+          },
+        });
+      }
+
+      /*
+       * A completed/cancelled game remains disconnected even
+       * when a delayed webhook proves that payment was valid.
+       */
+      if (
+        finishedGame &&
+        purchase.playerKey
+      ) {
         await tx.gameSession.updateMany({
           where: {
-            gameId: purchase.gameId,
-            sessionKey: purchase.playerKey,
+            gameId:
+              purchase.gameId,
+            sessionKey:
+              purchase.playerKey,
           },
           data: {
             connected: false,
           },
         });
       }
+    },
+    {
+      timeout: 60_000,
+      maxWait: 20_000,
     }
-  });
+  );
 }
 
 function getChargePaymentIntentId(
