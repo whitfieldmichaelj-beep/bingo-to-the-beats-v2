@@ -776,7 +776,7 @@ export async function listPlayers(gameId: string) {
       where: {
         gameId,
         status: {
-in: ["PENDING", "PAID"],
+in: ["PENDING", "PAID", "REFUNDED"],
 },
         playerKey: {
           not: null,
@@ -800,6 +800,19 @@ in: ["PENDING", "PAID"],
     }),
   ]);
 
+  const refundedPlayerKeys = new Set(
+    purchases
+      .filter(
+        (purchase) =>
+          purchase.status === "REFUNDED" &&
+          purchase.playerKey
+      )
+      .map(
+        (purchase) =>
+          purchase.playerKey as string
+      )
+  );
+
   const purchasesByPlayer = new Map<
     string,
     {
@@ -813,6 +826,7 @@ in: ["PENDING", "PAID"],
 
   for (const purchase of purchases) {
     if (
+      purchase.status === "REFUNDED" ||
       !purchase.playerKey ||
       purchase.cards.length === 0
     ) {
@@ -823,7 +837,11 @@ in: ["PENDING", "PAID"],
 
     if (current) {
       current.quantity += purchase.cards.length;
-      current.amountCents += toAmountCents(purchase.amount);
+      current.amountCents += Math.max(
+        0,
+        toAmountCents(purchase.amount) -
+          toAmountCents(purchase.refundedAmount)
+      );
       current.cardIds.push(...purchase.cards.map((card) => card.id));
 
 if (purchase.status === "PAID") {
@@ -834,7 +852,11 @@ current.paymentStatus = "PAID";
 
     purchasesByPlayer.set(purchase.playerKey, {
       quantity: purchase.cards.length,
-      amountCents: toAmountCents(purchase.amount),
+      amountCents: Math.max(
+        0,
+        toAmountCents(purchase.amount) -
+          toAmountCents(purchase.refundedAmount)
+      ),
       cardIds: purchase.cards.map((card) => card.id),
       playerName: purchase.playerName ?? "Player",
 paymentStatus:
@@ -842,10 +864,20 @@ purchase.status === "PAID" ? "PAID" : "PENDING",
     });
   }
 
-  const players: PlayerRosterItem[] = sessions.map((session) => {
-    const purchase = purchasesByPlayer.get(session.sessionKey);
+  const players: PlayerRosterItem[] = sessions
+    .filter(
+      (session) =>
+        !refundedPlayerKeys.has(
+          session.sessionKey
+        )
+    )
+    .map((session) => {
+      const purchase =
+        purchasesByPlayer.get(
+          session.sessionKey
+        );
 
-    return {
+      return {
       playerId: session.sessionKey,
       playerName:
         session.playerName ?? purchase?.playerName ?? "Player",
@@ -856,8 +888,8 @@ purchase.status === "PAID" ? "PAID" : "PENDING",
       cardIds: purchase?.cardIds ?? [],
       amountCents: purchase?.amountCents ?? 0,
 paymentStatus: purchase?.paymentStatus ?? "NONE",
-    };
-  });
+      };
+    });
 
   const activities: PlayerActivityItem[] = purchases
     .filter(

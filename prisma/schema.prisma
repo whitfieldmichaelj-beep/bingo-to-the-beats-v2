@@ -293,10 +293,11 @@ model Purchase {
   stripePaymentId String? @unique
   stripeCheckoutSessionId String? @unique
 
-  quantity Int
-  amount   Decimal        @db.Decimal(10, 2)
-  currency String         @default("USD")
-  status   PurchaseStatus @default(PENDING)
+  quantity       Int
+  amount         Decimal        @db.Decimal(10, 2)
+  refundedAmount Decimal        @default(0) @db.Decimal(10, 2)
+  currency       String         @default("USD")
+  status         PurchaseStatus @default(PENDING)
 
   game  Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
   user  User?       @relation(fields: [userId], references: [id], onDelete: SetNull)

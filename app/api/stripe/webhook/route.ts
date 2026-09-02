@@ -343,21 +343,6 @@ function getChargePaymentIntentId(
 async function markPurchaseRefunded(
   charge: Stripe.Charge
 ) {
-  /*
-   * BTTB_STRIPE_FULL_REFUND_V1
-   *
-   * charge.refunded may also be emitted around refund activity,
-   * so only treat the purchase as REFUNDED when the entire
-   * charge has actually been refunded.
-   */
-  const fullyRefunded =
-    charge.refunded ||
-    charge.amount_refunded >= charge.amount;
-
-  if (!fullyRefunded) {
-    return;
-  }
-
   const paymentIntentId =
     getChargePaymentIntentId(charge);
 
@@ -371,24 +356,146 @@ async function markPurchaseRefunded(
   const purchase =
     await prisma.purchase.findUnique({
       where: {
-        stripePaymentId: paymentIntentId,
+        stripePaymentId:
+          paymentIntentId,
       },
       select: {
         id: true,
         gameId: true,
         playerKey: true,
+        amount: true,
+        currency: true,
         status: true,
+        refundedAmount: true,
       },
     });
 
-  if (
-    !purchase ||
-    purchase.status === "REFUNDED"
-  ) {
+  if (!purchase) {
     return;
   }
 
+  const expectedAmountCents =
+    toAmountCents(purchase.amount);
+
+  if (charge.amount !== expectedAmountCents) {
+    throw new Error(
+      `Stripe refund amount does not match purchase ${purchase.id}.`
+    );
+  }
+
+  if (
+    charge.currency.toLowerCase() !==
+    purchase.currency.toLowerCase()
+  ) {
+    throw new Error(
+      `Stripe refund currency does not match purchase ${purchase.id}.`
+    );
+  }
+
+  /*
+   * Stripe reports amount_refunded cumulatively on the Charge.
+   * Store that absolute value instead of incrementing so replayed
+   * webhook events remain idempotent.
+   */
+  const refundedAmountCents =
+    Math.max(
+      0,
+      Math.min(
+        charge.amount,
+        charge.amount_refunded
+      )
+    );
+
   await prisma.$transaction(async (tx) => {
+    /*
+     * BTTB_REFUND_EVENT_SERIALIZATION_V1
+     *
+     * Stripe refund events may be delivered concurrently or
+     * out of order. Lock the purchase so a stale partial-refund
+     * event can never reduce the cumulative refunded amount.
+     */
+    const lockedPurchases =
+      await tx.$queryRaw<
+        Array<{ id: string }>
+      >`
+        SELECT "id"
+        FROM "Purchase"
+        WHERE "id" = ${purchase.id}
+        FOR UPDATE
+      `;
+
+    if (lockedPurchases.length !== 1) {
+      return;
+    }
+
+    const current =
+      await tx.purchase.findUnique({
+        where: {
+          id: purchase.id,
+        },
+        select: {
+          status: true,
+          refundedAmount: true,
+        },
+      });
+
+    if (!current) {
+      return;
+    }
+
+    const effectiveRefundedAmountCents =
+      Math.max(
+        refundedAmountCents,
+        toAmountCents(
+          current.refundedAmount
+        )
+      );
+
+    const fullyRefunded =
+      charge.refunded ||
+      effectiveRefundedAmountCents >=
+        charge.amount;
+
+    /*
+     * BTTB_STRIPE_PARTIAL_REFUND_ACCOUNTING_V1
+     *
+     * Partial refunds reduce net revenue but leave the purchase
+     * PAID and its bingo cards valid. A full refund moves the
+     * purchase to REFUNDED and removes participating cards.
+     */
+    if (!fullyRefunded) {
+      if (current.status !== "PAID") {
+        return;
+      }
+
+      await tx.purchase.update({
+        where: {
+          id: purchase.id,
+        },
+        data: {
+          refundedAmount:
+            effectiveRefundedAmountCents /
+            100,
+        },
+      });
+
+      return;
+    }
+
+    if (current.status === "REFUNDED") {
+      await tx.purchase.update({
+        where: {
+          id: purchase.id,
+        },
+        data: {
+          refundedAmount:
+            charge.amount / 100,
+        },
+      });
+
+      return;
+    }
+
     const refunded =
       await tx.purchase.updateMany({
         where: {
@@ -399,6 +506,8 @@ async function markPurchaseRefunded(
         },
         data: {
           status: "REFUNDED",
+          refundedAmount:
+            charge.amount / 100,
         },
       });
 
@@ -428,8 +537,10 @@ async function markPurchaseRefunded(
     if (purchase.playerKey) {
       await tx.gameSession.updateMany({
         where: {
-          gameId: purchase.gameId,
-          sessionKey: purchase.playerKey,
+          gameId:
+            purchase.gameId,
+          sessionKey:
+            purchase.playerKey,
         },
         data: {
           connected: false,
