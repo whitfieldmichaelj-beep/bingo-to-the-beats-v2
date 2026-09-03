@@ -667,6 +667,48 @@ async function main() {
     "tampered checkout game metadata is rejected"
   );
 
+  /*
+   * A signed Stripe webhook claiming the wrong
+   * player must never promote the purchase to PAID.
+   */
+  const wrongPlayerWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        metadata: {
+          ...paidSession.metadata,
+          playerId:
+            `wrong-player-${randomUUID()}`,
+        },
+      },
+    });
+
+  assert(
+    wrongPlayerWebhook.status === 500,
+    `wrong-player webhook expected 500, got ${wrongPlayerWebhook.status}`
+  );
+
+  const afterWrongPlayer =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  assert(
+    afterWrongPlayer?.status === "PENDING",
+    `wrong player metadata changed purchase to ${afterWrongPlayer?.status}`
+  );
+
+  assert(
+    afterWrongPlayer.stripePaymentId === null,
+    "wrong player metadata stored a Stripe PaymentIntent"
+  );
+
+  pass(
+    "tampered checkout player metadata is rejected"
+  );
+
   const completed =
     await sendWebhook({
       type:
