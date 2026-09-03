@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
+import { isDisputeFinanciallyUnavailable } from "@/lib/payments/disputes";
 
 export const runtime = "nodejs";
 
@@ -550,6 +551,279 @@ async function markPurchaseRefunded(
   });
 }
 
+
+type PurchaseDisputeEventType =
+  | "charge.dispute.created"
+  | "charge.dispute.updated"
+  | "charge.dispute.closed"
+  | "charge.dispute.funds_withdrawn"
+  | "charge.dispute.funds_reinstated";
+
+function getDisputePaymentIntentId(
+  dispute: Stripe.Dispute
+) {
+  const paymentIntent =
+    dispute.payment_intent;
+
+  if (!paymentIntent) {
+    return null;
+  }
+
+  return typeof paymentIntent === "string"
+    ? paymentIntent
+    : paymentIntent.id;
+}
+
+async function markPurchaseDisputed(
+  dispute: Stripe.Dispute,
+  eventType: PurchaseDisputeEventType,
+  eventCreated: number
+) {
+  const paymentIntentId =
+    getDisputePaymentIntentId(dispute);
+
+  if (!paymentIntentId) {
+    console.warn(
+      `Stripe dispute ${dispute.id} has no PaymentIntent ID.`
+    );
+    return;
+  }
+
+  const initialPurchase =
+    await prisma.purchase.findUnique({
+      where: {
+        stripePaymentId:
+          paymentIntentId,
+      },
+      select: {
+        id: true,
+        gameId: true,
+        playerKey: true,
+        currency: true,
+      },
+    });
+
+  if (!initialPurchase) {
+    return;
+  }
+
+  if (
+    dispute.currency.toLowerCase() !==
+    initialPurchase.currency.toLowerCase()
+  ) {
+    throw new Error(
+      `Stripe dispute currency does not match purchase ${initialPurchase.id}.`
+    );
+  }
+
+  const eventCreatedValue =
+    BigInt(eventCreated);
+
+  const fundsEvent =
+    eventType ===
+      "charge.dispute.funds_withdrawn" ||
+    eventType ===
+      "charge.dispute.funds_reinstated";
+
+  const fundsWithdrawn =
+    eventType ===
+    "charge.dispute.funds_withdrawn";
+
+  await prisma.$transaction(
+    async (tx) => {
+      /*
+       * BTTB_STRIPE_DISPUTE_SERIALIZATION_V1
+       *
+       * Rejoin/refund/dispute decisions all lock the Purchase
+       * row so their final session state is deterministic.
+       */
+      const lockedPurchases =
+        await tx.$queryRaw<
+          Array<{ id: string }>
+        >`
+          SELECT "id"
+          FROM "Purchase"
+          WHERE "id" = ${initialPurchase.id}
+          FOR UPDATE
+        `;
+
+      if (lockedPurchases.length !== 1) {
+        return;
+      }
+
+      const purchase =
+        await tx.purchase.findUnique({
+          where: {
+            id: initialPurchase.id,
+          },
+          select: {
+            id: true,
+            gameId: true,
+            playerKey: true,
+            currency: true,
+          },
+        });
+
+      if (!purchase) {
+        return;
+      }
+
+      if (
+        dispute.currency.toLowerCase() !==
+        purchase.currency.toLowerCase()
+      ) {
+        throw new Error(
+          `Stripe dispute currency does not match purchase ${purchase.id}.`
+        );
+      }
+
+      const existing =
+        await tx.purchaseDispute.findUnique({
+          where: {
+            stripeDisputeId:
+              dispute.id,
+          },
+        });
+
+      const statusEventIsCurrent =
+        !existing ||
+        eventCreatedValue >=
+          existing.lastStatusEventCreated;
+
+      const fundsEventIsCurrent =
+        fundsEvent &&
+        (
+          !existing ||
+          eventCreatedValue >=
+            existing.lastFundsEventCreated
+        );
+
+      if (!existing) {
+        await tx.purchaseDispute.create({
+          data: {
+            stripeDisputeId:
+              dispute.id,
+            purchaseId:
+              purchase.id,
+            amount:
+              Math.max(
+                0,
+                dispute.amount
+              ) / 100,
+            currency:
+              dispute.currency.toUpperCase(),
+            status:
+              dispute.status,
+            reason:
+              dispute.reason ?? null,
+            fundsWithdrawn:
+              fundsEvent
+                ? fundsWithdrawn
+                : false,
+            lastStatusEventCreated:
+              eventCreatedValue,
+            lastFundsEventCreated:
+              fundsEvent
+                ? eventCreatedValue
+                : BigInt(0),
+          },
+        });
+      } else {
+        const data: {
+          amount?: number;
+          currency?: string;
+          status?: string;
+          reason?: string | null;
+          fundsWithdrawn?: boolean;
+          lastStatusEventCreated?: bigint;
+          lastFundsEventCreated?: bigint;
+        } = {};
+
+        if (statusEventIsCurrent) {
+          data.amount =
+            Math.max(
+              0,
+              dispute.amount
+            ) / 100;
+          data.currency =
+            dispute.currency.toUpperCase();
+          data.status =
+            dispute.status;
+          data.reason =
+            dispute.reason ?? null;
+          data.lastStatusEventCreated =
+            eventCreatedValue;
+        }
+
+        if (fundsEventIsCurrent) {
+          data.fundsWithdrawn =
+            fundsWithdrawn;
+          data.lastFundsEventCreated =
+            eventCreatedValue;
+        }
+
+        if (Object.keys(data).length > 0) {
+          await tx.purchaseDispute.update({
+            where: {
+              stripeDisputeId:
+                dispute.id,
+            },
+            data,
+          });
+        }
+      }
+
+      /*
+       * A purchase remains blocked while any dispute is active
+       * OR while Stripe still has dispute funds withdrawn.
+       *
+       * This prevents a "won" status from restoring access
+       * before the separate funds_reinstated event arrives.
+       */
+      const allDisputes =
+        await tx.purchaseDispute.findMany({
+          where: {
+            purchaseId:
+              purchase.id,
+          },
+          select: {
+            status: true,
+            fundsWithdrawn: true,
+          },
+        });
+
+      const purchaseBlocked =
+        allDisputes.some(
+          (currentDispute) =>
+            isDisputeFinanciallyUnavailable(
+              currentDispute
+            )
+        );
+
+      if (
+        purchaseBlocked &&
+        purchase.playerKey
+      ) {
+        await tx.gameSession.updateMany({
+          where: {
+            gameId:
+              purchase.gameId,
+            sessionKey:
+              purchase.playerKey,
+          },
+          data: {
+            connected: false,
+          },
+        });
+      }
+    },
+    {
+      maxWait: 20_000,
+      timeout: 60_000,
+    }
+  );
+}
+
 async function releaseExpiredPurchase(
   session: Stripe.Checkout.Session
 ) {
@@ -917,6 +1191,22 @@ export async function POST(request: NextRequest) {
           event.data.object as Stripe.Charge;
 
         await markPurchaseRefunded(charge);
+        break;
+      }
+
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.closed":
+      case "charge.dispute.funds_withdrawn":
+      case "charge.dispute.funds_reinstated": {
+        const dispute =
+          event.data.object as Stripe.Dispute;
+
+        await markPurchaseDisputed(
+          dispute,
+          event.type,
+          event.created
+        );
         break;
       }
 

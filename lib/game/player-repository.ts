@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
 import type { BingoCard, BingoCardSquare } from "./types";
+import { hasUnavailableDispute } from "@/lib/payments/disputes";
 
 export const CARD_PRICING = {
   1: 500,
@@ -141,6 +142,12 @@ async function getExistingPurchase(gameId: string, playerId: string) {
           cardNumber: "asc",
         },
       },
+      disputes: {
+        select: {
+          status: true,
+          fundsWithdrawn: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -233,6 +240,12 @@ async function buildExistingAssignment(
                 cardNumber: "asc",
               },
             },
+            disputes: {
+              select: {
+                status: true,
+                fundsWithdrawn: true,
+              },
+            },
           },
         });
 
@@ -246,6 +259,17 @@ async function buildExistingAssignment(
       ) {
         return {
           refunded: true as const,
+          purchase: currentPurchase,
+        };
+      }
+
+      if (
+        hasUnavailableDispute(
+          currentPurchase.disputes
+        )
+      ) {
+        return {
+          disputed: true as const,
           purchase: currentPurchase,
         };
       }
@@ -295,6 +319,15 @@ async function buildExistingAssignment(
   if (currentState.refunded) {
     return {
       refunded: true as const,
+    };
+  }
+
+  if (
+    "disputed" in currentState &&
+    currentState.disputed
+  ) {
+    return {
+      disputed: true as const,
     };
   }
 
@@ -793,6 +826,12 @@ in: ["PENDING", "PAID", "REFUNDED"],
             id: true,
           },
         },
+        disputes: {
+          select: {
+            status: true,
+            fundsWithdrawn: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "asc",
@@ -800,12 +839,17 @@ in: ["PENDING", "PAID", "REFUNDED"],
     }),
   ]);
 
-  const refundedPlayerKeys = new Set(
+  const financiallyBlockedPlayerKeys = new Set(
     purchases
       .filter(
         (purchase) =>
-          purchase.status === "REFUNDED" &&
-          purchase.playerKey
+          purchase.playerKey &&
+          (
+            purchase.status === "REFUNDED" ||
+            hasUnavailableDispute(
+              purchase.disputes
+            )
+          )
       )
       .map(
         (purchase) =>
@@ -827,6 +871,9 @@ in: ["PENDING", "PAID", "REFUNDED"],
   for (const purchase of purchases) {
     if (
       purchase.status === "REFUNDED" ||
+      hasUnavailableDispute(
+        purchase.disputes
+      ) ||
       !purchase.playerKey ||
       purchase.cards.length === 0
     ) {
@@ -867,7 +914,7 @@ purchase.status === "PAID" ? "PAID" : "PENDING",
   const players: PlayerRosterItem[] = sessions
     .filter(
       (session) =>
-        !refundedPlayerKeys.has(
+        !financiallyBlockedPlayerKeys.has(
           session.sessionKey
         )
     )
@@ -895,6 +942,9 @@ paymentStatus: purchase?.paymentStatus ?? "NONE",
     .filter(
       (purchase) =>
         purchase.status === "PAID" &&
+        !hasUnavailableDispute(
+          purchase.disputes
+        ) &&
         purchase.cards.length > 0
     )
 .map((purchase) => ({

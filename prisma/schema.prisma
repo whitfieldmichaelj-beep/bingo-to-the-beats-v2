@@ -299,9 +299,10 @@ model Purchase {
   currency       String         @default("USD")
   status         PurchaseStatus @default(PENDING)
 
-  game  Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user  User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  cards BingoCard[]
+  game     Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user     User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cards    BingoCard[]
+  disputes PurchaseDispute[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -313,6 +314,31 @@ model Purchase {
   @@index([gameId])
   @@index([userId])
   @@index([playerKey])
+}
+
+model PurchaseDispute {
+  stripeDisputeId String @id
+  purchaseId      String
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String
+  status   String
+  reason   String?
+
+  fundsWithdrawn Boolean @default(false)
+
+  // Stripe webhook events can arrive late or out of order.
+  // Track status and funds-event clocks independently.
+  lastStatusEventCreated BigInt @default(0)
+  lastFundsEventCreated  BigInt @default(0)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([purchaseId])
+  @@index([status])
 }
 
 model Winner {

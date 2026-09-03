@@ -239,6 +239,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (
+      "disputed" in result &&
+      result.disputed
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PURCHASE_DISPUTED",
+          message:
+            "This purchase has an active payment dispute and cannot rejoin this game.",
+        },
+        { status: 409 }
+      );
+    }
+
     if ("soldOut" in result && result.soldOut) {
       const available = result.availableCardCount;
 

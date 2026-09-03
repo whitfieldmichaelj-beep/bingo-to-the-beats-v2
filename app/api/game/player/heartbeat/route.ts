@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { readPlayerSession } from "@/lib/auth/player-session";
 import { prisma } from "@/lib/prisma";
+import { hasUnavailableDispute } from "@/lib/payments/disputes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,18 +122,33 @@ export async function POST(
             },
             select: {
               status: true,
+              disputes: {
+                select: {
+                  status: true,
+                  fundsWithdrawn: true,
+                },
+              },
             },
           });
 
         const refunded =
           purchase?.status === "REFUNDED";
 
+        const disputed =
+          purchase
+            ? hasUnavailableDispute(
+                purchase.disputes
+              )
+            : false;
+
         const gameEnded =
           game.status === "COMPLETED" ||
           game.status === "CANCELLED";
 
         const effectiveConnected =
-          gameEnded || refunded
+          gameEnded ||
+          refunded ||
+          disputed
             ? false
             : connected;
 
@@ -153,6 +169,7 @@ export async function POST(
           sessionFound: true,
           gameFound: true,
           refunded,
+          disputed,
           connected:
             effectiveConnected,
           gameStatus: game.status,
@@ -186,6 +203,21 @@ export async function POST(
           code: "PURCHASE_REFUNDED",
           message:
             "This player's purchase has been refunded.",
+          connected: false,
+          gameStatus:
+            heartbeat.gameStatus,
+        },
+        { status: 403 }
+      );
+    }
+
+    if (heartbeat.disputed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PURCHASE_DISPUTED",
+          message:
+            "This player's purchase has an active payment dispute.",
           connected: false,
           gameStatus:
             heartbeat.gameStatus,
