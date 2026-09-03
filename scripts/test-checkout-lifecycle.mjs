@@ -709,6 +709,48 @@ async function main() {
     "tampered checkout player metadata is rejected"
   );
 
+  /*
+   * Stripe client_reference_id and metadata.purchaseId
+   * must identify the same purchase.
+   */
+  const wrongPurchaseMetadataWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        metadata: {
+          ...paidSession.metadata,
+          purchaseId:
+            randomUUID(),
+        },
+      },
+    });
+
+  assert(
+    wrongPurchaseMetadataWebhook.status === 500,
+    `wrong-purchase metadata webhook expected 500, got ${wrongPurchaseMetadataWebhook.status}`
+  );
+
+  const afterWrongPurchaseMetadata =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  assert(
+    afterWrongPurchaseMetadata?.status === "PENDING",
+    `wrong purchase metadata changed purchase to ${afterWrongPurchaseMetadata?.status}`
+  );
+
+  assert(
+    afterWrongPurchaseMetadata.stripePaymentId === null,
+    "wrong purchase metadata stored a Stripe PaymentIntent"
+  );
+
+  pass(
+    "tampered checkout purchase metadata is rejected"
+  );
+
   const completed =
     await sendWebhook({
       type:

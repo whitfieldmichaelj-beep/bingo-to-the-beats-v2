@@ -161,6 +161,16 @@ async function markPurchasePaid(
       }
 
       if (
+        session.metadata?.purchaseId &&
+        session.metadata.purchaseId !==
+          purchase.id
+      ) {
+        throw new Error(
+          `Stripe purchase ID does not match purchase ${purchase.id}.`
+        );
+      }
+
+      if (
         session.metadata?.gameId &&
         session.metadata.gameId !==
           purchase.gameId
