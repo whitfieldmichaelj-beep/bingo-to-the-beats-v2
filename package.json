@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:player-enrollment": "node scripts/test-one-player-one-game.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",
