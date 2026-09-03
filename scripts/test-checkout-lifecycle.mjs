@@ -518,6 +518,60 @@ async function main() {
       paymentIntentId,
   };
 
+  /*
+   * A signed Stripe webhook with the wrong amount
+   * must never promote the purchase to PAID.
+   */
+  const wrongAmountWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        amount_total:
+          paid.amountCents + 1,
+      },
+    });
+
+  assert(
+    wrongAmountWebhook.status === 500,
+    `wrong-amount webhook expected 500, got ${wrongAmountWebhook.status}`
+  );
+
+  const afterWrongAmount =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  const cardAfterWrongAmount =
+    await getCard(
+      paid.cardId
+    );
+
+  assert(
+    afterWrongAmount?.status === "PENDING",
+    `wrong amount changed purchase to ${afterWrongAmount?.status}`
+  );
+
+  assert(
+    afterWrongAmount.stripePaymentId === null,
+    "wrong amount stored a Stripe PaymentIntent"
+  );
+
+  assert(
+    cardAfterWrongAmount?.purchaseId ===
+      paid.purchaseId &&
+      cardAfterWrongAmount?.playerKey ===
+        paid.playerId &&
+      cardAfterWrongAmount?.status !== "VOID" &&
+      cardAfterWrongAmount?.status !== "AVAILABLE",
+    "wrong amount changed reserved card"
+  );
+
+  pass(
+    "tampered checkout amount is rejected"
+  );
+
   const completed =
     await sendWebhook({
       type:
