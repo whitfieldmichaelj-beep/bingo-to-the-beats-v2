@@ -751,6 +751,45 @@ async function main() {
     "tampered checkout purchase metadata is rejected"
   );
 
+  /*
+   * A payment event from a different Stripe Checkout
+   * Session must never be accepted for this purchase.
+   */
+  const wrongSessionWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        id:
+          makeId("cs_test_wrong"),
+      },
+    });
+
+  assert(
+    wrongSessionWebhook.status === 500,
+    `wrong-session webhook expected 500, got ${wrongSessionWebhook.status}`
+  );
+
+  const afterWrongSession =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  assert(
+    afterWrongSession?.status === "PENDING",
+    `wrong Checkout Session changed purchase to ${afterWrongSession?.status}`
+  );
+
+  assert(
+    afterWrongSession.stripePaymentId === null,
+    "wrong Checkout Session stored a Stripe PaymentIntent"
+  );
+
+  pass(
+    "mismatched checkout session is rejected"
+  );
+
   const completed =
     await sendWebhook({
       type:
