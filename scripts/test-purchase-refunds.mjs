@@ -386,8 +386,31 @@ async function main() {
   testPurchaseId =
     firstJoin.body.player.purchaseId;
 
+  /*
+   * Pending purchases intentionally do not expose
+   * reserved card IDs through the join response.
+   * Read the reservation directly from the local
+   * test database.
+   */
+  const reservedCard =
+    await pool.query(
+      `
+        SELECT "id"
+        FROM "BingoCard"
+        WHERE "purchaseId" = $1
+        ORDER BY "cardNumber" ASC
+        LIMIT 1
+      `,
+      [testPurchaseId]
+    );
+
+  assert(
+    reservedCard.rows.length === 1,
+    "temporary refund purchase has no reserved card"
+  );
+
   const cardId =
-    firstJoin.body.player.cardIds[0];
+    reservedCard.rows[0].id;
 
   pass("normal player join");
 
