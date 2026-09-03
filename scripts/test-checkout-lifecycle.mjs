@@ -572,6 +572,59 @@ async function main() {
     "tampered checkout amount is rejected"
   );
 
+  /*
+   * A signed Stripe webhook with the wrong
+   * currency must also be rejected.
+   */
+  const wrongCurrencyWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        currency: "eur",
+      },
+    });
+
+  assert(
+    wrongCurrencyWebhook.status === 500,
+    `wrong-currency webhook expected 500, got ${wrongCurrencyWebhook.status}`
+  );
+
+  const afterWrongCurrency =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  const cardAfterWrongCurrency =
+    await getCard(
+      paid.cardId
+    );
+
+  assert(
+    afterWrongCurrency?.status === "PENDING",
+    `wrong currency changed purchase to ${afterWrongCurrency?.status}`
+  );
+
+  assert(
+    afterWrongCurrency.stripePaymentId === null,
+    "wrong currency stored a Stripe PaymentIntent"
+  );
+
+  assert(
+    cardAfterWrongCurrency?.purchaseId ===
+      paid.purchaseId &&
+      cardAfterWrongCurrency?.playerKey ===
+        paid.playerId &&
+      cardAfterWrongCurrency?.status !== "VOID" &&
+      cardAfterWrongCurrency?.status !== "AVAILABLE",
+    "wrong currency changed reserved card"
+  );
+
+  pass(
+    "tampered checkout currency is rejected"
+  );
+
   const completed =
     await sendWebhook({
       type:
