@@ -135,6 +135,39 @@ async function requestJoin({
   };
 }
 
+async function requestCheckout({
+  token,
+  purchaseId,
+}) {
+  const headers = {
+    "Content-Type":
+      "application/json",
+  };
+
+  if (token) {
+    headers.Cookie =
+      `bttb-player-session=${token}`;
+  }
+
+  const response = await fetch(
+    `${BASE_URL}/api/checkout`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        purchaseId,
+      }),
+    }
+  );
+
+  const body = await response.json();
+
+  return {
+    status: response.status,
+    body,
+  };
+}
+
 async function sendWebhook({
   type,
   object,
@@ -396,6 +429,54 @@ async function main() {
 
   pass("paid test player joined");
 
+  /*
+   * Checkout must require the trusted player session.
+   */
+  const unauthenticatedCheckout =
+    await requestCheckout({
+      token: null,
+      purchaseId:
+        paid.purchaseId,
+    });
+
+  assert(
+    unauthenticatedCheckout.status === 401,
+    `unauthenticated checkout expected 401, got ${unauthenticatedCheckout.status}`
+  );
+
+  pass(
+    "checkout requires trusted player session"
+  );
+
+  /*
+   * A different trusted player may not create
+   * Checkout for someone else's purchase.
+   */
+  const otherPlayerId =
+    `auto-checkout-other-${randomUUID()}`;
+
+  const otherPlayerToken =
+    await createToken(
+      otherPlayerId
+    );
+
+  const foreignCheckout =
+    await requestCheckout({
+      token:
+        otherPlayerToken,
+      purchaseId:
+        paid.purchaseId,
+    });
+
+  assert(
+    foreignCheckout.status === 404,
+    `foreign purchase checkout expected 404, got ${foreignCheckout.status}`
+  );
+
+  pass(
+    "checkout rejects another player's purchase"
+  );
+
   const paidSessionId =
     makeId("cs_test_paid");
 
@@ -488,6 +569,31 @@ async function main() {
 
   pass(
     "successful checkout marks purchase paid"
+  );
+
+  /*
+   * An already-paid purchase must short-circuit
+   * without creating another Stripe Checkout.
+   */
+  const paidCheckout =
+    await requestCheckout({
+      token:
+        paid.token,
+      purchaseId:
+        paid.purchaseId,
+    });
+
+  assert(
+    paidCheckout.status === 200 &&
+      paidCheckout.body.ok === true &&
+      paidCheckout.body.paid === true &&
+      paidCheckout.body.purchaseId ===
+        paid.purchaseId,
+    `paid purchase checkout was not safely short-circuited: ${JSON.stringify(paidCheckout.body)}`
+  );
+
+  pass(
+    "paid purchase cannot start another checkout"
   );
 
   /*
