@@ -241,7 +241,7 @@ async function markPurchasePaid(
         purchase.game.status ===
           "COMPLETED" &&
         completionSecond !== null &&
-        eventCreated <
+        eventCreated <=
           completionSecond;
 
       const lateForFinishedGame =

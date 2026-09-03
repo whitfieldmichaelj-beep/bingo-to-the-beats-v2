@@ -70,6 +70,7 @@ const pool = new Pool({
 
 const testPlayerIds = [];
 const testPurchaseIds = [];
+const testGameIds = [];
 
 function pass(message) {
   console.log(`PASS  ${message}`);
@@ -137,13 +138,14 @@ async function requestJoin({
 async function sendWebhook({
   type,
   object,
+  created =
+    Math.floor(Date.now() / 1000),
 }) {
   const payload = JSON.stringify({
     id: makeId("evt_auto"),
     object: "event",
     api_version: "2025-12-15.clover",
-    created:
-      Math.floor(Date.now() / 1000),
+    created,
     livemode: false,
     pending_webhooks: 1,
     type,
@@ -278,7 +280,8 @@ async function createTestEnrollment(name) {
 async function cleanup() {
   if (
     testPlayerIds.length === 0 &&
-    testPurchaseIds.length === 0
+    testPurchaseIds.length === 0 &&
+    testGameIds.length === 0
   ) {
     return;
   }
@@ -335,6 +338,16 @@ async function cleanup() {
           WHERE "id" = ANY($1::text[])
         `,
         [testPurchaseIds]
+      );
+    }
+
+    if (testGameIds.length > 0) {
+      await client.query(
+        `
+          DELETE FROM "Game"
+          WHERE "id" = ANY($1::text[])
+        `,
+        [testGameIds]
       );
     }
 
@@ -733,6 +746,260 @@ async function main() {
 
   pass(
     "current checkout expiration releases reservation"
+  );
+
+  /*
+   * TEST 3:
+   * A Stripe payment occurring in the exact same
+   * second as game completion must be treated as a
+   * legitimate payment and restore the voided card.
+   *
+   * Stripe event.created has whole-second precision,
+   * while completedAt has millisecond precision.
+   */
+  const sameSecondGameId =
+    randomUUID();
+
+  const sameSecondJoinCode =
+    `AUTO${randomUUID()
+      .replaceAll("-", "")
+      .slice(0, 8)
+      .toUpperCase()}`;
+
+  const completionSecond =
+    Math.floor(Date.now() / 1000);
+
+  const gameInsert =
+    await pool.query(
+      `
+        INSERT INTO "Game" (
+          "id",
+          "hostId",
+          "playlistId",
+          "sourcePlaylistId",
+          "playlistName",
+          "playlistTrackCount",
+          "title",
+          "joinCode",
+          "status",
+          "locked",
+          "winningRule",
+          "requestedCardCount",
+          "songsPerCard",
+          "currentTrackId",
+          "cardPrice",
+          "currency",
+          "maxPlayers",
+          "startedAt",
+          "completedAt",
+          "createdAt",
+          "updatedAt"
+        )
+        SELECT
+          $1,
+          "hostId",
+          "playlistId",
+          "sourcePlaylistId",
+          "playlistName",
+          "playlistTrackCount",
+          'Automated Same Second Checkout',
+          $2,
+          'COMPLETED',
+          TRUE,
+          "winningRule",
+          1,
+          "songsPerCard",
+          NULL,
+          "cardPrice",
+          "currency",
+          "maxPlayers",
+          "startedAt",
+          (
+            to_timestamp($3)
+              AT TIME ZONE 'UTC'
+          ) +
+            INTERVAL '500 milliseconds',
+          NOW(),
+          NOW()
+        FROM "Game"
+        WHERE "joinCode" = $4
+      `,
+      [
+        sameSecondGameId,
+        sameSecondJoinCode,
+        completionSecond,
+        JOIN_CODE,
+      ]
+    );
+
+  assert(
+    gameInsert.rowCount === 1,
+    "unable to create temporary completed game"
+  );
+
+  testGameIds.push(
+    sameSecondGameId
+  );
+
+  const sameSecondPlayerId =
+    `auto-same-second-${randomUUID()}`;
+
+  const sameSecondPurchaseId =
+    randomUUID();
+
+  const sameSecondCardId =
+    randomUUID();
+
+  const sameSecondSessionId =
+    makeId("cs_test_same_second");
+
+  const sameSecondPaymentIntentId =
+    makeId("pi_test_same_second");
+
+  testPlayerIds.push(
+    sameSecondPlayerId
+  );
+
+  testPurchaseIds.push(
+    sameSecondPurchaseId
+  );
+
+  await pool.query(
+    `
+      INSERT INTO "Purchase" (
+        "id",
+        "gameId",
+        "playerKey",
+        "playerName",
+        "stripeCheckoutSessionId",
+        "quantity",
+        "amount",
+        "currency",
+        "status",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'Automated Same Second Player',
+        $4,
+        1,
+        1.00,
+        'USD',
+        'CANCELLED',
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      sameSecondPurchaseId,
+      sameSecondGameId,
+      sameSecondPlayerId,
+      sameSecondSessionId,
+    ]
+  );
+
+  await pool.query(
+    `
+      INSERT INTO "BingoCard" (
+        "id",
+        "gameId",
+        "cardNumber",
+        "status",
+        "signature",
+        "playerName",
+        "playerKey",
+        "purchaseId",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        $1,
+        $2,
+        1,
+        'VOID',
+        'auto-same-second-signature',
+        'Automated Same Second Player',
+        $3,
+        $4,
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      sameSecondCardId,
+      sameSecondGameId,
+      sameSecondPlayerId,
+      sameSecondPurchaseId,
+    ]
+  );
+
+  pass(
+    "same-second completed-game fixture created"
+  );
+
+  const sameSecondWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      created:
+        completionSecond,
+      object: {
+        id:
+          sameSecondSessionId,
+        object:
+          "checkout.session",
+        payment_status: "paid",
+        client_reference_id:
+          sameSecondPurchaseId,
+        metadata: {
+          purchaseId:
+            sameSecondPurchaseId,
+          gameId:
+            sameSecondGameId,
+          playerId:
+            sameSecondPlayerId,
+        },
+        amount_total: 100,
+        currency: "usd",
+        payment_intent:
+          sameSecondPaymentIntentId,
+      },
+    });
+
+  assert(
+    sameSecondWebhook.status === 200 &&
+      sameSecondWebhook.body.received ===
+        true,
+    `same-second payment webhook failed: ${JSON.stringify(sameSecondWebhook.body)}`
+  );
+
+  const sameSecondPurchase =
+    await getPurchase(
+      sameSecondPurchaseId
+    );
+
+  const sameSecondCard =
+    await getCard(
+      sameSecondCardId
+    );
+
+  assert(
+    sameSecondPurchase?.status ===
+      "PAID",
+    `same-second purchase expected PAID, got ${sameSecondPurchase?.status}`
+  );
+
+  assert(
+    sameSecondCard?.status ===
+      "ASSIGNED",
+    `same-second payment should restore card to ASSIGNED, got ${sameSecondCard?.status}`
+  );
+
+  pass(
+    "same-second completion payment restores card"
   );
 
   console.log();
