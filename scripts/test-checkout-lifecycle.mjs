@@ -581,6 +581,61 @@ async function main() {
   };
 
   /*
+   * An unpaid Stripe Checkout event must never promote
+   * a pending purchase to PAID.
+   */
+  const unpaidWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        payment_status:
+          "unpaid",
+      },
+    });
+
+  assert(
+    unpaidWebhook.status === 200 &&
+      unpaidWebhook.body.received === true,
+    `unpaid checkout webhook failed: ${JSON.stringify(unpaidWebhook.body)}`
+  );
+
+  const afterUnpaid =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  const cardAfterUnpaid =
+    await getCard(
+      paid.cardId
+    );
+
+  assert(
+    afterUnpaid?.status === "PENDING",
+    `unpaid checkout changed purchase to ${afterUnpaid?.status}`
+  );
+
+  assert(
+    afterUnpaid.stripePaymentId === null,
+    "unpaid checkout stored a Stripe PaymentIntent"
+  );
+
+  assert(
+    cardAfterUnpaid?.purchaseId ===
+      paid.purchaseId &&
+      cardAfterUnpaid?.playerKey ===
+        paid.playerId &&
+      cardAfterUnpaid?.status !== "VOID" &&
+      cardAfterUnpaid?.status !== "AVAILABLE",
+    "unpaid checkout changed reserved card"
+  );
+
+  pass(
+    "unpaid checkout cannot mark purchase paid"
+  );
+
+  /*
    * A payment webhook must contain the purchase, game,
    * and player metadata created by our Checkout route.
    */
