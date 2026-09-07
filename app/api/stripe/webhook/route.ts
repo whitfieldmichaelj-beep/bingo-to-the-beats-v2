@@ -160,10 +160,28 @@ async function markPurchasePaid(
         );
       }
 
+      const metadataPurchaseId =
+        session.metadata?.purchaseId?.trim();
+
+      const metadataGameId =
+        session.metadata?.gameId?.trim();
+
+      const metadataPlayerId =
+        session.metadata?.playerId?.trim();
+
       if (
-        session.metadata?.purchaseId &&
-        session.metadata.purchaseId !==
-          purchase.id
+        !metadataPurchaseId ||
+        !metadataGameId ||
+        !metadataPlayerId
+      ) {
+        throw new Error(
+          `Stripe checkout metadata is incomplete for purchase ${purchase.id}.`
+        );
+      }
+
+      if (
+        metadataPurchaseId !==
+        purchase.id
       ) {
         throw new Error(
           `Stripe purchase ID does not match purchase ${purchase.id}.`
@@ -171,9 +189,8 @@ async function markPurchasePaid(
       }
 
       if (
-        session.metadata?.gameId &&
-        session.metadata.gameId !==
-          purchase.gameId
+        metadataGameId !==
+        purchase.gameId
       ) {
         throw new Error(
           `Stripe game ID does not match purchase ${purchase.id}.`
@@ -181,9 +198,8 @@ async function markPurchasePaid(
       }
 
       if (
-        session.metadata?.playerId &&
-        session.metadata.playerId !==
-          purchase.playerKey
+        metadataPlayerId !==
+        purchase.playerKey
       ) {
         throw new Error(
           `Stripe player ID does not match purchase ${purchase.id}.`

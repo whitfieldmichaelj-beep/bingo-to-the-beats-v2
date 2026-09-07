@@ -581,6 +581,80 @@ async function main() {
   };
 
   /*
+   * A payment webhook must contain the purchase, game,
+   * and player metadata created by our Checkout route.
+   */
+  const missingMetadata =
+    await createTestEnrollment(
+      "Automated Missing Metadata Checkout"
+    );
+
+  const missingMetadataSessionId =
+    makeId("cs_test_missing_metadata");
+
+  const missingMetadataPaymentIntentId =
+    makeId("pi_test_missing_metadata");
+
+  await pool.query(
+    `
+      UPDATE "Purchase"
+      SET
+        "stripeCheckoutSessionId" = $1,
+        "updatedAt" = NOW()
+      WHERE "id" = $2
+    `,
+    [
+      missingMetadataSessionId,
+      missingMetadata.purchaseId,
+    ]
+  );
+
+  const missingMetadataWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        id:
+          missingMetadataSessionId,
+        object:
+          "checkout.session",
+        payment_status: "paid",
+        client_reference_id:
+          missingMetadata.purchaseId,
+        metadata: {},
+        amount_total:
+          missingMetadata.amountCents,
+        currency: "usd",
+        payment_intent:
+          missingMetadataPaymentIntentId,
+      },
+    });
+
+  assert(
+    missingMetadataWebhook.status === 500,
+    `missing checkout metadata expected 500, got ${missingMetadataWebhook.status}`
+  );
+
+  const afterMissingMetadata =
+    await getPurchase(
+      missingMetadata.purchaseId
+    );
+
+  assert(
+    afterMissingMetadata?.status === "PENDING",
+    `missing metadata changed purchase to ${afterMissingMetadata?.status}`
+  );
+
+  assert(
+    afterMissingMetadata.stripePaymentId === null,
+    "missing metadata stored a Stripe PaymentIntent"
+  );
+
+  pass(
+    "missing checkout metadata is rejected"
+  );
+
+  /*
    * Stripe asynchronous payment success must use the
    * same protected payment-completion path.
    */
