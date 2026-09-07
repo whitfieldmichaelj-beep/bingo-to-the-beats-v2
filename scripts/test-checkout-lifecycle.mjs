@@ -581,6 +581,104 @@ async function main() {
   };
 
   /*
+   * Stripe asynchronous payment success must use the
+   * same protected payment-completion path.
+   */
+  const asyncPaid =
+    await createTestEnrollment(
+      "Automated Async Paid Checkout"
+    );
+
+  const asyncSessionId =
+    makeId("cs_test_async_paid");
+
+  const asyncPaymentIntentId =
+    makeId("pi_test_async_paid");
+
+  await pool.query(
+    `
+      UPDATE "Purchase"
+      SET
+        "stripeCheckoutSessionId" = $1,
+        "updatedAt" = NOW()
+      WHERE "id" = $2
+    `,
+    [
+      asyncSessionId,
+      asyncPaid.purchaseId,
+    ]
+  );
+
+  const asyncWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.async_payment_succeeded",
+      object: {
+        id:
+          asyncSessionId,
+        object:
+          "checkout.session",
+        payment_status: "paid",
+        client_reference_id:
+          asyncPaid.purchaseId,
+        metadata: {
+          purchaseId:
+            asyncPaid.purchaseId,
+          gameId:
+            asyncPaid.gameId,
+          playerId:
+            asyncPaid.playerId,
+        },
+        amount_total:
+          asyncPaid.amountCents,
+        currency: "usd",
+        payment_intent:
+          asyncPaymentIntentId,
+      },
+    });
+
+  assert(
+    asyncWebhook.status === 200 &&
+      asyncWebhook.body.received === true,
+    `async payment webhook failed: ${JSON.stringify(asyncWebhook.body)}`
+  );
+
+  const asyncPaidPurchase =
+    await getPurchase(
+      asyncPaid.purchaseId
+    );
+
+  const asyncPaidCard =
+    await getCard(
+      asyncPaid.cardId
+    );
+
+  assert(
+    asyncPaidPurchase?.status === "PAID",
+    `async payment expected PAID, got ${asyncPaidPurchase?.status}`
+  );
+
+  assert(
+    asyncPaidPurchase.stripePaymentId ===
+      asyncPaymentIntentId,
+    "async payment stored wrong PaymentIntent ID"
+  );
+
+  assert(
+    asyncPaidCard?.purchaseId ===
+      asyncPaid.purchaseId &&
+      asyncPaidCard?.playerKey ===
+        asyncPaid.playerId &&
+      asyncPaidCard?.status !== "VOID" &&
+      asyncPaidCard?.status !== "AVAILABLE",
+    "async payment did not preserve assigned card"
+  );
+
+  pass(
+    "async payment success marks purchase paid"
+  );
+
+  /*
    * A signed Stripe webhook with the wrong amount
    * must never promote the purchase to PAID.
    */
