@@ -4,6 +4,37 @@ set -euo pipefail
 JOIN_CODE="${JOIN_CODE:-NU3C9E}"
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 
+run_with_pg_retry() {
+  local output
+  local status
+
+  output="$(mktemp)"
+
+  set +e
+  "$@" 2>&1 | tee "$output"
+  status=${PIPESTATUS[0]}
+  set -e
+
+  if [ "$status" -eq 0 ]; then
+    rm -f "$output"
+    return 0
+  fi
+
+  if grep -q 'bind message supplies .* parameters, but prepared statement "" requires 0' "$output"; then
+    echo
+    echo "Transient PostgreSQL connection error detected."
+    echo "Retrying this test once automatically..."
+    echo
+    rm -f "$output"
+    sleep 2
+    "$@"
+    return $?
+  fi
+
+  rm -f "$output"
+  return "$status"
+}
+
 echo
 echo "======================================"
 echo "BINGO TO THE BEATS — VERIFY"
@@ -35,19 +66,19 @@ npx tsc --noEmit
 
 echo
 echo "Running player enrollment tests..."
-JOIN_CODE="$JOIN_CODE" npm run test:player-enrollment
+run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:player-enrollment
 
 echo
 echo "Running refund tests..."
-JOIN_CODE="$JOIN_CODE" npm run test:purchase-refunds
+run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:purchase-refunds
 
 echo
 echo "Running dispute tests..."
-JOIN_CODE="$JOIN_CODE" npm run test:purchase-disputes
+run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:purchase-disputes
 
 echo
 echo "Running checkout lifecycle tests..."
-JOIN_CODE="$JOIN_CODE" npm run test:checkout-lifecycle
+run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:checkout-lifecycle
 
 echo
 echo "Checking Git whitespace..."
