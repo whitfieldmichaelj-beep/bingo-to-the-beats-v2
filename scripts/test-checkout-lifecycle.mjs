@@ -912,6 +912,85 @@ async function main() {
   );
 
   /*
+   * client_reference_id takes priority when locating a
+   * purchase. If it points at one purchase while Stripe
+   * metadata names another, neither purchase may be paid.
+   */
+  const conflictingReference =
+    await createTestEnrollment(
+      "Automated Conflicting Reference Checkout"
+    );
+
+  const conflictingSessionId =
+    makeId("cs_test_conflicting_reference");
+
+  await pool.query(
+    `
+      UPDATE "Purchase"
+      SET
+        "stripeCheckoutSessionId" = $1,
+        "updatedAt" = NOW()
+      WHERE "id" = $2
+    `,
+    [
+      conflictingSessionId,
+      conflictingReference.purchaseId,
+    ]
+  );
+
+  const conflictingReferenceWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      object: {
+        ...paidSession,
+        id:
+          conflictingSessionId,
+        client_reference_id:
+          conflictingReference.purchaseId,
+      },
+    });
+
+  assert(
+    conflictingReferenceWebhook.status === 500,
+    `conflicting client reference expected 500, got ${conflictingReferenceWebhook.status}`
+  );
+
+  const afterConflictingReference =
+    await getPurchase(
+      conflictingReference.purchaseId
+    );
+
+  const targetAfterConflictingReference =
+    await getPurchase(
+      paid.purchaseId
+    );
+
+  assert(
+    afterConflictingReference?.status === "PENDING",
+    `conflicting client reference changed decoy purchase to ${afterConflictingReference?.status}`
+  );
+
+  assert(
+    afterConflictingReference.stripePaymentId === null,
+    "conflicting client reference stored a PaymentIntent on decoy purchase"
+  );
+
+  assert(
+    targetAfterConflictingReference?.status === "PENDING",
+    `conflicting client reference changed target purchase to ${targetAfterConflictingReference?.status}`
+  );
+
+  assert(
+    targetAfterConflictingReference.stripePaymentId === null,
+    "conflicting client reference stored a PaymentIntent on target purchase"
+  );
+
+  pass(
+    "conflicting checkout purchase references are rejected"
+  );
+
+  /*
    * A payment event from a different Stripe Checkout
    * Session must never be accepted for this purchase.
    */
