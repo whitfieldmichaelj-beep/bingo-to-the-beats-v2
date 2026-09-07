@@ -1380,6 +1380,164 @@ async function main() {
     "same-second completion payment restores card"
   );
 
+  /*
+   * A Stripe payment occurring one second AFTER game
+   * completion must not restore the player's voided card.
+   */
+  const latePlayerId =
+    `auto-late-payment-${randomUUID()}`;
+
+  const latePurchaseId =
+    randomUUID();
+
+  const lateCardId =
+    randomUUID();
+
+  const lateSessionId =
+    makeId("cs_test_late_payment");
+
+  const latePaymentIntentId =
+    makeId("pi_test_late_payment");
+
+  testPlayerIds.push(
+    latePlayerId
+  );
+
+  testPurchaseIds.push(
+    latePurchaseId
+  );
+
+  await pool.query(
+    `
+      INSERT INTO "Purchase" (
+        "id",
+        "gameId",
+        "playerKey",
+        "playerName",
+        "stripeCheckoutSessionId",
+        "quantity",
+        "amount",
+        "currency",
+        "status",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'Automated Late Payment Player',
+        $4,
+        1,
+        1.00,
+        'USD',
+        'CANCELLED',
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      latePurchaseId,
+      sameSecondGameId,
+      latePlayerId,
+      lateSessionId,
+    ]
+  );
+
+  await pool.query(
+    `
+      INSERT INTO "BingoCard" (
+        "id",
+        "gameId",
+        "cardNumber",
+        "status",
+        "signature",
+        "playerName",
+        "playerKey",
+        "purchaseId",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        $1,
+        $2,
+        2,
+        'VOID',
+        'auto-late-payment-signature',
+        'Automated Late Payment Player',
+        $3,
+        $4,
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      lateCardId,
+      sameSecondGameId,
+      latePlayerId,
+      latePurchaseId,
+    ]
+  );
+
+  const lateWebhook =
+    await sendWebhook({
+      type:
+        "checkout.session.completed",
+      created:
+        completionSecond + 1,
+      object: {
+        id:
+          lateSessionId,
+        object:
+          "checkout.session",
+        payment_status: "paid",
+        client_reference_id:
+          latePurchaseId,
+        metadata: {
+          purchaseId:
+            latePurchaseId,
+          gameId:
+            sameSecondGameId,
+          playerId:
+            latePlayerId,
+        },
+        amount_total: 100,
+        currency: "usd",
+        payment_intent:
+          latePaymentIntentId,
+      },
+    });
+
+  assert(
+    lateWebhook.status === 200 &&
+      lateWebhook.body.received === true,
+    `late payment webhook failed: ${JSON.stringify(lateWebhook.body)}`
+  );
+
+  const latePurchase =
+    await getPurchase(
+      latePurchaseId
+    );
+
+  const lateCard =
+    await getCard(
+      lateCardId
+    );
+
+  assert(
+    latePurchase?.status === "PAID",
+    `late purchase expected PAID, got ${latePurchase?.status}`
+  );
+
+  assert(
+    lateCard?.status === "VOID",
+    `late payment must leave card VOID, got ${lateCard?.status}`
+  );
+
+  pass(
+    "post-completion payment does not restore card"
+  );
+
   console.log();
   console.log(
     "======================================"
