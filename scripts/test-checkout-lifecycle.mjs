@@ -419,6 +419,68 @@ async function main() {
   pass("local app reachable");
 
   /*
+   * Stripe webhook requests must be rejected before
+   * processing when their signature is missing or invalid.
+   */
+  const signatureTestPayload =
+    JSON.stringify({
+      id: makeId("evt_bad_signature"),
+      object: "event",
+      type: "checkout.session.completed",
+      data: {
+        object: {},
+      },
+    });
+
+  const missingSignatureResponse =
+    await fetch(
+      `${BASE_URL}/api/stripe/webhook`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body:
+          signatureTestPayload,
+      }
+    );
+
+  assert(
+    missingSignatureResponse.status === 400,
+    `missing Stripe signature expected 400, got ${missingSignatureResponse.status}`
+  );
+
+  pass(
+    "missing Stripe webhook signature is rejected"
+  );
+
+  const invalidSignatureResponse =
+    await fetch(
+      `${BASE_URL}/api/stripe/webhook`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+          "stripe-signature":
+            "invalid-signature",
+        },
+        body:
+          signatureTestPayload,
+      }
+    );
+
+  assert(
+    invalidSignatureResponse.status === 400,
+    `invalid Stripe signature expected 400, got ${invalidSignatureResponse.status}`
+  );
+
+  pass(
+    "invalid Stripe webhook signature is rejected"
+  );
+
+  /*
    * TEST 1:
    * Successful payment completion.
    */
