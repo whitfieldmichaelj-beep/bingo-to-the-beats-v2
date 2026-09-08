@@ -69,6 +69,42 @@ type GameSession = {
   joinCode: string;
 };
 
+// BTTB_RESTORE_EXISTING_GAME_BY_CODE_V1
+type RestorableGame = {
+  id: string;
+  joinCode: string;
+  playlistId: string;
+  playlistName: string;
+  playlistTrackCount: number;
+  status:
+    | "waiting"
+    | "active"
+    | "paused"
+    | "completed";
+  currentTrackId:
+    | string
+    | null;
+  calledTrackIds: string[];
+  createdAt: string;
+  requestedCardCount?: number;
+  tracks: Array<{
+    id: string;
+    gameTrackId: string;
+    title: string;
+    artist: string;
+    album?: string;
+    bpm?: number | null;
+    fileName?: string;
+    filePath?: string;
+  }>;
+};
+
+type RestoreGameResponse = {
+  ok?: boolean;
+  message?: string;
+  game?: RestorableGame;
+};
+
 type CallerState = {
   sessionId: string;
   playlistName: string;
@@ -635,6 +671,10 @@ export default function DjConsolePage() {
   const [message, setMessage] = useState(
     "Press Connect Serato, then start Live Playlist in Serato DJ Pro."
   );
+  const [restoreCode, setRestoreCode] =
+    useState("");
+  const [isRestoringGame, setIsRestoringGame] =
+    useState(false);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [detectedTrack, setDetectedTrack] = useState<Track | null>(null);
   const appleMusicRef =
@@ -1486,6 +1526,248 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     setMessage(
       `${matchedTrack.artist} — ${matchedTrack.name} matched. Countdown started automatically.`
     );
+  }
+
+  async function restoreGameByCode() {
+    const code =
+      restoreCode
+        .trim()
+        .toUpperCase()
+        .replace(
+          /[^A-Z0-9]/g,
+          ""
+        );
+
+    if (!code) {
+      setMessage(
+        "Enter the game code you want to restore."
+      );
+      return;
+    }
+
+    try {
+      setIsRestoringGame(
+        true
+      );
+
+      setMessage(
+        `Restoring game ${code}...`
+      );
+
+      const response =
+        await fetch(
+          `/api/game/restore?code=${encodeURIComponent(
+            code
+          )}`,
+          {
+            cache:
+              "no-store",
+          }
+        );
+
+      const data =
+        (await response.json()) as
+          RestoreGameResponse;
+
+      if (
+        !response.ok ||
+        !data.ok ||
+        !data.game
+      ) {
+        throw new Error(
+          data.message ||
+            "Unable to restore this game."
+        );
+      }
+
+      const game =
+        data.game;
+
+      if (
+        game.tracks.length ===
+        0
+      ) {
+        throw new Error(
+          "This game has no saved tracks."
+        );
+      }
+
+      const calledIds =
+        new Set(
+          game.calledTrackIds
+        );
+
+      const firstUncalledIndex =
+        game.tracks.findIndex(
+          (track) =>
+            !calledIds.has(
+              track.id
+            )
+        );
+
+      const restoreIndex =
+        firstUncalledIndex >= 0
+          ? firstUncalledIndex
+          : Math.max(
+              0,
+              game.tracks.length -
+                1
+            );
+
+      const restoredTracks:
+        Track[] =
+        game.tracks.map(
+          (track) => ({
+            id:
+              track.id,
+            gameTrackId:
+              track.gameTrackId,
+            bpm:
+              track.bpm ??
+              null,
+            name:
+              track.title,
+            artist:
+              track.artist,
+            album:
+              track.album ??
+              "",
+            image:
+              null,
+            fileName:
+              track.fileName ??
+              null,
+            filePath:
+              track.filePath ??
+              null,
+          })
+        );
+
+      const restoredSession:
+        GameSession = {
+          version: 2,
+          sessionId:
+            game.id,
+          source:
+            "serato",
+          playlistId:
+            game.playlistId,
+          playlistName:
+            game.playlistName,
+          clipLength: 30,
+          cardCount:
+            game.requestedCardCount ??
+            25,
+          createdAt:
+            game.createdAt,
+          currentIndex:
+            restoreIndex,
+          status:
+            game.status ===
+              "completed"
+              ? "complete"
+              : "paused",
+          tracks:
+            restoredTracks,
+          playedTrackIds:
+            game.calledTrackIds,
+          joinCode:
+            game.joinCode,
+        };
+
+      gameEndedRef.current =
+        restoredSession.status ===
+        "complete";
+
+      previousTrackId.current =
+        null;
+
+      autoStartNextRef.current =
+        false;
+
+      playback.stop();
+
+      localStorage.removeItem(
+        PLAYBACK_CHECKPOINT_KEY
+      );
+
+      localStorage.removeItem(
+        ACTIVITY_KEY
+      );
+
+      setActivity([]);
+
+      saveSession(
+        restoredSession
+      );
+
+      playback.loadTracks(
+        createPlaybackTracks(
+          restoredSession
+        ),
+        restoreIndex
+      );
+
+      const restoredCaller:
+        CallerState = {
+          sessionId:
+            restoredSession.sessionId,
+          playlistName:
+            restoredSession.playlistName,
+          currentTrack:
+            restoredSession.tracks[
+              restoreIndex
+            ] ?? null,
+          currentIndex:
+            restoreIndex,
+          totalTracks:
+            restoredSession.tracks.length,
+          playedCount:
+            restoredSession.playedTrackIds.length,
+          recentTracks:
+            getRecentPlayedTracks(
+              restoredSession
+            ),
+          clipLength:
+            restoredSession.clipLength,
+          secondsRemaining:
+            restoredSession.clipLength,
+          isPlaying:
+            false,
+          isRevealed:
+            false,
+          status:
+            restoredSession.status,
+        };
+
+      broadcast(
+        restoredCaller
+      );
+
+      setDetectedTrack(
+        restoredSession.tracks[
+          restoreIndex
+        ] ?? null
+      );
+
+      setRestoreCode(
+        restoredSession.joinCode
+      );
+
+      setMessage(
+        `Game ${restoredSession.joinCode} restored: ${restoredSession.playlistName}.`
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to restore the game."
+      );
+    } finally {
+      setIsRestoringGame(
+        false
+      );
+    }
   }
 
   async function checkSerato() {
@@ -3142,6 +3424,137 @@ function runAppleTransportAction(
                 →
               </span>
             </Link>
+
+            <section
+              style={{
+                padding:
+                  "16px",
+                border:
+                  "1px solid #475569",
+                borderRadius:
+                  "16px",
+                background:
+                  "rgba(15,23,42,.92)",
+              }}
+            >
+              <span
+                className="dj-eyebrow"
+              >
+                Restore Existing Game
+              </span>
+
+              <p
+                style={{
+                  margin:
+                    "8px 0 0",
+                  color:
+                    "#cbd5e1",
+                  fontSize:
+                    "12px",
+                  lineHeight:
+                    1.5,
+                }}
+              >
+                Load a saved game by its
+                join code.
+              </p>
+
+              <input
+                aria-label="Game code to restore"
+                value={
+                  restoreCode
+                }
+                onChange={(
+                  event
+                ) =>
+                  setRestoreCode(
+                    event.target.value
+                      .toUpperCase()
+                  )
+                }
+                onKeyDown={(
+                  event
+                ) => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    void restoreGameByCode();
+                  }
+                }}
+                placeholder="GAME CODE"
+                maxLength={12}
+                autoCapitalize="characters"
+                style={{
+                  width:
+                    "100%",
+                  boxSizing:
+                    "border-box",
+                  marginTop:
+                    "12px",
+                  padding:
+                    "12px",
+                  border:
+                    "1px solid #475569",
+                  borderRadius:
+                    "11px",
+                  background:
+                    "#020617",
+                  color:
+                    "white",
+                  fontSize:
+                    "20px",
+                  fontWeight:
+                    900,
+                  letterSpacing:
+                    ".12em",
+                  textAlign:
+                    "center",
+                  textTransform:
+                    "uppercase",
+                }}
+              />
+
+              <button
+                type="button"
+                disabled={
+                  isRestoringGame
+                }
+                onClick={() =>
+                  void restoreGameByCode()
+                }
+                style={{
+                  width:
+                    "100%",
+                  marginTop:
+                    "10px",
+                  padding:
+                    "12px",
+                  border:
+                    0,
+                  borderRadius:
+                    "11px",
+                  background:
+                    "#7c3aed",
+                  color:
+                    "white",
+                  fontWeight:
+                    900,
+                  cursor:
+                    isRestoringGame
+                      ? "wait"
+                      : "pointer",
+                  opacity:
+                    isRestoringGame
+                      ? 0.65
+                      : 1,
+                }}
+              >
+                {isRestoringGame
+                  ? "Restoring..."
+                  : "Load Game"}
+              </button>
+            </section>
 
             <GameAccessPanel
               joinCode={session?.joinCode}
