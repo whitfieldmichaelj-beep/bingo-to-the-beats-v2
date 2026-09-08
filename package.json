@@ -14,7 +14,8 @@
     "test:checkout-lifecycle": "node scripts/test-checkout-lifecycle.mjs",
     "dev:test": "BTTB_DEV_PAYMENT_BYPASS=false STRIPE_SECRET_KEY=sk_test_bttb_local_only STRIPE_WEBHOOK_SECRET=whsec_bttb_local_refund_test next dev",
     "verify": "bash scripts/verify-local.sh",
-    "checkpoint": "bash scripts/checkpoint.sh"
+    "checkpoint": "bash scripts/checkpoint.sh",
+    "clean:test-players": "node scripts/clean-test-players.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",
