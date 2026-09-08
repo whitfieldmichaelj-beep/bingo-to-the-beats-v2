@@ -1138,7 +1138,7 @@ function JoinGameForm() {
               textAlign: "center",
             }}
           >
-            Payment is temporarily bypassed during development.
+            Secure payment is processed by Stripe.
           </p>
         </form>
 
