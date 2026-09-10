@@ -174,6 +174,7 @@ export async function createGame(
         data: {
           id: game.id,
           hostId: host.id,
+          ...(game.playbackConfig ? { playbackConfig: JSON.parse(JSON.stringify(game.playbackConfig)) } : {}),
           sourcePlaylistId:
             game.playlistId || null,
           playlistName:

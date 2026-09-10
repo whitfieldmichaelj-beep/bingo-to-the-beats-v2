@@ -474,7 +474,7 @@ export default function LocalMusicPage() {
       );
 
       router.push(
-        "/dj-console"
+        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (createError) {
       setError(

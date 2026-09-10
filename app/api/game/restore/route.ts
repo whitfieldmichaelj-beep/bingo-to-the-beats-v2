@@ -5,7 +5,7 @@ import {
 } from "next/server";
 
 import {
-  findGameByJoinCode,
+  findGameById,
 } from "@/lib/game/repository";
 
 import {
@@ -14,20 +14,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// BTTB_RESTORE_EXISTING_GAME_BY_CODE_V1
-
-function normalizeJoinCode(
-  value: string
-) {
-  return value
-    .trim()
-    .toUpperCase()
-    .replace(
-      /[^A-Z0-9]/g,
-      ""
-    );
-}
 
 export async function GET(
   request: NextRequest
@@ -54,30 +40,15 @@ export async function GET(
       );
     }
 
-    const joinCode =
-      normalizeJoinCode(
-        request.nextUrl.searchParams.get(
-          "code"
-        ) ?? ""
-      );
-
-    if (!joinCode) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message:
-            "Game code is required.",
-        },
-        {
-          status: 400,
-        }
-      );
+    const gameId = request.nextUrl.searchParams.get("gameId")?.trim();
+    if (!gameId) {
+      return NextResponse.json({ ok: false, message: "Game ID is required." }, { status: 400 });
     }
 
     const ownedGame =
       await prisma.game.findFirst({
         where: {
-          joinCode,
+          id: gameId,
           host: {
             clerkId:
               userId,
@@ -102,8 +73,8 @@ export async function GET(
     }
 
     const game =
-      await findGameByJoinCode(
-        joinCode
+      await findGameById(
+        ownedGame.id
       );
 
     if (!game) {

@@ -1,3 +1,4 @@
+import { restorePlaybackConfig } from "./playback-config";
 import type {
   ActiveGame,
   BingoCard,
@@ -46,6 +47,7 @@ type DbCard = {
 };
 
 export type DatabaseGameWithRelations = {
+  playbackConfig?: unknown;
   id: string;
   joinCode: string;
   sourcePlaylistId: string | null;
@@ -165,6 +167,7 @@ export function mapDatabaseGameToActiveGame(
     );
 
   return {
+    playbackConfig: restorePlaybackConfig(game.playbackConfig, game.sourcePlaylistId ?? "", tracks),
     id: game.id,
     joinCode: game.joinCode,
     playlistId: game.sourcePlaylistId ?? "",

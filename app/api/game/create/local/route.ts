@@ -1,3 +1,4 @@
+import { makePlaybackConfig } from "@/lib/game/playback-config";
 import {
   auth,
 } from "@clerk/nextjs/server";
@@ -203,6 +204,8 @@ export async function POST(
         bingoPattern,
         cardCount
       );
+
+    game.playbackConfig = makePlaybackConfig("local", body.clipLength, game.tracks);
 
     const savedGame =
       await persistGame(

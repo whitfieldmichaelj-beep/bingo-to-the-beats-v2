@@ -161,6 +161,7 @@ model Game {
   playlistId String?
 
   // The Serato crate/playlist ID is not necessarily a Playlist table ID.
+  playbackConfig     Json?
   sourcePlaylistId   String?
   playlistName       String
   playlistTrackCount Int

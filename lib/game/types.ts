@@ -1,3 +1,4 @@
+import type { GamePlaybackConfig } from "./playback-config";
 import type { SeratoTrack } from "../serato/types";
 
 export type GameStatus =
@@ -83,6 +84,7 @@ export interface CardCapacity {
 }
 
 export interface ActiveGame {
+  playbackConfig?: GamePlaybackConfig | null;
   id: string;
   joinCode: string;
 

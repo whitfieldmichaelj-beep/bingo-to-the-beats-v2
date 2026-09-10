@@ -315,6 +315,7 @@ export default function AppleDirectCreateButton({
                 "application/json",
             },
             body: JSON.stringify({
+              clipLength: safeClipLength,
               source: "apple",
               playlistId,
               playlistName,
@@ -508,7 +509,7 @@ export default function AppleDirectCreateButton({
       );
 
       router.push(
-        "/dj-console"
+        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (error) {
       console.error(

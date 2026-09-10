@@ -1016,6 +1016,7 @@ export function usePlaybackEngine(
             ? `Audio playback failed: ${error.message}`
             : "The browser could not start this audio."
         );
+        return; // Failed audio must not start the timer or call the song.
       }
     }
 
@@ -1097,6 +1098,7 @@ export function usePlaybackEngine(
             ? `Audio resume failed: ${error.message}`
             : "The browser could not resume this audio."
         );
+        return; // Keep the game paused when playback fails.
       }
     }
 

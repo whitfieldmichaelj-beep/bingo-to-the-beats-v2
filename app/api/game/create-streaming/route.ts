@@ -1,3 +1,4 @@
+import { makePlaybackConfig } from "@/lib/game/playback-config";
 import {
   auth,
 } from "@clerk/nextjs/server";
@@ -41,6 +42,7 @@ type StreamingTrackInput = {
 };
 
 type StreamingGameBody = {
+  clipLength?: unknown;
   source?: unknown;
   playlistId?: unknown;
   playlistName?: unknown;
@@ -316,6 +318,8 @@ export async function POST(
         bingoPattern,
         cardCount
       );
+
+    game.playbackConfig = makePlaybackConfig(source, body.clipLength, body.tracks);
 
     const savedGame =
       await persistGame(

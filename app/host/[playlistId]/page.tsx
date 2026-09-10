@@ -704,6 +704,7 @@ const [tracks, setTracks] = useState<
             },
             body:
               JSON.stringify({
+                clipLength: safeClipLength,
                 source,
                 playlistId,
                 playlistName,
@@ -912,7 +913,7 @@ const [tracks, setTracks] = useState<
       );
 
       router.push(
-        "/dj-console"
+        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (error) {
       console.error(

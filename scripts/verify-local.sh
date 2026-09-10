@@ -43,7 +43,16 @@ echo "Game code: $JOIN_CODE"
 echo
 
 echo "Checking Prisma database..."
-if npx prisma dev ls 2>/dev/null | grep -q "default.*not_running"; then
+if ! node --input-type=commonjs <<'NODE'
+const { loadEnvConfig } = require("@next/env");
+loadEnvConfig(process.cwd(), true, { info() {}, error() {} });
+const { Pool } = require("pg");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 5000, max: 1 });
+pool.query("SELECT 1")
+  .catch(() => { process.exitCode = 1; })
+  .finally(() => pool.end());
+NODE
+then
   echo "Starting local Prisma database..."
   npx prisma dev start default
 fi
@@ -63,6 +72,11 @@ echo "PASS  local app reachable"
 echo
 echo "Running TypeScript check..."
 npx tsc --noEmit
+
+echo
+echo "Running host resume tests..."
+npm run test:host-resume
+npm run test:playback-restore
 
 echo
 echo "Running player enrollment tests..."
