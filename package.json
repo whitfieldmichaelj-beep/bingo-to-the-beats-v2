@@ -17,7 +17,8 @@
     "checkpoint": "bash scripts/checkpoint.sh",
     "clean:test-players": "node scripts/clean-test-players.mjs",
     "test:host-resume": "node scripts/test-host-resume.mjs",
-    "test:playback-restore": "node scripts/test-playback-restore.mjs"
+    "test:playback-restore": "node scripts/test-playback-restore.mjs",
+    "save": "bash scripts/save.sh"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",
