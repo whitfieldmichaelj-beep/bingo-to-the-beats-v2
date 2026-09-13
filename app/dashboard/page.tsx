@@ -155,6 +155,8 @@ const gameContentStyle = {
   display: "flex",
   flexDirection: "column" as const,
   alignItems: "flex-start",
+  width: "100%",
+  gap: "8px",
 };
 
 const eyebrowStyle = {
@@ -185,7 +187,9 @@ const detailLineStyle = {
 };
 
 const gameActionStyle = {
-  marginTop: "20px",
+  width: "100%",
+  marginTop: "16px",
+  paddingTop: "8px",
   display: "flex",
   alignItems: "center",
   flexWrap: "wrap" as const,
