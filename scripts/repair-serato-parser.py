@@ -33,6 +33,12 @@ const GENERIC_TRACK_PARTS = new Set([
   "track",
   "tracks",
   "now playing",
+  "certified dj schools",
+  "blog",
+  "support",
+  "products",
+  "community",
+  "artists",
 ]);
 '''
 
