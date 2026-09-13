@@ -23,7 +23,8 @@
     "serato:check": "bash scripts/bttb-toolkit.sh serato-check",
     "db:check": "bash scripts/bttb-toolkit.sh db-check",
     "stripe:check": "bash scripts/bttb-toolkit.sh stripe-check",
-    "deploy:check": "bash scripts/bttb-toolkit.sh deploy-check"
+    "deploy:check": "bash scripts/bttb-toolkit.sh deploy-check",
+    "serato:repair": "python3 scripts/repair-serato-parser.py"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",
