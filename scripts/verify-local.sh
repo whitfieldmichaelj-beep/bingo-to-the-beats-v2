@@ -74,6 +74,10 @@ echo "Running TypeScript check..."
 npx tsc --noEmit
 
 echo
+echo "Running Serato parser tests..."
+npm run test:serato-parser
+echo
+
 echo "Running host resume tests..."
 npm run test:host-resume
 npm run test:playback-restore

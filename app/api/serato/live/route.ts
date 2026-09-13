@@ -23,6 +23,18 @@ const DEFAULT_LIVE_URL =
 const NON_TRACK_TEXT =
   /(?:©|&copy;|all rights reserved|serato 19\d{2}|privacy|copyright|products|community|sign in|create account|do not sell|playlist by|serato dj playlists|terms of service|cookie policy)/i;
 
+const GENERIC_TRACK_PARTS = new Set([
+  "serato",
+  "dj",
+  "serato dj",
+  "live",
+  "playlist",
+  "live playlist",
+  "track",
+  "tracks",
+  "now playing",
+]);
+
 function respond(
   body: Record<string, unknown>,
   status = 200
@@ -100,6 +112,7 @@ function isValidTrackPart(value: string) {
     cleaned.length < 1 ||
     cleaned.length > 220 ||
     NON_TRACK_TEXT.test(cleaned) ||
+    GENERIC_TRACK_PARTS.has(cleaned.toLowerCase()) ||
     /^https?:\/\//i.test(cleaned)
   ) {
     return false;
