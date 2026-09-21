@@ -61,7 +61,7 @@ assert.equal((await gameRoute.POST({json:async()=>({provider:'unknown',playlistI
 console.log('PASS game creation dispatches all providers and persists their playback source and clip length');
 let rbClient;
 class FakeRekordbox {
- constructor(options){assert.equal(options.dangerouslyModifyDatabase,false);this.listeners={};rbClient=this;}
+ constructor(options){assert.equal(options.dangerouslyModifyDatabase,false);assert.equal(options.pollIntervalMs,500,"Rekordbox history should be checked every half second");this.listeners={};rbClient=this;}
  on(name,fn){this.listeners[name]=fn;}
  start(){}
  stop(){}

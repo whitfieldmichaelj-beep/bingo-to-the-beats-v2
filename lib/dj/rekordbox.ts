@@ -8,7 +8,7 @@ let detected: DjDetection | null = null;
 let failure: Error | undefined;
 function connection() {
   if (!client) {
-    const next = new RekordboxConnect({ dangerouslyModifyDatabase: false, pollIntervalMs: 1000 });
+    const next = new RekordboxConnect({ dangerouslyModifyDatabase: false, pollIntervalMs: 500 });
     next.on("error", error => { failure = error; });
     next.on("history", ({rows}) => {
       const r = rows.at(-1);

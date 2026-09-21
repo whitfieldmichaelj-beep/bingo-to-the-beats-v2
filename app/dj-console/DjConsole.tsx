@@ -1499,7 +1499,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     const interval = window.setInterval(() => {
       void checkSerato();
-    }, POLL_INTERVAL_MS);
+    }, provider === "rekordbox" ? 1000 : POLL_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
     // checkSerato intentionally uses the latest session and automation settings.
@@ -3145,6 +3145,7 @@ function runAppleTransportAction(
               <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
                 Open {providerLabels.name} on this Mac, connect below, and play a new song.
                 BTTB reads local play history. Detection timing depends on when your DJ software records the song.
+                {provider === "rekordbox" && <> For faster detection in PERFORMANCE mode, set Rekordbox Preferences → Advanced → Browse → Playback time setting to 1 second. The default 60 seconds delays detection.</>}
               </p>
 
               <div className="dj-button-row">
