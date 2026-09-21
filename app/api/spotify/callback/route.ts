@@ -82,6 +82,8 @@ export async function GET(
       })
     );
 
+    response.headers.set("Cache-Control", "no-store");
+
     setSpotifyTokenCookies(
       response,
       tokens
@@ -110,10 +112,7 @@ export async function GET(
 
     return NextResponse.redirect(
       spotifyPageUrl(request, {
-        error:
-          error instanceof Error
-            ? error.message
-            : "spotify_callback_failed",
+        error: "spotify_callback_failed",
       })
     );
   }

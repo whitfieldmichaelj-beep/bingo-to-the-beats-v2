@@ -30,7 +30,10 @@ const prisma = { game: {
     return games.filter(game => game.hostId === query.where.host.clerkId);
   },
 } };
+let accessDenied = false;
+class HostAccessError extends Error { status = 402; }
 const mocks = {
+  '@/lib/billing/access': { HostAccessError, requireGameHostAccess: async () => { if (accessDenied) throw new HostAccessError('Subscription needs renewal.'); } },
   '@clerk/nextjs/server': { auth },
   '@/lib/prisma': { prisma },
   '@/lib/game/repository': { findGameById: async id => { loadedId = id; return games.find(game => game.id === id); } },
@@ -53,6 +56,10 @@ assert.equal(loadedId, 'saved-paid-game');
 assert.equal(ownershipQuery.where.host.clerkId, 'host-one');
 console.log('PASS host restore rejects unauthenticated, missing, foreign, and join-code-only requests');
 console.log('PASS host restore returns the selected owned game by database ID');
+accessDenied = true;
+assert.equal((await GET(request('gameId=saved-paid-game'))).status, 402);
+accessDenied = false;
+console.log('PASS host restore returns an actionable subscription access error');
 
 const dashboard = load('app/dashboard/page.tsx', mocks).default;
 const html = renderToStaticMarkup(await dashboard());

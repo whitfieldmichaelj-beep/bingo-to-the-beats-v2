@@ -1,3 +1,4 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import {
   NextRequest,
   NextResponse,
@@ -25,6 +26,8 @@ function getErrorMessage(
 export async function GET(
   request: NextRequest
 ) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     let library =
       getLocalMusicLibrary();

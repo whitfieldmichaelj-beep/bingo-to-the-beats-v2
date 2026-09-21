@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { findSeratoTrackIndex } from "@/lib/serato/track-matching";
+import GameEndedDialog from "@/components/game/GameEndedDialog";
+import SpotifyDevicePicker from "@/components/spotify/SpotifyDevicePicker";
 import Script from "next/script";
 import "./dj-console.css";
 // BTTB_ONE_MINUTE_BEAT_ALIGNED_START_V3
@@ -187,26 +190,11 @@ function formatMoney(cents: number) {
   }).format(Math.max(0, cents) / 100);
 }
 
-function normalize(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, " ")
-    .replace(
-      /\b(clean|dirty|explicit|intro|outro|extended|edit|remix|version|radio|video|redrum|single|album|mix)\b/g,
-      " "
-    )
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function createPlaybackTracks(
   session: GameSession
 ): PlaybackTrack[] {
   return session.tracks.map((track) => {
     const secureAudioUrl =
-      session.source === "serato" ||
       session.source === "local"
         ? `/api/audio/stream?gameId=${encodeURIComponent(
             session.sessionId
@@ -245,30 +233,6 @@ function getRecentPlayedTracks(
     .reverse()
     .slice(0, 5);
 }
-
-function trackMatches(gameTrack: Track, seratoTrack: SeratoTrack) {
-  const gameTitle = normalize(gameTrack.name);
-  const gameArtist = normalize(gameTrack.artist);
-  const seratoTitle = normalize(seratoTrack.title);
-  const seratoArtist = normalize(seratoTrack.artist);
-  const seratoWhole = normalize(seratoTrack.displayText);
-
-  const titleMatches =
-    gameTitle === seratoTitle ||
-    gameTitle.includes(seratoTitle) ||
-    seratoTitle.includes(gameTitle) ||
-    seratoWhole.includes(gameTitle);
-
-  const artistMatches =
-    !gameArtist ||
-    gameArtist === seratoArtist ||
-    gameArtist.includes(seratoArtist) ||
-    seratoArtist.includes(gameArtist) ||
-    seratoWhole.includes(gameArtist);
-
-  return titleMatches && artistMatches;
-}
-
 
 // BTTB_APPLE_DJ_CONSOLE_PLAYBACK_V2
 function getPlayableAppleIds(
@@ -651,6 +615,7 @@ async function seekApplePlayer(
 }
 
 export default function DjConsole({ gameId }: { gameId: string }) {
+  const [compact, setCompact] = useState(false);
   const [session, setSession] = useState<GameSession | null>(null);
   const [callerState, setCallerState] = useState<CallerState | null>(null);
   const [seratoUrl, setSeratoUrl] = useState(DEFAULT_SERATO_URL);
@@ -710,11 +675,12 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     {
       continuous:
         autoNext &&
-        session?.source !== "apple",
+        session?.source !== "apple" && session?.source !== "spotify" && session?.source !== "serato",
     }
   );
   const autoStartNextRef = useRef(false);
   const gameEndedRef = useRef(false);
+  const [endSummaryDismissed, setEndSummaryDismissed] = useState(false);
   const [
     showEndGameConfirm,
     setShowEndGameConfirm,
@@ -722,6 +688,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const previousTrackId = useRef<string | null>(null);
   const pollInProgress = useRef(false);
+  const seratoPollController = useRef<AbortController | null>(null);
 
   const gameTrack =
     session?.tracks[playback.currentIndex] ??
@@ -1160,13 +1127,11 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       return;
     }
 
-    const matchedIndex = session.tracks.findIndex((track) =>
-      trackMatches(track, seratoTrack)
-    );
+    const matchedIndex = findSeratoTrackIndex(session.tracks, seratoTrack);
 
     if (matchedIndex === -1) {
       setMessage(
-        `${seratoTrack.displayText} detected, but it is not in the current Bingo playlist.`
+        `${seratoTrack.displayText} detected, but no unique song/version matches the current Bingo playlist.`
       );
       return;
     }
@@ -1184,7 +1149,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     const previousGameTrack = session.tracks[session.currentIndex];
     const playedTrackIds =
-      previousGameTrack && previousGameTrack.id !== matchedTrack.id
+      (isPlaying || isRevealed) && previousGameTrack && previousGameTrack.id !== matchedTrack.id
         ? Array.from(
             new Set([...session.playedTrackIds, previousGameTrack.id])
           )
@@ -1198,6 +1163,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       playedTrackIds,
     };
 
+    autoStartNextRef.current = true;
+    playback.goToTrack(matchedIndex);
     saveSession(nextSession);
     setDetectedTrack(matchedTrack);
     addActivity(matchedTrack);
@@ -1461,16 +1428,19 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       return;
     }
 
+    const controller = new AbortController();
+    seratoPollController.current = controller;
     pollInProgress.current = true;
     setIsPolling(true);
 
     try {
       const response = await fetch(
-        `/api/serato/live?url=${encodeURIComponent(seratoUrl.trim())}`,
-        { cache: "no-store" }
+        `/api/serato/live?url=${encodeURIComponent(seratoUrl.trim())}&gameId=${encodeURIComponent(gameId)}`,
+        { cache: "no-store", signal: controller.signal }
       );
 
       const data = (await response.json()) as SeratoResponse;
+      if (controller.signal.aborted) return;
 
       if (!response.ok || !data.ok) {
         throw new Error(data.message || "Serato connection failed.");
@@ -1485,6 +1455,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
       applySeratoTrack(data.track);
     } catch (error) {
+      if (controller.signal.aborted) return;
       setMessage(
         error instanceof Error
           ? `Serato connection error: ${error.message}`
@@ -1495,6 +1466,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       setIsPolling(false);
     }
   }
+
+  useEffect(() => () => seratoPollController.current?.abort(), []);
 
   async function connectSerato() {
     const url = seratoUrl.trim();
@@ -1511,6 +1484,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   }
 
   function disconnectSerato() {
+    seratoPollController.current?.abort();
     setIsConnected(false);
     setIsPolling(false);
     setLastUpdate("Disconnected");
@@ -1667,6 +1641,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
     if (
       !autoNext ||
+      session?.source === "serato" ||
       playback.status !== "revealed" ||
       !session
     ) {
@@ -2826,7 +2801,10 @@ function runAppleTransportAction(
     : 0;
 
   return (
-    <main className="dj-shell">
+    <main className={`dj-shell ${compact ? "dj-compact" : ""}`}>
+      {session?.status === "complete" && !endSummaryDismissed && (
+        <GameEndedDialog onClose={() => setEndSummaryDismissed(true)} />
+      )}
       {session?.source === "apple" && (
         <Script
           id="apple-musickit-v3-dj-console"
@@ -3009,6 +2987,7 @@ function runAppleTransportAction(
         </div>
 
         <nav className="dj-nav">
+          <button type="button" onClick={() => setCompact(!compact)}>{compact ? "Full Console" : "Compact View"}</button>
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/game/control">Game Control</Link>
           <button type="button" onClick={openCallerScreen}>
@@ -3085,12 +3064,13 @@ function runAppleTransportAction(
         </div>
       </section>
 
+      {compact && <p className="dj-compact-status">{session?.source === "serato" ? `Serato: ${isConnected ? "Connected" : "Not connected"}` : session?.source} · Game {session?.joinCode} · Resize this window beside Serato. It is not pinned on top.</p>}
       <div className="dj-page">
         <section className="dj-access-strip">
           <div className="dj-access-panel">
             <Link
               className="dj-start-new-game"
-              href="/music"
+              href="/game/new"
             >
               <span className="dj-start-new-game-icon">
                 ＋
@@ -3135,6 +3115,7 @@ function runAppleTransportAction(
               <section className="dj-panel">
                 <span className="dj-eyebrow">Music Source</span>
                 <h2>{session.source === "apple" ? "Apple Music" : session.source === "local" ? "Local Music" : "Spotify"}</h2>
+                {session.source === "spotify" && <SpotifyDevicePicker key={session.sessionId} playing={isPlaying} />}
                 {session.source === "apple" && <>
                   <p>{appleConnected ? "Apple Music connected. Ready to play." : "Connect Apple Music to play this saved game."}</p>
                   <button type="button" className="dj-primary-button" onClick={() => {
@@ -3166,9 +3147,19 @@ function runAppleTransportAction(
                 </span>
               </div>
 
+              <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+                <strong>Before connecting: make your playlist public.</strong>{" "}
+                On your Serato playlist page, choose <strong>Edit Details</strong>,
+                set visibility to <strong>Public</strong>, and save. Private playlists
+                cannot be detected by BTTB. Public playlists are visible to anyone.
+                Then start Live Playlist in Serato, complete the browser start
+                prompt, and click Connect Serato below.
+              </p>
+
               <label htmlFor="serato-url">Live Playlist URL</label>
               <input
                 id="serato-url"
+                aria-describedby="serato-setup-help"
                 type="url"
                 value={seratoUrl}
                 onChange={(event) => setSeratoUrl(event.target.value)}
@@ -3237,11 +3228,12 @@ function runAppleTransportAction(
               <label className="dj-toggle">
                 <span>
                   <strong>Auto Next</strong>
-                  <small>Advance after reveal</small>
+                  <small>{session?.source === "serato" ? "Serato controls the next song" : "Advance after reveal"}</small>
                 </span>
                 <input
                   type="checkbox"
-                  checked={autoNext}
+                  disabled={session?.source === "serato"}
+                  checked={session?.source === "serato" ? false : autoNext}
                   onChange={(event) =>
                     setAutoNext(event.target.checked)
                   }

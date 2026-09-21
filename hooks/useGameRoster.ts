@@ -27,6 +27,7 @@ export type LivePlayerActivity = {
 };
 
 export type GameRoster = {
+  capacity?: { used: number; limit: number; remaining: number } | null;
   players: LivePlayer[];
   activities: LivePlayerActivity[];
   totals: {
@@ -52,6 +53,7 @@ type GameRosterApiResponse = {
   players?: LivePlayer[];
   activities?: LivePlayerActivity[];
   totals?: GameRoster["totals"];
+  capacity?: GameRoster["capacity"];
   payout?: GameRoster["payout"];
 };
 
@@ -201,6 +203,7 @@ export function useGameRoster(
               data.players ?? [],
             activities:
               data.activities ?? [],
+            capacity: data.capacity ?? null,
             totals:
               data.totals ??
               EMPTY_ROSTER.totals,

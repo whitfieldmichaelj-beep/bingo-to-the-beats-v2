@@ -21,6 +21,9 @@ if (!connectionString) {
   );
 }
 
+const databaseAddress = new URL(connectionString);
+const localPrismaBridge = ["localhost", "127.0.0.1"].includes(databaseAddress.hostname) && databaseAddress.port === "51214";
+
 /*
  * BTTB_PRISMA_PREPARED_STATEMENT_FIX_V2
  *
@@ -44,7 +47,7 @@ const pool =
     // BTTB_LOCAL_PRISMA_CONCURRENCY_FIX_V1
   max:
     process.env.NODE_ENV ===
-    "production"
+    "production" && !localPrismaBridge
       ? 10
       : 1,
 

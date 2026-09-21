@@ -1,3 +1,4 @@
+import { reserveHostGame, subscriptionsEnabled } from "@/lib/billing/access";
 import type {
   CardStatus,
   GameStatus as PrismaGameStatus,
@@ -94,7 +95,8 @@ async function loadGameById(
 
 export async function createGame(
   game: ActiveGame,
-  hostClerkId: string
+  hostClerkId: string,
+  options: { practice?: boolean } = {}
 ): Promise<ActiveGame> {
   const cards = game.cards ?? [];
 
@@ -109,6 +111,10 @@ export async function createGame(
           clerkId: hostClerkId,
         },
       });
+
+      const hostAccess = subscriptionsEnabled() || options.practice === true
+        ? await reserveHostGame(tx, hostClerkId, game.id, game.requestedCardCount ?? cards.length, game.playbackConfig?.source ?? "local", options.practice === true)
+        : {};
 
       const sourceTrackIds = game.tracks.map(
         (track) =>
@@ -174,6 +180,7 @@ export async function createGame(
         data: {
           id: game.id,
           hostId: host.id,
+          ...hostAccess,
           ...(game.playbackConfig ? { playbackConfig: JSON.parse(JSON.stringify(game.playbackConfig)) } : {}),
           sourcePlaylistId:
             game.playlistId || null,

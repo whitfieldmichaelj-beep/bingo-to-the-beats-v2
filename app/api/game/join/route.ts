@@ -1,3 +1,5 @@
+import { PracticeQuantityError } from "@/lib/game/player-repository";
+import { HostAccessError, PlayerCapacityError, requireGameHostAccess } from "@/lib/billing/access";
 // BTTB_PLAYER_SESSION_SECURITY_V1
 import { NextRequest, NextResponse } from "next/server";
 
@@ -215,6 +217,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await requireGameHostAccess(game.id);
+
     const result = await joinPlayer({
       gameId: game.id,
       joinCode: game.joinCode,
@@ -356,6 +360,9 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
+    if (error instanceof PracticeQuantityError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
+    if (error instanceof PlayerCapacityError) return NextResponse.json({ ok: false, code: error.code, message: error.message }, { status: error.status });
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error("Unable to join game:", error);
 
     return NextResponse.json(

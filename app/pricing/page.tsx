@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { djPlans } from "@/lib/billing/plans";
+import PlanButton from "@/components/billing/PlanButton";
+import "../billing/billing.css";
+import { useEffect, useState } from "react";
 import {
   BillingPeriod,
   getPlanPrice,
@@ -11,6 +14,22 @@ import {
 export default function PricingPage() {
   const [billingPeriod, setBillingPeriod] =
     useState<BillingPeriod>("monthly");
+  const [hostType, setHostType] = useState<"dj" | "other" | null>(null);
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get("host") || localStorage.getItem("bttb-host-type");
+    if (value === "dj" || value === "other") {
+      setHostType(value);
+      localStorage.setItem("bttb-host-type", value);
+    }
+  }, []);
+  function selectHostType(type: "dj" | "other") {
+    setHostType(type);
+    localStorage.setItem("bttb-host-type", type);
+  }
+
+  const displayPlans = hostType === "dj"
+    ? djPlans.map(plan => ({ id: plan.id, name: plan.name, minimumPlayers: 1, maximumPlayers: plan.maxPlayers, description: plan.description, price: plan.amountCents / 100, period: plan.interval === "week" ? "weekly" : "monthly", checkoutId: plan.id }))
+    : ratePlans.map(plan => ({ ...plan, price: getPlanPrice(plan, billingPeriod), period: billingPeriod, checkoutId: `${plan.id}-${billingPeriod}` }));
 
   return (
     <main
@@ -69,10 +88,16 @@ export default function PricingPage() {
             }}
           >
             Choose the player capacity you need, then select weekly
-            or monthly access.
+            or monthly access. All paid subscriptions renew automatically until canceled.
           </p>
 
-          <div
+          <div className="host-type-options" aria-label="Choose your host type" style={{ marginTop: 28 }}>
+            <button type="button" className={`host-type-card ${hostType === "dj" ? "selected" : ""}`} aria-pressed={hostType === "dj"} onClick={() => selectHostType("dj")}><strong>I’m a DJ</strong><span>Serato or streaming services</span></button>
+            <button type="button" className={`host-type-card ${hostType === "other" ? "selected" : ""}`} aria-pressed={hostType === "other"} onClick={() => selectHostType("other")}><strong>Other host</strong><span>Home, hotels, bars, restaurants &amp; events</span></button>
+          </div>
+          {hostType && <p aria-live="polite" style={{ color: "#cbd5e1", lineHeight: 1.6 }}>{hostType === "dj" ? "Choose Serato Weekly, Serato Pro, or Serato Pro Plus for your DJ shows." : "Connect a streaming service and choose your plan by audience size below. No DJ equipment needed."}</p>}
+
+          {hostType !== "dj" && <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
@@ -94,7 +119,7 @@ export default function PricingPage() {
                 {
                   value: "monthly",
                   label: "Monthly",
-                  note: "30 days",
+                  note: "Calendar month",
                 },
               ] as const
             ).map((option) => {
@@ -143,7 +168,7 @@ export default function PricingPage() {
                 </button>
               );
             })}
-          </div>
+          </div>}
         </header>
 
         <section
@@ -155,20 +180,15 @@ export default function PricingPage() {
             marginTop: "52px",
           }}
         >
-          {ratePlans.map((plan) => {
-            const price = getPlanPrice(
-              plan,
-              billingPeriod
-            );
+          {displayPlans.map((plan) => {
+            const price = plan.price;
 
             const playerRange =
               plan.maximumPlayers === null
                 ? `${plan.minimumPlayers}+ players`
-                : plan.minimumPlayers === 1
-                  ? `Up to ${plan.maximumPlayers} players`
-                  : `${plan.minimumPlayers}–${plan.maximumPlayers} players`;
+                : `Up to ${plan.maximumPlayers} players`;
 
-            const featured = plan.id === "pro";
+            const featured = plan.id === "venue" || plan.id === "serato-pro";
 
             return (
               <article
@@ -255,7 +275,7 @@ export default function PricingPage() {
                 >
                   {price === null
                     ? "Contact us"
-                    : `${billingPeriod} access`}
+                    : `${plan.period} · renews automatically`}
                 </p>
 
                 <p
@@ -281,35 +301,15 @@ export default function PricingPage() {
                   <li>Unique bingo cards</li>
                   <li>Live host and caller screens</li>
                   <li>Player joining by game code</li>
-                  <li>Music-provider access</li>
+                  <li>{hostType === "dj" ? "Serato and supported streaming services" : "Supported streaming services"}</li>
+                  <li>One active game at a time</li>
                 </ul>
 
-                <Link
-                  href={
-                    plan.id === "enterprise"
-                      ? "/sign-up"
-                      : `/game/new?players=${
-                          plan.maximumPlayers ?? 201
-                        }&billing=${billingPeriod}`
-                  }
-                  style={{
-                    display: "block",
-                    marginTop: "26px",
-                    padding: "15px 20px",
-                    borderRadius: "999px",
-                    background: featured
-                      ? "#a3e635"
-                      : "#a78bfa",
-                    color: "#172554",
-                    textAlign: "center",
-                    textDecoration: "none",
-                    fontWeight: 900,
-                  }}
-                >
-                  {plan.id === "enterprise"
-                    ? "Contact Us"
-                    : "Select Plan"}
-                </Link>
+                {plan.id === "enterprise" ? (
+                  <Link href="/sign-up" style={{ color: "#c4b5fd", fontWeight: 900 }}>Contact Us</Link>
+                ) : (
+                  <PlanButton planId={plan.checkoutId} label="Select Plan" />
+                )}
               </article>
             );
           })}
@@ -332,7 +332,7 @@ export default function PricingPage() {
               fontSize: "30px",
             }}
           >
-            Players always join free
+            One host plan for your group
           </h2>
 
           <p
@@ -342,8 +342,9 @@ export default function PricingPage() {
               lineHeight: 1.7,
             }}
           >
-            Only the host needs a paid plan. Players can register
-            and participate without purchasing a host subscription.
+            Choose your plan by player capacity. Venue types are examples;
+            any host can choose a tier that fits their group. Players do not
+            need a host subscription; player-card purchases are separate.
           </p>
 
           <Link

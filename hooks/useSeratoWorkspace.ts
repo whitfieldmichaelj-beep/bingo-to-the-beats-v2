@@ -267,6 +267,9 @@ export function useSeratoWorkspace() {
   const [search, setSearch] = useState("");
   const [clipLength, setClipLength] = useState(30);
   const [cardCount, setCardCount] = useState(25);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("practice") === "1") setCardCount(5);
+  }, []);
   const [shuffle, setShuffle] = useState(true);
   const [winningPattern, setWinningPattern] =
     useState<WinningPattern>("any-line");

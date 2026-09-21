@@ -1,5 +1,7 @@
 "use client";
 
+import { spotifyPlayback } from "@/lib/music/spotify/playback-client";
+
 import {
   useCallback,
   useEffect,
@@ -292,6 +294,13 @@ export function usePlaybackEngine(
    * 30 seconds at full volume, followed by a 4-second overlap.
    */
 
+  const spotifyOperationRef = useRef(0);
+  const pauseSpotify = () => {
+    spotifyOperationRef.current += 1;
+    if (tracksRef.current[currentIndexRef.current]?.source === "spotify") {
+      void spotifyPlayback("pause").catch(error => setPlaybackError(error instanceof Error ? error.message : "Spotify could not pause."));
+    }
+  };
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const incomingAudioRef = useRef<HTMLAudioElement | null>(null);
   const incomingIndexRef = useRef<number | null>(null);
@@ -372,6 +381,7 @@ export function usePlaybackEngine(
   }, []);
 
   const stopAllAudio = useCallback(() => {
+    pauseSpotify();
     clearPlayTimer();
     clearCrossfade();
 
@@ -466,6 +476,7 @@ export function usePlaybackEngine(
   );
 
   const finishAndReveal = useCallback(() => {
+    pauseSpotify();
     clearPlayTimer();
     clearCrossfade();
     clearIncomingAudio();
@@ -959,6 +970,21 @@ export function usePlaybackEngine(
 
     setSecondsRemaining(remaining);
 
+    if (track.source === "spotify") {
+      const operation = ++spotifyOperationRef.current;
+      try {
+        await spotifyPlayback("play", track.id, (DEFAULT_MUSICAL_START_SECONDS + Math.max(0, playtimeSeconds - remaining)) * 1000);
+        if (operation !== spotifyOperationRef.current) return;
+        setStatus("playing");
+        startNonFadeTimerRef.current(remaining);
+      } catch (error) {
+        if (operation !== spotifyOperationRef.current) return;
+        setStatus("paused");
+        setPlaybackError(error instanceof Error ? error.message : "Spotify could not start.");
+      }
+      return;
+    }
+
     const audio = prepareActiveAudio(currentIndexRef.current);
 
     if (track.audioUrl && audio) {
@@ -1032,6 +1058,7 @@ export function usePlaybackEngine(
   ]);
 
   const pause = useCallback(() => {
+    pauseSpotify();
     clearPlayTimer();
 
     if (transitionInProgressRef.current) {
@@ -1081,6 +1108,21 @@ export function usePlaybackEngine(
     setRevealed(false);
 
     const track = tracksRef.current[currentIndexRef.current];
+    if (track?.source === "spotify") {
+      const operation = ++spotifyOperationRef.current;
+      try {
+        // Re-select the game song at the saved countdown position.
+        await spotifyPlayback("play", track.id, (DEFAULT_MUSICAL_START_SECONDS + Math.max(0, playtimeSeconds - secondsRemainingRef.current)) * 1000);
+        if (operation !== spotifyOperationRef.current) return;
+        setStatus("playing");
+        startNonFadeTimerRef.current(secondsRemainingRef.current);
+      } catch (error) {
+        if (operation !== spotifyOperationRef.current) return;
+        setStatus("paused");
+        setPlaybackError(error instanceof Error ? error.message : "Spotify could not resume.");
+      }
+      return;
+    }
     const audio = prepareActiveAudio(currentIndexRef.current);
 
     if (track?.audioUrl && audio) {
@@ -1106,9 +1148,10 @@ export function usePlaybackEngine(
     startNonFadeTimerRef.current(
       secondsRemainingRef.current
     );
-  }, [prepareActiveAudio, setStatus]);
+  }, [prepareActiveAudio, setStatus, playtimeSeconds]);
 
   const restart = useCallback(() => {
+    pauseSpotify();
     clearPlayTimer();
     clearCrossfade();
     clearIncomingAudio();
@@ -1156,6 +1199,7 @@ export function usePlaybackEngine(
   }, [clearPlayTimer, finishAndReveal, setSecondsRemaining]);
 
   const hide = useCallback(() => {
+    pauseSpotify();
     clearPlayTimer();
     setStatus(tracksRef.current.length > 0 ? "ready" : "idle");
     setRevealed(false);
@@ -1163,6 +1207,7 @@ export function usePlaybackEngine(
 
   const goToTrack = useCallback(
     (newIndex: number) => {
+      pauseSpotify();
       clearPlayTimer();
       clearCrossfade();
       clearIncomingAudio();

@@ -179,6 +179,8 @@ model Game {
   cardPrice  Decimal? @db.Decimal(10, 2)
   currency   String   @default("USD")
   maxPlayers Int      @default(200)
+  hostBillingRequired Boolean @default(false)
+  isPractice Boolean @default(false)
 
   startedAt   DateTime?
   completedAt DateTime?
@@ -191,6 +193,7 @@ model Game {
   sessions  GameSession[]
   purchases Purchase[]
   winners   Winner[]
+  playerSeats GamePlayerSeat[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -357,4 +360,29 @@ model Winner {
   createdAt DateTime @default(now())
 
   @@index([gameId])
+}
+
+// One subscription and one pending checkout per authenticated host.
+model HostBilling {
+  clerkId String @id
+  stripeCustomerId String? @unique
+  stripeSubscriptionId String? @unique
+  checkoutSessionId String? @unique
+  checkoutAttempt String?
+  planId String?
+  status String @default("none")
+  accessUntil DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  activeGameId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A player retains the same spot when disconnecting, reconnecting or changing cards.
+model GamePlayerSeat {
+  gameId String
+  playerKey String
+  createdAt DateTime @default(now())
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  @@id([gameId, playerKey])
 }

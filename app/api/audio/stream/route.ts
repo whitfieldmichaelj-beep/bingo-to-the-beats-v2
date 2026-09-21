@@ -1,3 +1,5 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
+import { findRelocatedAudio } from "@/lib/audio/relocated-file";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
@@ -126,6 +128,14 @@ async function resolveExistingTrackPath(
     } catch {
       // Try the next candidate.
     }
+  }
+
+  const relocated = await findRelocatedAudio(storedPath, SERATO_MUSIC_ROOT);
+  if (relocated) {
+    try {
+      const fileStats = await stat(relocated);
+      if (fileStats.isFile()) return { filePath: relocated, fileSize: fileStats.size, attemptedPaths: [...attemptedPaths, relocated] };
+    } catch { /* The drive may have disconnected during lookup. */ }
   }
 
   return null;
@@ -300,6 +310,8 @@ async function resolveAudioRequest(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     const resolved = await resolveAudioRequest(request);
 
@@ -378,6 +390,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function HEAD(request: NextRequest) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     const resolved = await resolveAudioRequest(request);
 

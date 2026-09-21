@@ -1,3 +1,4 @@
+import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
 import {
   auth,
@@ -340,6 +341,7 @@ export async function POST(
         null,
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to create streaming music game:",
       error

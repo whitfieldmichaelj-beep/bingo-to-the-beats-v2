@@ -32,27 +32,41 @@ type PlaylistApiResponse = {
   items?: SpotifyPlaylist[];
   total?: number;
   error?: string;
+  code?: string;
 };
 
 export default function SpotifyPage() {
-  console.log("SpotifyPage rendered");
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [signInRequired, setSignInRequired] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    console.log("useEffect started");
+    const callbackError = new URLSearchParams(window.location.search).get("error");
+    if (callbackError) {
+      const explanations: Record<string, string> = {
+        access_denied: "Spotify access was not approved. Choose Reconnect Spotify and approve access to continue.",
+        spotify_state_mismatch: "The Spotify connection attempt expired or was replaced by another attempt. Close other connection tabs, then choose Reconnect Spotify once.",
+        missing_spotify_code: "Spotify did not return an authorization code. Please reconnect.",
+        spotify_callback_failed: "BTTB could not finish Spotify authorization. Please reconnect; if it happens again, the Spotify app configuration needs checking.",
+      };
+      setLoading(false);
+      setErrorMessage(explanations[callbackError] || "Spotify authorization failed. Please reconnect; if it happens again, the Spotify app configuration needs checking.");
+      return;
+    }
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     async function loadPlaylists() {
       setLoading(true);
       setErrorMessage("");
 
       try {
-        console.log("About to fetch playlists");
         const response = await fetch("/api/spotify/playlists", {
           method: "GET",
+          signal: controller.signal,
           cache: "no-store",
           credentials: "include",
           headers: {
@@ -60,7 +74,12 @@ export default function SpotifyPage() {
           },
         });
 
+        if (!response.headers.get("content-type")?.includes("application/json")) {
+          if (!cancelled) setSignInRequired(true);
+          throw new Error("Sign in to Bingo to the Beats, then try loading your playlists again.");
+        }
         const data = (await response.json()) as PlaylistApiResponse;
+        if (!cancelled) setSignInRequired(data.code === "BTTB_SIGN_IN_REQUIRED");
 
         if (cancelled) {
           return;
@@ -80,11 +99,12 @@ export default function SpotifyPage() {
 
         if (!cancelled) {
           setErrorMessage(
-            "The app could not load your Spotify playlists. Please try again."
+            controller.signal.aborted ? "Spotify took too long to respond. Please try again." : error instanceof Error ? error.message : "The app could not load your Spotify playlists. Please try again."
           );
           setPlaylists([]);
         }
       } finally {
+        clearTimeout(timeout);
         if (!cancelled) {
           setLoading(false);
         }
@@ -95,6 +115,8 @@ export default function SpotifyPage() {
 
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
@@ -145,7 +167,7 @@ export default function SpotifyPage() {
           <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
             <div className="max-w-3xl">
               <span className="inline-flex rounded-full border border-green-300/20 bg-green-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-green-200">
-                Spotify Connected
+                {loading ? "Checking Spotify" : errorMessage ? "Connection Needs Attention" : "Spotify Connected"}
               </span>
 
               <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-5xl">
@@ -223,12 +245,12 @@ export default function SpotifyPage() {
                 Try Again
               </button>
 
-              <Link
-                href="/api/spotify/login"
+              <a
+                href={signInRequired ? "/sign-in?redirect_url=%2Fspotify" : "/api/spotify/login"}
                 className="rounded-xl bg-[#1DB954] px-5 py-3 text-sm font-black text-black transition hover:scale-[1.02] hover:bg-[#25d366]"
               >
-                Reconnect Spotify
-              </Link>
+                {signInRequired ? "Sign In to BTTB" : "Reconnect Spotify"}
+              </a>
             </div>
           </section>
         )}

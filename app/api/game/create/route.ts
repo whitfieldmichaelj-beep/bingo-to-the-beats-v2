@@ -1,3 +1,6 @@
+import { excludedDjSong } from "@/lib/serato/song-filter";
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
+import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -100,22 +103,8 @@ function normalizeBingoPattern(
  * not appear on cards and that the host queue contains one copy
  * of each song.
  */
-const EXCLUDED_TITLE_PATTERNS = [
-  /\bacapella\b/i,
-  /\ba[\s-]*cappella\b/i,
-  /\binstrumental\b/i,
-  /\bintro[\s._/\\-]*outro\b/i,
-];
-
-function shouldExcludeTrack(
-  track: SeratoTrack
-): boolean {
-  const title =
-    `${track.title ?? ""} ${track.fileName ?? ""}`.trim();
-
-  return EXCLUDED_TITLE_PATTERNS.some(
-    (pattern) => pattern.test(title)
-  );
+function shouldExcludeTrack(track: SeratoTrack): boolean {
+  return excludedDjSong(track.title ?? "", track.fileName ?? "");
 }
 
 function normalizeDuplicateKeyPart(
@@ -211,6 +200,8 @@ function buildPlayablePlaylist(
 export async function POST(
   request: NextRequest
 ) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     const {
       isAuthenticated,
@@ -390,6 +381,7 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to create Serato game:",
       error

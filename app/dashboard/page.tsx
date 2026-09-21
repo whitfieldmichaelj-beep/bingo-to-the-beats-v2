@@ -54,6 +54,7 @@ export default async function DashboardPage() {
         </h1>
 
         <div style={buttonRowStyle}>
+          <Link href="/billing" style={buttonStyle}>Billing &amp; Subscription</Link>
           <Link href="/game/new" style={buttonStyle}>
             Create New Game
           </Link>

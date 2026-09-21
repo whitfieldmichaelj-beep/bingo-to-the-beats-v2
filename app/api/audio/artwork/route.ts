@@ -1,3 +1,5 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
+import { findRelocatedAudio } from "@/lib/audio/relocated-file";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -129,7 +131,7 @@ async function resolveExistingTrackPath(
     }
   }
 
-  return null;
+  return findRelocatedAudio(storedPath, SERATO_MUSIC_ROOT);
 }
 
 function fallbackArtwork(
@@ -175,6 +177,8 @@ function svgResponse(
 export async function GET(
   request: NextRequest
 ) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   const gameId =
     request.nextUrl.searchParams
       .get("gameId")

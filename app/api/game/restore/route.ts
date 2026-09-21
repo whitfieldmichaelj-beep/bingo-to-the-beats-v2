@@ -1,3 +1,4 @@
+import { HostAccessError, requireGameHostAccess } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
 import {
   NextRequest,
@@ -72,6 +73,8 @@ export async function GET(
       );
     }
 
+    await requireGameHostAccess(ownedGame.id);
+
     const game =
       await findGameById(
         ownedGame.id
@@ -95,6 +98,7 @@ export async function GET(
       game,
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to restore game:",
       error

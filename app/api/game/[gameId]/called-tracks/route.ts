@@ -1,3 +1,4 @@
+import { HostAccessError, requireGameHostAccess } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
 import {
   NextRequest,
@@ -104,6 +105,7 @@ export async function GET(
         })),
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to load called tracks:",
       error
@@ -192,6 +194,8 @@ export async function POST(
         }
       );
     }
+
+    await requireGameHostAccess(gameId);
 
     const body =
       await request.json();
@@ -297,6 +301,7 @@ export async function POST(
         calledAt.toISOString(),
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to record played songs:",
       error

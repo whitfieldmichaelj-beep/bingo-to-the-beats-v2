@@ -1,9 +1,12 @@
+import { requestOrigin } from "@/lib/http/request-origin";
+import { NextResponse } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
 const PROTECTED_PAGE_PREFIXES = [
   "/dashboard",
   "/dj-console",
   "/serato",
+  "/spotify",
   "/music",
   "/host",
   "/game/new",
@@ -55,8 +58,12 @@ export default clerkMiddleware(
     } = await auth();
 
     if (!isAuthenticated) {
+      const isSpotifyNavigation = pathname === "/api/spotify/login" || pathname === "/api/spotify/callback";
+      if (isProtectedApi && !isSpotifyNavigation) {
+        return NextResponse.json({ error: "Sign in to Bingo to the Beats to continue.", code: "BTTB_SIGN_IN_REQUIRED" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+      }
       return redirectToSignIn({
-        returnBackUrl: request.url,
+        returnBackUrl: new URL(request.nextUrl.pathname + request.nextUrl.search, requestOrigin(request)).toString(),
       });
     }
   }

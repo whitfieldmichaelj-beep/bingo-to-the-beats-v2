@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+function load(file,mocks,extra={}){const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports,require:n=>mocks[n]??{},URL,Headers,AbortSignal,console:{error(){}},process,...extra});return exports;}
+const origin=load('lib/http/request-origin.ts',{});
+const req=(path,host='127.0.0.1:3000')=>({url:`http://localhost:3000${path}`,nextUrl:new URL(`http://localhost:3000${path}`),headers:new Headers({host})});
+assert.equal(origin.requestOrigin(req('/spotify')),'http://127.0.0.1:3000');
+assert.equal(origin.requestOrigin(req('/spotify','evil.example')),'http://localhost:3000');
+assert.equal(origin.requestOrigin(req('/spotify','127.0.0.1:9999')),'http://localhost:3000');
+const next={NextResponse:{json:(body,options)=>({body,status:options.status}),redirect:url=>({redirect:String(url)})}};
+const proxy=load('proxy.ts',{'@/lib/http/request-origin':origin,'next/server':next,'@clerk/nextjs/server':{clerkMiddleware:f=>f}}).default;
+const auth=async()=>({isAuthenticated:false,redirectToSignIn:args=>args});
+assert.equal((await proxy(auth,req('/api/spotify/playlists'))).status,401);
+assert.equal((await proxy(auth,req('/spotify'))).returnBackUrl,'http://127.0.0.1:3000/spotify');
+assert.ok((await proxy(auth,req('/api/spotify/login'))).returnBackUrl);
+assert.equal(await proxy(async()=>({isAuthenticated:true}),req('/api/spotify/playlists')),undefined);
+let clears=0;
+const route=load('app/api/spotify/playlists/route.ts',{'next/server':next,'@/app/lib/spotify':{getValidSpotifyAccessToken:async()=>({accessToken:'test'}),clearSpotifyTokenCookies:()=>clears++,setSpotifyTokenCookies:()=>{}}},{fetch:async()=>{throw new Error('timeout');}});
+assert.equal((await route.GET({})).status,503);assert.equal(clears,0,'temporary outage must not erase connection');
+console.log('PASS loopback origin preservation, hostile host rejection, API JSON sign-in response, page return URL, and Spotify outage preserves connection');

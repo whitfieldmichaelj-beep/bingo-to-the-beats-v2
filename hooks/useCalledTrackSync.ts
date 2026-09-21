@@ -55,17 +55,10 @@ export function useCalledTrackSync(
      * Serato/provider track ID. This repairs both new sessions
      * and older/current sessions that lost gameTrackId.
      */
-    const end =
-      Math.max(
-        0,
-        currentIndex +
-          (currentHasStarted
-            ? 1
-            : 0)
-      );
-
-    const candidates =
-      tracks.slice(0, end);
+    // DJs can play in any order. A position in the playlist does not mean
+    // the songs before it were played; only send the current started track.
+    const currentTrack = tracks[currentIndex];
+    const candidates = currentHasStarted && currentTrack ? [currentTrack] : [];
 
     const unsent =
       candidates.filter(

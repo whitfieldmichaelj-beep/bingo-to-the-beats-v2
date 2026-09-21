@@ -168,6 +168,7 @@ export async function exchangeSpotifyCode(
         redirect_uri: getSpotifyRedirectUri(),
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(10000),
     }
   );
 
@@ -215,6 +216,7 @@ export async function refreshSpotifyAccessToken(
         refresh_token: refreshToken,
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(10000),
     }
   );
 

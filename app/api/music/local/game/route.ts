@@ -1,3 +1,5 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
+import { HostAccessError } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
 import {
   NextRequest,
@@ -112,6 +114,8 @@ function normalizeBingoPattern(
 export async function POST(
   request: NextRequest
 ) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   let body: unknown;
 
   try {
@@ -286,6 +290,7 @@ export async function POST(
         null,
     });
   } catch (error) {
+    if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(
       "Unable to create local music game:",
       error

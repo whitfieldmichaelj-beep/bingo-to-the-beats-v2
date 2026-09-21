@@ -1,3 +1,4 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { NextResponse } from "next/server";
 import os from "node:os";
 import path from "node:path";
@@ -117,6 +118,8 @@ async function scanExternalLibraries() {
 }
 
 export async function GET() {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     const [localLibrary, externalLibraries] = await Promise.all([
       scanLocalLibrary(),

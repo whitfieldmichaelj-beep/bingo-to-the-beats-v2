@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const exports={};vm.runInNewContext(ts.transpileModule(readFileSync('lib/serato/track-matching.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports});
+const match=(tracks,title,artist='Fat Joe')=>exports.findSeratoTrackIndex(tracks,{title,artist,displayText:`${artist} - ${title}`});
+const tracks=[{name:'Envy (Instrumental)',artist:'Fat Joe'},{name:'Envy (Clean)',artist:'Fat Joe'},{name:'Envy (Dirty)',artist:'Fat Joe'}];
+assert.equal(match(tracks,'Envy (Clean)'),1);assert.equal(match(tracks,'Envy (Instrumental)'),0);assert.equal(match(tracks,'Envy'),-1);
+assert.equal(match([tracks[0]],'Envy (Clean)'),-1);
+assert.equal(match([tracks[1]],'Envy'),0);
+assert.equal(match(tracks,'Envy (Clean)','Other Artist'),-1);
+assert.equal(match(tracks,'Envy (Clean)',''),-1);
+assert.equal(match(tracks,''),-1);
+assert.equal(match([{name:'Envy (Acapella)',artist:'Fat Joe'}],'Envy'),-1);
+assert.equal(match(tracks,' ENVY [CLEAN] '),1);
+console.log('PASS exact Clean/Instrumental versions, ambiguous edits, missing artists, punctuation and empty-title protection');

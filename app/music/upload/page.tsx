@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { excludedDjSong } from "@/lib/serato/song-filter";
 import Papa from "papaparse";
 import { ChangeEvent, useMemo, useState } from "react";
 
@@ -108,6 +109,23 @@ function removeDuplicates(
 }
 
 export default function CsvUploadPage() {
+  const [excludedCount, setExcludedCount] = useState(0);
+  function prepareTracks(input: ImportedTrack[]) {
+    const eligible = input.filter(track => !excludedDjSong(track.title, track.filename));
+    setExcludedCount(input.length - eligible.length);
+    return removeDuplicates(eligible);
+  }
+  const [creating, setCreating] = useState(false);
+  const [cardCount, setCardCount] = useState(5);
+  async function createDjGame() {
+    setCreating(true); setError("");
+    try {
+      const response = await fetch("/api/game/create/serato-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tracks: tracks.map(({ title, artist }) => ({ title, artist })), name: fileName.replace(/\.(csv|crate|scrate)$/i, ""), cardCount, clipLength: 30 }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not create game.");
+      window.location.assign(`/dj-console?gameId=${encodeURIComponent(data.game.id)}`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not create game."); setCreating(false); }
+  }
   const [fileName, setFileName] = useState("");
   const [tracks, setTracks] = useState<ImportedTrack[]>([]);
   const [error, setError] = useState("");
@@ -118,24 +136,40 @@ export default function CsvUploadPage() {
     [tracks]
   );
 
-  function handleFileChange(
+  async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0];
 
     setError("");
     setTracks([]);
+    setExcludedCount(0);
     setFileName("");
 
     if (!file) {
       return;
     }
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setError("Please choose a CSV file.");
+    if (/\.(crate|scrate)$/i.test(file.name)) {
+      if (!file.size || file.size > 5 * 1024 * 1024) { setError("Choose a crate file smaller than 5 MB."); return; }
+      setIsParsing(true); setFileName(file.name);
+      try {
+        const form = new FormData(); form.append("file", file);
+        const response = await fetch("/api/serato/import", { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || data.message || "Could not read this crate.");
+        setTracks(prepareTracks(data.tracks));
+      } catch (err) { setError(err instanceof Error ? err.message : "Could not read this crate."); }
+      finally { setIsParsing(false); }
       return;
     }
 
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Please choose a .crate, .scrate, or .csv file.");
+      return;
+    }
+
+    if (file.size > 500000) { setError("Choose a CSV smaller than 500 KB."); return; }
     setFileName(file.name);
     setIsParsing(true);
 
@@ -153,7 +187,7 @@ export default function CsvUploadPage() {
           );
 
         const uniqueTracks =
-          removeDuplicates(parsedTracks);
+          prepareTracks(parsedTracks);
 
         setTracks(uniqueTracks);
         sessionStorage.setItem(
@@ -164,7 +198,7 @@ export default function CsvUploadPage() {
 
         if (uniqueTracks.length === 0) {
           setError(
-            "No valid song titles or artists were found. Confirm that the CSV contains Title and Artist columns."
+            "No eligible songs remain. Use Title and Artist columns and include songs other than acapella, instrumental, or intro/outro edits."
           );
         }
       },
@@ -206,6 +240,7 @@ export default function CsvUploadPage() {
           ← Back to Music Providers
         </Link>
 
+        <p style={{ marginTop: 24 }}>Keep your external music drive connected. On this Mac, crate files are matched against your Serato library. Smart crates use their last saved song list; open the crate in Serato first to update it. This does not upload your audio.</p>
         <header
           style={{
             maxWidth: "760px",
@@ -223,7 +258,7 @@ export default function CsvUploadPage() {
               textTransform: "uppercase",
             }}
           >
-            Serato and CSV Import
+            Serato Crate Import
           </p>
 
           <h1
@@ -246,7 +281,7 @@ export default function CsvUploadPage() {
               lineHeight: 1.7,
             }}
           >
-            Upload a CSV exported from Serato or another DJ
+            Select a Serato .crate or .scrate file, or a CSV from your DJ
             library. BTTB will identify the track title, artist,
             BPM, genre, key, and other available information.
           </p>
@@ -289,7 +324,7 @@ export default function CsvUploadPage() {
                 fontSize: "22px",
               }}
             >
-              Choose a Serato CSV file
+              Choose a Serato crate or song list
             </strong>
 
             <span
@@ -299,13 +334,14 @@ export default function CsvUploadPage() {
                 color: "#94a3b8",
               }}
             >
-              CSV files only
+              .crate, .scrate, or .csv
             </span>
 
             <input
               id="playlistCsv"
               type="file"
-              accept=".csv,text/csv"
+              accept=".crate,.scrate,.csv,text/csv"
+              disabled={isParsing || creating}
               onChange={handleFileChange}
               style={{
                 display: "none",
@@ -384,7 +420,7 @@ export default function CsvUploadPage() {
                     textTransform: "uppercase",
                   }}
                 >
-                  Import Complete
+                  Import Complete — {excludedCount} excluded edits
                 </p>
 
                 <h2
@@ -393,23 +429,16 @@ export default function CsvUploadPage() {
                     fontSize: "32px",
                   }}
                 >
-                  {tracks.length} tracks found
+                  {tracks.length} eligible tracks
                 </h2>
               </div>
 
-              <Link
-  href="/game/cards"
-                style={{
-                  padding: "14px 22px",
-                  borderRadius: "999px",
-                  background: "#a3e635",
-                  color: "#172554",
-                  textDecoration: "none",
-                  fontWeight: 900,
-                }}
-              >
-                Continue to Game Setup
-              </Link>
+              <div>
+                <p>Play music in Serato. BTTB follows your public Live Playlist; this import contains song names only.</p>
+                <label>Game size <select value={cardCount} onChange={event => setCardCount(Number(event.target.value))} style={{ color: "#172554", backgroundColor: "#e0f2fe", colorScheme: "light", border: "2px solid #38bdf8", borderRadius: "10px", padding: "10px 12px", margin: "8px 0 8px 8px", fontWeight: 700, maxWidth: "100%", cursor: "pointer" }}><option value={5}>Free practice — 5 players</option><option value={100}>DJ plan — 100 players</option><option value={200}>DJ Pro Plus — 200 players</option></select></label>
+                <button type="button" disabled={creating || tracks.length < 25 || tracks.length > 500} onClick={() => void createDjGame()} style={{ padding: 14, marginLeft: 12, background: "#a3e635", color: "#172554", borderRadius: 16 }}>{creating ? "Creating…" : "Create DJ Game"}</button>
+                <p>Requires 25–500 unique songs. Set your Serato Live Playlist to Public before connecting.</p>
+              </div>
             </div>
 
             <div

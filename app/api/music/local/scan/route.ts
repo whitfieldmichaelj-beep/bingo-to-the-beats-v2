@@ -1,3 +1,4 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import {
   NextRequest,
   NextResponse,
@@ -54,6 +55,8 @@ function isScanRequest(
 export async function POST(
   request: NextRequest
 ) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   let body: unknown;
 
   try {

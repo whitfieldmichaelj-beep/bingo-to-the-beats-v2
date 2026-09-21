@@ -1,3 +1,4 @@
+import { handleHostBillingEvent } from "@/lib/billing/subscriptions";
 import type Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -1191,6 +1192,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (await handleHostBillingEvent(event)) return NextResponse.json({ received: true });
+
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {

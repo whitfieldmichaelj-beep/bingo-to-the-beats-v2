@@ -367,14 +367,14 @@ export default function MusicPage() {
               statusStyle={spotify.style}
               icon="●"
             >
-              <Link
+              <a
                 href="/api/spotify/login"
                 className="rounded-xl bg-[#1DB954] px-5 py-3 text-sm font-black text-black shadow-lg transition hover:scale-[1.02] hover:bg-[#25d366]"
               >
                 {spotifyStatus === "connected"
                   ? "Reconnect Spotify"
                   : "Connect Spotify"}
-              </Link>
+              </a>
 
               <Link
                 href="/spotify"

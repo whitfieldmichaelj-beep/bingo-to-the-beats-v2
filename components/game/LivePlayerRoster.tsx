@@ -40,6 +40,12 @@ export default function LivePlayerRoster({
         </span>
       </div>
 
+      {roster.capacity && <p style={emptyStyle}>
+        <strong>{roster.capacity.used} of {roster.capacity.limit} player spots filled.</strong>{" "}
+        {roster.capacity.remaining === 0 && <a href="/billing" style={{ color: "#c4b5fd" }}>Upgrade to admit more players.</a>}
+        <span style={{ display: "block" }}>Extra cards and reconnecting do not use another spot.</span>
+      </p>}
+
       {loading &&
       roster.players.length === 0 ? (
         <p style={emptyStyle}>

@@ -51,6 +51,7 @@ export async function GET(
           Accept: "application/json",
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -136,15 +137,13 @@ export async function GET(
     const response = NextResponse.json(
       {
         error:
-          "Unable to refresh or contact Spotify.",
-        reconnectRequired: true,
+          "Spotify is taking too long or could not be reached. Try again, or reconnect Spotify if the problem continues.",
+        reconnectRequired: false,
       },
       {
-        status: 401,
+        status: 503,
       }
     );
-
-    clearSpotifyTokenCookies(response);
 
     return response;
   }

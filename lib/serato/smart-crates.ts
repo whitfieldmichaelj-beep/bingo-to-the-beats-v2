@@ -270,8 +270,11 @@ async function extractSmartCrateTrackPaths(
   const buffer =
     await readFile(filePath);
 
-  const paths =
-    new Set<string>();
+  return extractSeratoCratePaths(buffer);
+}
+
+export function extractSeratoCratePaths(buffer: Buffer): string[] {
+  const paths = new Set<string>();
 
   readTaggedTrackPaths(
     buffer,
@@ -632,4 +635,19 @@ export async function loadSeratoSmartCrate(
       tracks.length,
     tracks,
   };
+}
+
+// Uploaded crate files use the same saved track-path records as local crates.
+// Rule-only smart crates must be refreshed in Serato; do not invent matches.
+export async function readUploadedSeratoCrate(buffer: Buffer) {
+  const paths = extractSeratoCratePaths(buffer);
+  if (!paths.length) throw new Error("This crate has no saved song list. Open it in Serato, let it update, then save/close Serato and select the file again.");
+  const library = await getLibrarySnapshot();
+  const lookup = buildTrackLookup(library.libraries.flatMap(item => item.tracks));
+  const matched = paths.map(item => findTrack(item, lookup));
+  const missing = matched.filter(item => !item).length;
+  if (missing) throw new Error(`${missing} of ${paths.length} songs could not be matched to this Mac’s Serato library. Connect your music drive and refresh the Serato library before importing again.`);
+  const unique = new Map<string, SeratoTrack>();
+  for (const track of matched) if (track) unique.set(track.id, track);
+  return [...unique.values()];
 }

@@ -1,0 +1,73 @@
+# Private beta checkpoint — September 15, 2026
+
+Target: September 18, 2026, invite-only testing. Not yet approved for public release.
+
+## Verified this session
+
+- Production build and TypeScript pass. Existing Serato crate file-tracing warning remains.
+- Full local verification suite passes against a separate production server on port 3001: enrollment, duplicate concurrent joins, host restore, playback restore, Serato parsing, refunds, disputes, checkout signature/ownership/amount checks and event replay.
+- Database capacity tests pass, including a race for the final player spot, rollback and reconnect.
+- Added host subscription regression coverage for all approved prices, invalid prices, renewal, cancellation, failed payment, ownership, delayed events and replacement checkout refresh.
+- Fixed refresh after replacing a canceled subscription.
+- Card availability now reads both counts in one database snapshot. Initial concurrent join run encountered an intermittent Prisma count error; subsequent full suite passed after this change. Continue observing under load; this is not a sustained load-test result.
+- Created and verified a Stripe TEST-mode portal configuration for invoices, payment methods and cancellation at period end. Local env points to this explicit configuration.
+- Actual Stripe TEST-mode subscription creation, end-of-period cancellation and resumption passed. Test subscription canceled, customer removed, test product archived.
+
+## Current controls
+
+Host subscription purchases remain disabled. No live customer charges or deployment were performed.
+Existing games remain grandfathered. Agreed DJ and Other-host plan prices are unchanged.
+
+## Remaining beta gates
+
+1. Physical playback tests with Serato, Spotify Premium and Apple Music. User confirmed access to all three.
+2. Real host-to-phone player rehearsal through reveal, marks, bingo, reconnect and game end.
+3. Exercise the final Stripe-hosted plan-change confirmation and resulting webhook in the beta environment. Upgrades and billing-period changes within the same host category, keeping or increasing capacity, are implemented. Downgrades and DJ/Other category switches are not offered.
+4. Check the updated free-practice join screen on a phone. API integration test verifies one free card, invalid quantity 400, and reconnect without a second purchase or seat.
+5. Verify hosted environment, production database, public origin, auth callbacks and webhook delivery. Local Serato disk access will not automatically work for other DJs on a hosted server.
+6. Choose test-only billing or live billing for the private beta, then configure/verify that environment. Test-mode portal configuration cannot be reused in live mode.
+7. Address Serato crate tracing warning before production packaging is finalized.
+
+## Serato rehearsal
+
+Use existing game 6165b1f7-dfcd-46dc-8e59-1fe984875474. Serato Live Playlist must be Public via Edit Details, with Live Playlist On. Play two tracks in the game's track list and confirm each is detected once; check timer/reveal and caller/player views. Do not confuse browser audio playback with Serato track detection.
+
+## Follow-up implementation and verification
+
+- Join screen checks the game type before enabling enrollment. Practice offers only one free card; paid games retain existing card packages. No price is shown until the game code is verified.
+- Local-library routes, Serato disk routes, local game creation and local audio/artwork now require the explicitly configured Mac library owner. Missing setup fails closed. The existing local game owner is configured in ignored local environment settings. Public Serato live detection and streaming game creation are separate from disk-library authorization.
+- Added tests that exercise every protected route before disk/database work, owner/non-owner/anonymous access, and practice/paid/ended join options.
+- Added Stripe-hosted upgrade confirmation. Opening the flow does not update a subscription or grant increased capacity; confirmed Stripe price determines entitlements. Tested actual Stripe TEST-mode confirmation session creation; final browser confirmation remains to be rehearsed.
+- Production build and full verify suite pass after these changes. Isolated real database/API free-practice enrollment test also passes and cleans up its own fixtures.
+- Paid subscriptions remain disabled. No deployment or live charges performed.
+
+## Spotify return-address fix
+
+- Allowed the explicit 127.0.0.1 loopback origin in the Next development server; browser sign-in UI now hydrates at the Spotify callback origin.
+- Spotify page requires BTTB sign-in; protected data APIs return JSON 401 instead of a login document. Login/callback navigation continues to redirect normally.
+- Spotify authorization starts on its configured callback origin. Loopback return URLs preserve the browser Host only for known aliases on the same port.
+- Sign-in respects the requested return page instead of always forcing Dashboard.
+- Playlist and token requests have timeouts; temporary upstream failures preserve Spotify cookies.
+- TypeScript and regression tests pass. Browser verified the sign-in form and correct return URL. Actual playlist retrieval is pending user sign-in on 127.0.0.1.
+
+## Spotify reconnect navigation follow-up
+
+The development log showed repeated failed RSC payload requests to /api/spotify/login. Both Spotify connect links now use ordinary browser navigation rather than Next Link. Authorization responses are no-store. The playlist page displays callback errors (including state mismatch) instead of masking them as disconnected. TypeScript and OAuth tests pass: canonical navigation, state validation, callback token cookies, and subsequent token read. Real reconnection still needs the user's Spotify authorization.
+
+### Spotify playback — September 16
+- Real OAuth now loads playlists after correcting local callback and registering it with Spotify.
+- Added Spotify Connect play/pause and saved-position resume; countdown waits for accepted playback. Spotify clips use reveal/advance rather than local-audio crossfade.
+- Playback regression checks cover pending/failed commands, cancellation, resume position and server guards. TypeScript passes.
+- Real current game test returned no active Spotify device and correctly stayed paused. Mike must activate Spotify on the Mac, then Resume Game; audible playback still awaits real-device confirmation.
+
+- Spotify wrong-computer fix: hosts must explicitly choose their playback device in the console. Every play/pause command now includes that device ID; no fallback to the account active device. Selection resets on page/game entry. TypeScript and playback regression checks pass. Spotify currently reports two identically named Firefox web players; local desktop device selection and audible test await Mike.
+
+- Spotify clips now start at 60 seconds; resume adds elapsed clip time to that offset (test: 18 seconds elapsed resumes at 78 seconds). Playback regression tests and TypeScript pass. True nearest-downbeat alignment remains unimplemented: Spotify audio-analysis access is restricted, and BPM alone is not a beat grid. Clarification pending whether Mike wants audio inside BTTB or through Spotify desktop.
+
+## DJ beta focus — September 16
+Scope now prioritizes Serato DJ beta; streaming integrations are not beta release-approved. See DJ_BETA_READINESS.md. Added metadata-only hosted CSV import and compact console. Serato detected-track changes now drive the actual countdown, and browser audio/automatic next-song playback are disabled for Serato. Build and DJ route/timer tests pass; compact view inspected in browser. Verification uses disposable cloned game fixtures. Local Prisma TCP bridge limits connections to one even for local production builds after concurrent portal/prepared-statement failures. Hosted database load testing remains required.
+
+Full isolated verification passed after aligning the temporary Stripe test signing key. Final out-of-order called-track correction passed targeted DJ tests and TypeScript. No deployment, live charges, or reopening of ended real games. Next gate: real Serato plus phone rehearsal; free five-player practice is the provisional test scope.
+
+### Explicit practice repair — September 17
+CSV/crate import now passes an explicit practice option to game persistence. It reserves five-player free access even when subscriptions are disabled or the host has a paid plan. Existing test game YP29AQ was incorrectly non-practice; its unpaid checkout was expired, game corrected to practice, and its sole pending one-card entry made free/active. No paid purchases existed. Live join-options endpoint confirms isPractice=true. TypeScript and import/capacity checks pass.

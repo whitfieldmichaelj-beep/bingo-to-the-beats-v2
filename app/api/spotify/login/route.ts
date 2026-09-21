@@ -1,5 +1,6 @@
+import { requestOrigin } from "@/lib/http/request-origin";
 import { randomBytes } from "crypto";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   getSpotifyClientId,
   getSpotifyRedirectUri,
@@ -18,8 +19,13 @@ const SPOTIFY_SCOPES = [
   "user-modify-playback-state",
 ];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const callbackOrigin = new URL(getSpotifyRedirectUri()).origin;
+    if (requestOrigin(request) !== callbackOrigin) {
+      return NextResponse.redirect(new URL("/api/spotify/login", callbackOrigin));
+    }
+
     const state = randomBytes(32).toString("hex");
 
     const authorizeUrl = new URL(
@@ -58,6 +64,8 @@ export async function GET() {
 
     const response =
       NextResponse.redirect(authorizeUrl);
+
+    response.headers.set("Cache-Control", "no-store");
 
     response.cookies.set(
       SPOTIFY_STATE_COOKIE,

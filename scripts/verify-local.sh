@@ -76,17 +76,29 @@ npx tsc --noEmit
 echo
 echo "Running Serato parser tests..."
 npm run test:serato-parser
+npm run test:dj-import
+npm run test:crate-import
+npm run test:dj-playback
+npm run test:spotify-loading
+npm run test:spotify-oauth
 echo
 
 echo "Running host resume tests..."
 npm run test:host-resume
 npm run test:playback-restore
+npm run test:host-billing
+npm run test:host-upgrades
+npm run test:beta-access
+npm run test:host-capacity
 
 echo
 echo "Running player enrollment tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:player-enrollment
 
 echo
+echo "Running free practice join tests..."
+run_with_pg_retry env JOIN_CODE="$JOIN_CODE" BASE_URL="$BASE_URL" npm run test:practice-join
+
 echo "Running refund tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:purchase-refunds
 

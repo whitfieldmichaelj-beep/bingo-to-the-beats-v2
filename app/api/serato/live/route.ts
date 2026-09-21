@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+import { HostAccessError, requireGameHostAccess, subscriptionsEnabled } from "@/lib/billing/access";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -545,6 +547,7 @@ function validateLiveUrl(rawUrl: string) {
   const url = new URL(rawUrl);
 
   if (
+    url.protocol != "https:" || url.username || url.password || url.port ||
     !["serato.com", "www.serato.com"].includes(
       url.hostname.toLowerCase()
     )
@@ -554,27 +557,27 @@ function validateLiveUrl(rawUrl: string) {
     );
   }
 
-  if (
-    !url.pathname
-      .toLowerCase()
-      .startsWith("/playlists/")
-  ) {
-    throw new Error(
-      "This is not a Serato playlist URL."
-    );
+  const match = url.pathname.match(/^\/playlists\/([^/]+)(?:\/live)?\/?$/i);
+  if (!match) {
+    throw new Error("Enter a Serato profile or Live Playlist URL.");
   }
-
-  if (!url.pathname.toLowerCase().endsWith("/live")) {
-    url.pathname = `${url.pathname.replace(
-      /\/+$/,
-      ""
-    )}/live`;
-  }
+  url.pathname = `/playlists/${match[1]}/live`;
+  url.search = "";
+  url.hash = "";
 
   return url.toString();
 }
 
 export async function GET(request: NextRequest) {
+  if (subscriptionsEnabled()) {
+    const { userId } = await auth();
+    if (!userId) return respond({ ok: false, message: "Host authentication is required." }, 401);
+    const gameId = request.nextUrl.searchParams.get("gameId");
+    if (!gameId) return respond({ ok: false, message: "Load a Serato game before connecting Live Sync." }, 400);
+    try { await requireGameHostAccess(gameId, userId, "serato"); }
+    catch (error) { return respond({ ok: false, message: error instanceof HostAccessError ? error.message : "Unable to verify host access." }, error instanceof HostAccessError ? error.status : 503); }
+  }
+
   const requestedUrl =
     request.nextUrl.searchParams.get("url") ??
     DEFAULT_LIVE_URL;
@@ -603,6 +606,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(liveUrl, {
       cache: "no-store",
       redirect: "follow",
+      signal: AbortSignal.timeout(10000),
       headers: {
         Accept:
           "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
@@ -644,6 +648,7 @@ export async function GET(request: NextRequest) {
     }
 
     const noPlaylist =
+      /class=["'][^"']*\bplaylists-container\b/i.test(html) ||
       /This user has no playlists/i.test(html) ||
       /No playlists(?: are available)?/i.test(html);
 
@@ -656,7 +661,7 @@ export async function GET(request: NextRequest) {
         track: null,
         tracks: [],
         message:
-          "Serato is reachable, but this account is not publishing a Live Playlist. Start Live Playlist in Serato DJ Pro and play a new song.",
+          "Serato is reachable, but no public Live Playlist is visible. On your Serato playlist page, open Edit Details, set visibility to Public, and save. Start Live Playlist in Serato DJ Pro, complete the browser start prompt, then play a new song.",
       });
     }
 

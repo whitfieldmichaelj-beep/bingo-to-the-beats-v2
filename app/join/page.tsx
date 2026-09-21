@@ -243,6 +243,32 @@ function JoinGameForm() {
 
   const [joinCode, setJoinCode] = useState("");
   const [playerName, setPlayerName] = useState("");
+  const [joinOptions, setJoinOptions] = useState<{ code: string; isPractice: boolean } | null>(null);
+  const [optionsError, setOptionsError] = useState("");
+  const optionsReady = joinOptions?.code === normalizeCode(joinCode);
+  const isPractice = optionsReady && joinOptions?.isPractice === true;
+  const availablePackages = useMemo(() => isPractice
+    ? [{ quantity: 1 as CardQuantity, priceCents: 0, label: "1 Free Practice Card", badge: "Free", savings: "One card per player" }]
+    : PACKAGES, [isPractice]);
+  useEffect(() => {
+    const code = normalizeCode(joinCode);
+    setJoinOptions(null);
+    setOptionsError("");
+    if (code.length < 4) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void fetch(`/api/game/join-options?code=${encodeURIComponent(code)}`, { signal: controller.signal, cache: "no-store" })
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || "Unable to check this game.");
+          if (controller.signal.aborted) return;
+          if (data.isPractice) setCardQuantity(1);
+          setJoinOptions({ code, isPractice: data.isPractice === true });
+        }).catch(error => { if (!controller.signal.aborted) setOptionsError(error.message); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [joinCode]);
+
   const [cardQuantity, setCardQuantity] =
     useState<CardQuantity>(1);
   const [message, setMessage] = useState("");
@@ -462,16 +488,17 @@ function JoinGameForm() {
 
   const selectedPackage = useMemo(
     () =>
-      PACKAGES.find(
+      availablePackages.find(
         (option) => option.quantity === cardQuantity
-      ) ?? PACKAGES[2],
-    [cardQuantity]
+      ) ?? availablePackages[0],
+    [cardQuantity, availablePackages]
   );
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+    if (!optionsReady) { setMessage("Check your game code before continuing."); return; }
 
     const normalizedJoinCode = normalizeCode(joinCode);
     const normalizedPlayerName = playerName
@@ -809,7 +836,7 @@ function JoinGameForm() {
                 fontSize: "24px",
               }}
             >
-              Choose Your Cards
+              {isPractice ? "Your Free Practice Card" : "Choose Your Cards"}
             </h2>
 
             <p
@@ -818,8 +845,7 @@ function JoinGameForm() {
                 color: "#94a3b8",
               }}
             >
-              Cards are randomly assigned and each card has
-              its own unique ID.
+              {optionsReady ? "Cards are randomly assigned and each card has its own unique ID." : optionsError || "Enter your game code to see available cards."}
             </p>
 
             <div
@@ -829,7 +855,7 @@ function JoinGameForm() {
                 marginTop: "18px",
               }}
             >
-              {PACKAGES.map((option) => {
+              {(optionsReady ? availablePackages : []).map((option) => {
                 const selected =
                   cardQuantity === option.quantity;
 
@@ -961,9 +987,7 @@ function JoinGameForm() {
                   fontSize: "30px",
                 }}
               >
-                {formatMoney(
-                  selectedPackage.priceCents
-                )}
+                {optionsReady ? formatMoney(selectedPackage.priceCents) : "—"}
               </strong>
             </span>
 
@@ -1102,7 +1126,7 @@ function JoinGameForm() {
 
           <button
             type="submit"
-            disabled={joining}
+            disabled={joining || !optionsReady}
             style={{
               width: "100%",
               marginTop: "22px",
@@ -1124,9 +1148,7 @@ function JoinGameForm() {
           >
             {joining
               ? "Assigning Your Cards..."
-              : `Continue — ${formatMoney(
-                  selectedPackage.priceCents
-                )}`}
+              : !optionsReady ? "Enter a valid game code" : isPractice ? "Join Free Practice" : `Continue — ${optionsReady ? formatMoney(selectedPackage.priceCents) : "—"}`}
           </button>
 
           <p

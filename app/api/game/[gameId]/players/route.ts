@@ -1,3 +1,4 @@
+import { getPlayerCapacity } from "@/lib/billing/access";
 // BTTB_PLAYER_SESSION_SECURITY_V1
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -113,6 +114,7 @@ export async function GET(
       players: roster.players,
       activities: roster.activities,
       totals: roster.totals,
+      capacity: await getPlayerCapacity(gameId),
       payout: {
         winnerPercent,
         hostPercent,

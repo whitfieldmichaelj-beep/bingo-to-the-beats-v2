@@ -1,3 +1,4 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { NextResponse } from "next/server";
 import { getSeratoLibrary } from "@/lib/serato/service";
 
@@ -5,6 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   try {
     const result = await getSeratoLibrary();
     return NextResponse.json(result);

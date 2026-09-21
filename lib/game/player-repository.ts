@@ -1,3 +1,4 @@
+import { reservePlayerSeat } from "@/lib/billing/access";
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
@@ -11,6 +12,10 @@ export const CARD_PRICING = {
   5: 2000,
   10: 3700,
 } as const;
+
+export class PracticeQuantityError extends Error {
+  status = 400;
+}
 
 export type CardQuantity = keyof typeof CARD_PRICING;
 
@@ -498,7 +503,10 @@ export async function joinPlayer(input: JoinPlayerInput) {
     return existingAssignment;
   }
 
-  const amountCents = CARD_PRICING[input.quantity];
+  const enrollmentGame = await prisma.game.findUnique({ where: { id: input.gameId }, select: { isPractice: true } });
+  const isPractice = enrollmentGame?.isPractice === true;
+  if (isPractice && input.quantity !== 1) throw new PracticeQuantityError("Practice games allow one free card per player.");
+  const amountCents = isPractice ? 0 : CARD_PRICING[input.quantity];
 
   class SoldOutEnrollmentError extends Error {
     availableCardCount: number;
@@ -520,6 +528,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
     try {
       const transactionResult = await prisma.$transaction(
         async (tx) => {
+          await reservePlayerSeat(tx, input.gameId, playerId);
           await tx.purchase.create({
             data: {
               id: purchaseId,
@@ -529,7 +538,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
               quantity: input.quantity,
               amount: amountCents / 100,
               currency: "USD",
-              status: "PENDING",
+              status: isPractice ? "PAID" : "PENDING",
             },
           });
 
@@ -587,7 +596,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
                   playerKey: playerId,
                   playerName: input.playerName,
                   purchaseId,
-                  status: "ASSIGNED",
+                  status: isPractice ? "ACTIVE" : "ASSIGNED",
                 },
               });
 
@@ -664,7 +673,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
         ),
         cardQuantity: input.quantity,
         amountCents,
-        purchaseStatus: "PENDING",
+        purchaseStatus: isPractice ? "PAID" : "PENDING",
         joinedAt:
           transactionResult.joinedAt.toISOString(),
       };
@@ -772,21 +781,14 @@ export async function joinPlayer(input: JoinPlayerInput) {
 }
 
 export async function getGameAvailability(gameId: string) {
-  const [totalCards, assignedCards] = await Promise.all([
-    prisma.bingoCard.count({
-      where: {
-        gameId,
-      },
-    }),
-    prisma.bingoCard.count({
-      where: {
-        gameId,
-        playerKey: {
-          not: null,
-        },
-      },
-    }),
-  ]);
+  // Read both totals from one database snapshot so a joining player cannot
+  // land between the total-card and assigned-card measurements.
+  const [counts] = await prisma.$queryRaw<Array<{ totalCards: number; assignedCards: number }>>`
+    SELECT COUNT(*)::integer AS "totalCards",
+      COUNT(*) FILTER (WHERE "playerKey" IS NOT NULL)::integer AS "assignedCards"
+    FROM "BingoCard" WHERE "gameId" = ${gameId}
+  `;
+  const { totalCards, assignedCards } = counts;
 
   return {
     totalCards,

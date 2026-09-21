@@ -1,3 +1,4 @@
+import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import os from "node:os";
@@ -154,6 +155,8 @@ async function readCrate(cratePath: string): Promise<SeratoCrate> {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await localLibraryAccessResponse();
+  if (denied) return denied;
   const requestedLibraryPath =
     request.nextUrl.searchParams.get("libraryPath") ??
     path.join(os.homedir(), "Music", "_Serato_");
