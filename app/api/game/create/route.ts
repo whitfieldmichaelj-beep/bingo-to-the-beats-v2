@@ -1,3 +1,5 @@
+import { getDjAdapter } from "@/lib/dj/bridge";
+import { isDjProvider } from "@/lib/dj/providers";
 import { excludedDjSong } from "@/lib/serato/song-filter";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { HostAccessError } from "@/lib/billing/access";
@@ -22,19 +24,8 @@ import type {
   BingoPattern,
 } from "@/lib/game/types";
 
-import {
-  loadPlaylist,
-} from "@/lib/serato/playlist-reader";
 
-import {
-  getSeratoPlaylists,
-} from "@/lib/serato/playlists";
 
-import {
-  getSeratoSmartCrates,
-  isSeratoSmartCrate,
-  loadSeratoSmartCrate,
-} from "@/lib/serato/smart-crates";
 
 import type {
   SeratoPlaylist,
@@ -257,40 +248,10 @@ export async function POST(
       );
     }
 
-    const playlists = [
-      ...(await getSeratoPlaylists()),
-      ...(await getSeratoSmartCrates()),
-    ];
-
-    const playlist =
-      playlists.find(
-        (candidate) =>
-          candidate.id === playlistId
-      );
-
-    if (!playlist) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message:
-            "Playlist not found.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    const loadedPlaylist =
-      isSeratoSmartCrate(
-        playlist
-      )
-        ? await loadSeratoSmartCrate(
-            playlist
-          )
-        : await loadPlaylist(
-            playlist
-          );
+    const provider = body.provider ?? "serato";
+    if (!isDjProvider(provider)) return NextResponse.json({ok:false,message:"Unknown DJ software."},{status:400});
+    const loadedPlaylist = await (await getDjAdapter(provider)).loadPlaylist(playlistId);
+    if (!loadedPlaylist) return NextResponse.json({ok:false,message:"Playlist not found."},{status:404});
 
     const {
       playlist: playablePlaylist,
@@ -307,7 +268,7 @@ export async function POST(
         {
           ok: false,
           message:
-            "After removing excluded and duplicate songs, this crate does not have the 25 unique playable songs required for bingo.",
+            "After removing excluded and duplicate songs, this playlist does not have the 25 unique playable songs required for bingo.",
           playableTrackCount:
             playablePlaylist.tracks.length,
           excludedCount,
@@ -353,7 +314,7 @@ export async function POST(
         cardCount
       );
 
-    game.playbackConfig = makePlaybackConfig("serato", body.clipLength, game.tracks);
+    game.playbackConfig = makePlaybackConfig(provider, body.clipLength, game.tracks);
 
     const savedGame =
       await persistGame(

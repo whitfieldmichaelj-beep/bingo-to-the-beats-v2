@@ -1,8 +1,10 @@
 "use client";
 
+import { DJ_PROVIDERS, type DjProvider } from "@/lib/dj/providers";
 import type { CSSProperties } from "react";
 
 type HeroProps = {
+  provider?: DjProvider;
   loading: boolean;
   playlistCount: number;
   libraryTrackCount: number;
@@ -14,24 +16,26 @@ function formatNumber(value: number) {
 }
 
 export default function SeratoHero({
+  provider = "serato",
   loading,
   playlistCount,
   libraryTrackCount,
   hasError,
 }: HeroProps) {
+  const labels = DJ_PROVIDERS[provider];
   return (
     <section style={heroStyle}>
       <div>
         <p style={eyebrowStyle}>
-          Serato DJ Pro Integration
+          {labels.icon} {labels.name} Integration
         </p>
 
         <h2 style={heroTitleStyle}>
-          Build a game from your Serato crates
+          Build a game from your {labels.name} {labels.collections}
         </h2>
 
         <p style={heroTextStyle}>
-          Choose a crate, configure the game, and launch
+          Choose a {labels.collection}, configure the game, and launch
           directly into the live DJ Console.
         </p>
       </div>
@@ -43,7 +47,7 @@ export default function SeratoHero({
           </strong>
 
           <span style={statusLabelStyle}>
-            Crates
+            {labels.collections}
           </span>
         </div>
 

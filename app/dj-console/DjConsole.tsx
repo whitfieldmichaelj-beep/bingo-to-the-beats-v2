@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { DjDetectionGate } from "@/lib/dj/detection";
+import { DJ_PROVIDERS, djProvider, isDjProvider } from "@/lib/dj/providers";
 import { findSeratoTrackIndex } from "@/lib/serato/track-matching";
 import GameEndedDialog from "@/components/game/GameEndedDialog";
 import SpotifyDevicePicker from "@/components/spotify/SpotifyDevicePicker";
@@ -21,7 +23,7 @@ import {
   type PlaybackTrack,
 } from "../../hooks/usePlaybackEngine";
 
-type MusicSource = "serato" | "spotify" | "apple" | "local";
+type MusicSource = "serato" | "rekordbox" | "virtualdj" | "spotify" | "apple" | "local";
 
 type Track = {
   id: string;
@@ -146,15 +148,14 @@ type PlaybackCheckpoint = {
 const GAME_SESSION_KEY = "bttb-v2-game-session";
 const CALLER_STATE_KEY = "bttb-v2-caller-state";
 const CHANNEL_NAME = "bttb-v2-game-sync";
-const SERATO_URL_KEY = "bttb-v2-serato-live-url";
+
 const ACTIVITY_KEY = "bttb-v2-dj-activity";
 // BTTB_DJ_REFRESH_PERSISTENCE_V1
 const PLAYBACK_CHECKPOINT_KEY =
   "bttb-v2-playback-checkpoint";
 const GAME_SESSION_BACKUP_KEY =
   "bttb-v2-active-game-backup";
-const DEFAULT_SERATO_URL =
-  "https://serato.com/playlists/IAMDJMIKEDOELO/live";
+
 const POLL_INTERVAL_MS = 4000;
 const AUTO_NEXT_DELAY_MS = 2500;
 
@@ -618,7 +619,9 @@ export default function DjConsole({ gameId }: { gameId: string }) {
   const [compact, setCompact] = useState(false);
   const [session, setSession] = useState<GameSession | null>(null);
   const [callerState, setCallerState] = useState<CallerState | null>(null);
-  const [seratoUrl, setSeratoUrl] = useState(DEFAULT_SERATO_URL);
+  const provider = djProvider(session?.source);
+  const providerLabels = DJ_PROVIDERS[provider];
+  const detectionGate = useRef(new DjDetectionGate());
   const [isConnected, setIsConnected] = useState(false);
   const [appleConnected, setAppleConnected] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -627,7 +630,7 @@ export default function DjConsole({ gameId }: { gameId: string }) {
   const [autoNext, setAutoNext] = useState(true);
   const [lastUpdate, setLastUpdate] = useState("Not connected");
   const [message, setMessage] = useState(
-    "Press Connect Serato, then start Live Playlist in Serato DJ Pro."
+    "Connect your DJ software, then play a new song."
   );
   const [isRestoringGame, setIsRestoringGame] =
     useState(false);
@@ -675,7 +678,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     {
       continuous:
         autoNext &&
-        session?.source !== "apple" && session?.source !== "spotify" && session?.source !== "serato",
+        session?.source !== "apple" && session?.source !== "spotify" && !isDjProvider(session?.source),
     }
   );
   const autoStartNextRef = useRef(false);
@@ -1096,7 +1099,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       artist: seratoTrack.artist,
       album: seratoTrack.playedAtText
         ? `Detected ${seratoTrack.playedAtText}`
-        : "Detected from Serato Live Playlist",
+        : `Detected from ${providerLabels.name} local history`,
       image: null,
     };
 
@@ -1157,7 +1160,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     const nextSession: GameSession = {
       ...session,
-      source: "serato",
+      source: provider,
       currentIndex: matchedIndex,
       status: "playing",
       playedTrackIds,
@@ -1435,7 +1438,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     try {
       const response = await fetch(
-        `/api/serato/live?url=${encodeURIComponent(seratoUrl.trim())}&gameId=${encodeURIComponent(gameId)}`,
+        `/api/dj/${provider}/now-playing?gameId=${encodeURIComponent(gameId)}`,
         { cache: "no-store", signal: controller.signal }
       );
 
@@ -1443,10 +1446,15 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       if (controller.signal.aborted) return;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.message || "Serato connection failed.");
+        throw new Error(data.message || `${providerLabels.name} connection failed.`);
       }
 
+      setIsConnected(true);
       setLastUpdate(clock());
+      if (!detectionGate.current.accept(data.track?.id ?? null)) {
+        setMessage(data.message);
+        return;
+      }
 
       if (!data.live || !data.track) {
         setMessage(data.message);
@@ -1458,8 +1466,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       if (controller.signal.aborted) return;
       setMessage(
         error instanceof Error
-          ? `Serato connection error: ${error.message}`
-          : "Serato connection error."
+          ? `${providerLabels.name} connection error: ${error.message}`
+          : `${providerLabels.name} connection error.`
       );
     } finally {
       pollInProgress.current = false;
@@ -1470,25 +1478,18 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => () => seratoPollController.current?.abort(), []);
 
   async function connectSerato() {
-    const url = seratoUrl.trim();
-
-    if (!url || !url.includes("serato.com/playlists/")) {
-      setMessage("Enter a valid Serato Live Playlist URL.");
-      return;
-    }
-
-    localStorage.setItem(SERATO_URL_KEY, url);
-    setIsConnected(true);
-    setMessage("Connecting to Serato Live Playlist...");
+    detectionGate.current = new DjDetectionGate();
+    setMessage(`Connecting to ${providerLabels.name} locally...`);
     await checkSerato();
   }
 
   function disconnectSerato() {
     seratoPollController.current?.abort();
+    detectionGate.current = new DjDetectionGate();
     setIsConnected(false);
     setIsPolling(false);
     setLastUpdate("Disconnected");
-    setMessage("Serato Live Sync disconnected.");
+    setMessage(`${providerLabels.name} disconnected.`);
   }
 
   useEffect(() => {
@@ -1503,7 +1504,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     return () => window.clearInterval(interval);
     // checkSerato intentionally uses the latest session and automation settings.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, seratoUrl, session, autoDetect]);
+  }, [isConnected, provider, session, autoDetect]);
 
   useEffect(() => {
     if (!session || !playback.currentTrack) {
@@ -1641,7 +1642,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
     if (
       !autoNext ||
-      session?.source === "serato" ||
+      isDjProvider(session?.source) ||
       playback.status !== "revealed" ||
       !session
     ) {
@@ -3064,7 +3065,7 @@ function runAppleTransportAction(
         </div>
       </section>
 
-      {compact && <p className="dj-compact-status">{session?.source === "serato" ? `Serato: ${isConnected ? "Connected" : "Not connected"}` : session?.source} · Game {session?.joinCode} · Resize this window beside Serato. It is not pinned on top.</p>}
+      {compact && <p className="dj-compact-status">{isDjProvider(session?.source) ? `${providerLabels.name}: ${isConnected ? "Connected" : "Not connected"}` : session?.source} · Game {session?.joinCode} · Resize this window beside {providerLabels.name}. It is not pinned on top.</p>}
       <div className="dj-page">
         <section className="dj-access-strip">
           <div className="dj-access-panel">
@@ -3111,7 +3112,7 @@ function runAppleTransportAction(
 
         <section className="dj-main-grid">
           <aside className="dj-left-stack">
-            {session?.source !== "serato" && session ? (
+            {!isDjProvider(session?.source) && session ? (
               <section className="dj-panel">
                 <span className="dj-eyebrow">Music Source</span>
                 <h2>{session.source === "apple" ? "Apple Music" : session.source === "local" ? "Local Music" : "Spotify"}</h2>
@@ -3130,7 +3131,7 @@ function runAppleTransportAction(
               <div className="dj-panel-heading">
                 <div>
                   <span className="dj-eyebrow">Music Source</span>
-                  <h2>Serato Live Sync</h2>
+                  <h2>{providerLabels.icon} {providerLabels.name} Now Playing</h2>
                 </div>
 
                 <span
@@ -3148,23 +3149,9 @@ function runAppleTransportAction(
               </div>
 
               <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-                <strong>Before connecting: make your playlist public.</strong>{" "}
-                On your Serato playlist page, choose <strong>Edit Details</strong>,
-                set visibility to <strong>Public</strong>, and save. Private playlists
-                cannot be detected by BTTB. Public playlists are visible to anyone.
-                Then start Live Playlist in Serato, complete the browser start
-                prompt, and click Connect Serato below.
+                Open {providerLabels.name} on this Mac, connect below, and play a new song.
+                BTTB reads local play history. Detection timing depends on when your DJ software records the song.
               </p>
-
-              <label htmlFor="serato-url">Live Playlist URL</label>
-              <input
-                id="serato-url"
-                aria-describedby="serato-setup-help"
-                type="url"
-                value={seratoUrl}
-                onChange={(event) => setSeratoUrl(event.target.value)}
-                placeholder="https://serato.com/playlists/your-name/live"
-              />
 
               <div className="dj-button-row">
                 <button
@@ -3172,7 +3159,7 @@ function runAppleTransportAction(
                   type="button"
                   onClick={() => void connectSerato()}
                 >
-                  Connect Serato
+                  Connect {providerLabels.name}
                 </button>
 
                 <button
@@ -3186,7 +3173,7 @@ function runAppleTransportAction(
 
               <div className="dj-meta">
                 <span>
-                  DJ <strong>IAMDJMIKEDOELO</strong>
+                  Software <strong>{providerLabels.name}</strong>
                 </span>
                 <span>
                   Last Update <strong>{lastUpdate}</strong>
@@ -3200,7 +3187,7 @@ function runAppleTransportAction(
               <label className="dj-toggle">
                 <span>
                   <strong>Auto Detect</strong>
-                  <small>Detect new Serato songs</small>
+                  <small>Detect new {providerLabels.name} songs</small>
                 </span>
                 <input
                   type="checkbox"
@@ -3228,12 +3215,12 @@ function runAppleTransportAction(
               <label className="dj-toggle">
                 <span>
                   <strong>Auto Next</strong>
-                  <small>{session?.source === "serato" ? "Serato controls the next song" : "Advance after reveal"}</small>
+                  <small>{isDjProvider(session?.source) ? `${providerLabels.name} controls the next song` : "Advance after reveal"}</small>
                 </span>
                 <input
                   type="checkbox"
-                  disabled={session?.source === "serato"}
-                  checked={session?.source === "serato" ? false : autoNext}
+                  disabled={isDjProvider(session?.source)}
+                  checked={isDjProvider(session?.source) ? false : autoNext}
                   onChange={(event) =>
                     setAutoNext(event.target.checked)
                   }
@@ -3271,14 +3258,14 @@ function runAppleTransportAction(
 
                 <div className="dj-track-copy">
                   <p>
-                    {currentTrack?.artist ?? "Waiting for Serato"}
+                    {currentTrack?.artist ?? `Waiting for ${providerLabels.name}`}
                   </p>
                   <h3>
                     {currentTrack?.name ?? "No song detected"}
                   </h3>
                   <span>
                     {currentTrack?.album ??
-                      "Start Live Playlist in Serato DJ Pro."}
+                      `Play a new song in ${providerLabels.name}.`}
                   </span>
                 </div>
               </div>
@@ -3511,7 +3498,7 @@ function runAppleTransportAction(
 
         <div className="dj-footer-status">
           <span className={isConnected ? "online" : ""}>
-            ● {session?.source === "apple" ? "Apple Music" : session?.source === "local" ? "Local Music" : session?.source === "spotify" ? "Spotify" : isConnected ? "Serato Connected" : "Serato Offline"}
+            ● {session?.source === "apple" ? "Apple Music" : session?.source === "local" ? "Local Music" : session?.source === "spotify" ? "Spotify" : isConnected ? `${providerLabels.name} Connected` : `${providerLabels.name} Offline`}
           </span>
           <span>Version 2</span>
         </div>

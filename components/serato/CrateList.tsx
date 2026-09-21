@@ -1,5 +1,6 @@
 "use client";
 
+import { DJ_PROVIDERS, type DjProvider } from "@/lib/dj/providers";
 import type { CSSProperties } from "react";
 
 export type SeratoPlaylistItem = {
@@ -11,6 +12,7 @@ export type SeratoPlaylistItem = {
 };
 
 type CrateListProps = {
+  provider?: DjProvider;
   playlists: SeratoPlaylistItem[];
   selectedPlaylistId: string;
   search: string;
@@ -26,6 +28,7 @@ function formatNumber(value: number) {
 }
 
 export default function CrateList({
+  provider = "serato",
   playlists,
   selectedPlaylistId,
   search,
@@ -34,16 +37,17 @@ export default function CrateList({
   onSelectPlaylist,
   onRefresh,
 }: CrateListProps) {
+  const labels = DJ_PROVIDERS[provider];
   const isLoading = loading === true;
 
   return (
     <section style={cratePanelStyle}>
       <div style={sectionHeadingStyle}>
         <div>
-          <p style={sectionLabelStyle}>Serato Library</p>
+          <p style={sectionLabelStyle}>{labels.name} Library</p>
 
           <h2 style={sectionTitleStyle}>
-            Choose a Crate
+            Choose a {labels.collection}
           </h2>
         </div>
 
@@ -69,8 +73,8 @@ export default function CrateList({
         onChange={(event) =>
           onSearchChange(event.target.value)
         }
-        placeholder="Search Serato crates..."
-        aria-label="Search Serato crates"
+        placeholder={`Search ${labels.name} ${labels.collections}...`}
+        aria-label={`Search ${labels.name} ${labels.collections}`}
         disabled={isLoading}
         style={{
           ...searchInputStyle,
@@ -84,11 +88,11 @@ export default function CrateList({
       <div style={crateListStyle}>
         {isLoading ? (
           <p style={emptyStyle}>
-            Reading Serato crates...
+            Reading {labels.name} {labels.collections}...
           </p>
         ) : playlists.length === 0 ? (
           <p style={emptyStyle}>
-            No matching crates were found.
+            No matching {labels.collections} were found.
           </p>
         ) : (
           playlists.map((playlist) => {

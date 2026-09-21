@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
+import { DJ_PROVIDERS, DJ_PROVIDER_KEY, djProvider, type DjProvider } from "@/lib/dj/providers";
 
 import CrateList from "../../components/serato/CrateList";
 import GameSettings from "../../components/serato/GameSettings";
@@ -9,7 +10,20 @@ import Hero from "../../components/serato/SeratoHero";
 import { useSeratoWorkspace } from "../../hooks/useSeratoWorkspace";
 
 export default function SeratoWorkspacePage() {
-  const workspace = useSeratoWorkspace();
+  const [provider, setProvider] = useState<DjProvider>("serato");
+  useEffect(() => {
+    // Restore the device preference once after hydration; the server has no localStorage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    try { setProvider(djProvider(new URLSearchParams(window.location.search).get("provider") || localStorage.getItem(DJ_PROVIDER_KEY))); } catch {}
+  }, []);
+  return <DjWorkspace key={provider} provider={provider} onProviderChange={value => {
+    try {localStorage.setItem(DJ_PROVIDER_KEY,value);} catch {}
+    setProvider(value);
+  }} />;
+}
+function DjWorkspace({provider,onProviderChange}:{provider:DjProvider;onProviderChange:(value:DjProvider)=>void}) {
+  const labels=DJ_PROVIDERS[provider];
+  const workspace = useSeratoWorkspace(provider);
 
   /*
    * The server and the browser must initially render the same markup.
@@ -32,7 +46,7 @@ export default function SeratoWorkspacePage() {
               </p>
 
               <h1 style={brandTitleStyle}>
-                Serato Workspace
+                {labels.name} Workspace
               </h1>
             </div>
           </div>
@@ -57,7 +71,7 @@ export default function SeratoWorkspacePage() {
             <div style={loadingIconStyle}>♫</div>
 
             <p style={loadingLabelStyle}>
-              Serato Library
+              {labels.name} Library
             </p>
 
             <h2 style={loadingTitleStyle}>
@@ -65,7 +79,7 @@ export default function SeratoWorkspacePage() {
             </h2>
 
             <p style={loadingMessageStyle}>
-              Connecting to your local Serato crates...
+              Connecting to your local {labels.name} {labels.collections}...
             </p>
           </section>
         </div>
@@ -96,7 +110,7 @@ export default function SeratoWorkspacePage() {
             </p>
 
             <h1 style={brandTitleStyle}>
-              Serato Workspace
+              {labels.name} Workspace
             </h1>
           </div>
         </div>
@@ -117,7 +131,12 @@ export default function SeratoWorkspacePage() {
       </header>
 
       <div style={contentStyle}>
-        <Hero
+        <label style={{display:"block",marginBottom:20}}>DJ Software{" "}
+          <select aria-label="DJ Software" value={provider} onChange={event=>onProviderChange(djProvider(event.target.value))} style={{padding:12,background:"#0f172a",color:"white",borderRadius:10}}>
+            {Object.entries(DJ_PROVIDERS).map(([id,p])=><option key={id} value={id}>{p.icon} {p.name}</option>)}
+          </select>
+        </label>
+        <Hero provider={provider}
           loading={workspace.hero.loading}
           playlistCount={workspace.hero.playlistCount}
           libraryTrackCount={
@@ -130,7 +149,7 @@ export default function SeratoWorkspacePage() {
           className="serato-workspace-grid"
           style={workspaceGridStyle}
         >
-          <CrateList
+          <CrateList provider={provider}
             playlists={workspace.crates.playlists}
             selectedPlaylistId={
               workspace.crates.selectedPlaylistId
@@ -150,7 +169,7 @@ export default function SeratoWorkspacePage() {
             }}
           />
 
-          <GameSettings
+          <GameSettings provider={provider}
             selectedPlaylist={
               workspace.settings.selectedPlaylist
             }

@@ -79,6 +79,7 @@ npm run test:serato-parser
 npm run test:dj-import
 npm run test:crate-import
 npm run test:dj-playback
+npm run test:dj-bridge
 npm run test:spotify-loading
 npm run test:spotify-oauth
 echo

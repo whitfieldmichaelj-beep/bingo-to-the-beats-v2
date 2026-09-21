@@ -1,4 +1,4 @@
-export type GameMusicSource = "apple" | "spotify" | "serato" | "local";
+export type GameMusicSource = "apple" | "spotify" | "serato" | "rekordbox" | "virtualdj" | "local";
 export type PlaybackTrackConfig = {
   id: string;
   appleCatalogId?: string;
@@ -51,7 +51,7 @@ export function restorePlaybackConfig(
 ): GamePlaybackConfig | null {
   if (saved && typeof saved === "object") {
     const value = saved as Record<string, unknown>;
-    if (value.version === 1 && ["apple", "spotify", "serato", "local"].includes(String(value.source))) {
+    if (value.version === 1 && ["apple", "spotify", "serato", "rekordbox", "virtualdj", "local"].includes(String(value.source))) {
       return makePlaybackConfig(value.source as GameMusicSource, value.clipLength, value.tracks);
     }
   }

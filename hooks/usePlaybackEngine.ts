@@ -22,6 +22,8 @@ export type PlaybackTrack = {
   source:
     | "spotify"
     | "serato"
+    | "rekordbox"
+    | "virtualdj"
     | "local"
     | "apple"
     | "tidal";

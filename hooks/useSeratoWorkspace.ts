@@ -1,5 +1,6 @@
 "use client";
 
+import { DJ_PROVIDERS, type DjProvider } from "../lib/dj/providers";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -85,7 +86,7 @@ type ConsoleTrack = {
 type GameSession = {
   version: 2;
   sessionId: string;
-  source: "serato";
+  source: DjProvider;
   playlistId: string;
   playlistName: string;
   clipLength: number;
@@ -258,7 +259,8 @@ function convertGameTracks(
   });
 }
 
-export function useSeratoWorkspace() {
+export function useSeratoWorkspace(provider: DjProvider = "serato") {
+  const labels = DJ_PROVIDERS[provider];
   const router = useRouter();
 
   const [isHydrated, setIsHydrated] = useState(false);
@@ -279,7 +281,7 @@ export function useSeratoWorkspace() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState(
-    "Reading your Serato crates..."
+    `Reading your ${labels.name} ${labels.collections}...`
   );
   const [error, setError] = useState("");
 
@@ -323,9 +325,9 @@ export function useSeratoWorkspace() {
     try {
       setLoading(true);
       setError("");
-      setMessage("Reading your Serato crates...");
+      setMessage(`Reading your ${labels.name} ${labels.collections}...`);
 
-      const response = await fetch("/api/serato/playlists", {
+      const response = await fetch(`/api/dj/${provider}/playlists`, {
         method: "GET",
         cache: "no-store",
       });
@@ -334,7 +336,7 @@ export function useSeratoWorkspace() {
 
       if (!response.ok) {
         throw new Error(
-          data.message || "The Serato crates could not be loaded."
+          data.message || `The ${labels.name} ${labels.collections} could not be loaded.`
         );
       }
 
@@ -365,20 +367,20 @@ export function useSeratoWorkspace() {
 
       setMessage(
         nextPlaylists.length > 0
-          ? `${nextPlaylists.length} Serato crates are ready.`
-          : "No Serato crates were found. Confirm that the Serato library is connected."
+          ? `${nextPlaylists.length} ${labels.name} ${labels.collections} are ready.`
+          : `No ${labels.name} ${labels.collections} were found. Open the software and check library access.`
       );
     } catch (loadError) {
       const loadMessage =
         loadError instanceof Error
           ? loadError.message
-          : "The Serato library could not be loaded.";
+          : `The ${labels.name} library could not be loaded.`;
       setError(loadMessage);
       setMessage(loadMessage);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [provider, labels]);
 
   useEffect(() => {
     setIsHydrated(true);
@@ -420,7 +422,7 @@ export function useSeratoWorkspace() {
 
   const createGame = useCallback(async () => {
     if (!selectedPlaylist) {
-      setError("Choose a Serato crate first.");
+      setError(`Choose a ${labels.name} ${labels.collection} first.`);
       return;
     }
 
@@ -441,6 +443,8 @@ export function useSeratoWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           playlistId: selectedPlaylist.id,
+          provider,
+          clipLength,
           cardCount,
           winningPattern,
         }),
@@ -482,7 +486,7 @@ export function useSeratoWorkspace() {
       const session: GameSession = {
         version: 2,
         sessionId: createdGame.id,
-        source: "serato",
+        source: provider,
         playlistId: createdGame.playlistId,
         playlistName: createdGame.playlistName,
         clipLength,
@@ -516,6 +520,8 @@ export function useSeratoWorkspace() {
       setCreating(false);
     }
   }, [
+    provider,
+    labels,
     cardCount,
     clipLength,
     gameDetails,

@@ -9,7 +9,7 @@ export function requireMusicAccess(billing: BillingState, source: string, practi
   const plan = activeHostPlan(billing);
   if (practice) return;
   if (!plan) throw new HostAccessError("Your host subscription needs renewal. Open Billing to continue.");
-  if (source === "serato" && !plan.serato) throw new HostAccessError("Serato hosting requires a DJ plan. Choose a Serato plan in Billing or use your streaming service.");
+  if (["serato", "rekordbox", "virtualdj"].includes(source) && !plan.serato) throw new HostAccessError("DJ software hosting requires a DJ plan. Choose a DJ plan in Billing or use your streaming service.");
 }
 export async function reserveHostGame(tx: Prisma.TransactionClient, clerkId: string, gameId: string, cardCount: number, source: string, forcePractice = false) {
   await tx.hostBilling.upsert({ where: { clerkId }, create: { clerkId }, update: {} });
@@ -31,7 +31,7 @@ export async function requireGameHostAccess(gameId: string, expectedHost?: strin
   const game = await prisma.game.findUnique({ where: { id: gameId }, select: { hostBillingRequired: true, isPractice: true, playbackConfig: true, host: { select: { clerkId: true } } } });
   if (!game || (expectedHost && game.host.clerkId !== expectedHost)) throw new HostAccessError("Game not found for this host.");
   const source = (game.playbackConfig as { source?: string } | null)?.source ?? "";
-  if (expectedSource && source !== expectedSource) throw new HostAccessError("This game is not configured for Serato.");
+  if (expectedSource && source !== expectedSource) throw new HostAccessError("This game is not configured for the selected DJ software.");
   if (!game.hostBillingRequired) return;
   const billing = await prisma.hostBilling.findUnique({ where: { clerkId: game.host.clerkId } });
   if (billing?.activeGameId !== gameId) throw new HostAccessError("This is not the host’s active game.");

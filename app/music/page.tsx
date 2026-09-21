@@ -454,17 +454,17 @@ export default function MusicPage() {
             />
 
             <MusicSourceCard
-              title="Serato"
-              description="Import an exported Serato CSV playlist and use those tracks to generate musical bingo cards."
+              title="DJ Software"
+              description="Choose Serato, Rekordbox, or VirtualDJ. Read your local crates or playlists and use the same DJ Console."
               status="Available"
               statusStyle="border-blue-300/30 bg-blue-400/10 text-blue-200"
               icon="♫"
             >
               <Link
-                href="/serato"
+                href="/dj"
                 className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:scale-[1.02] hover:from-blue-500 hover:to-purple-500"
               >
-                Import Serato Playlist
+                Choose DJ Software
               </Link>
             </MusicSourceCard>
           </div>

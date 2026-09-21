@@ -1,5 +1,6 @@
 "use client";
 
+import { DJ_PROVIDERS, type DjProvider } from "@/lib/dj/providers";
 import type { CSSProperties } from "react";
 
 import type {
@@ -28,6 +29,7 @@ export type SeratoGameDetails = {
 };
 
 type GameSettingsProps = {
+  provider?: DjProvider;
   selectedPlaylist: SelectedSeratoPlaylist | null;
   gameDetails: SeratoGameDetails | null;
 
@@ -92,6 +94,7 @@ function formatNumber(value: number) {
 }
 
 export default function GameSettings({
+  provider = "serato",
   selectedPlaylist,
   gameDetails,
   cardCount,
@@ -111,6 +114,7 @@ export default function GameSettings({
   onOptimizeGame,
   onCreateGame,
 }: GameSettingsProps) {
+  const labels = DJ_PROVIDERS[provider];
   const eventDescription = [
     gameDetails?.venueName,
     gameDetails?.hostName,
@@ -126,11 +130,11 @@ export default function GameSettings({
 
       <div style={selectedCrateStyle}>
         <span style={summaryLabelStyle}>
-          Selected crate
+          Selected {labels.collection}
         </span>
 
         <strong style={summaryValueStyle}>
-          {selectedPlaylist?.name || "No crate selected"}
+          {selectedPlaylist?.name || `No ${labels.collection} selected`}
         </strong>
 
         <small style={summaryNoteStyle}>
@@ -140,7 +144,7 @@ export default function GameSettings({
                   selectedPlaylist.trackCount
                 )} songs available`
               : "Song count available after game creation"
-            : "Choose a crate from the library"}
+            : `Choose a ${labels.collection} from the library`}
         </small>
       </div>
 
