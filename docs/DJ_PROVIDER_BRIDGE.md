@@ -24,8 +24,10 @@ On this development Mac, Serato's library is present. Rekordbox's database is un
 
 ## Release readiness follow-up
 
-Next.js and its lint configuration were upgraded to 16.3.5, with compatible dependency fixes and regenerated Prisma Client. The production dependency audit now reports zero critical advisories and four high advisories in Prisma's dependency chain (`prisma`, `@prisma/config`, `deepmerge-ts`, `mysql2`). The audit's remaining automated recommendation downgrades Prisma across a major version; that downgrade was not applied. Resolve or assess these before public production release.
+Next.js and its lint configuration were upgraded to 16.3.5, with compatible dependency fixes and regenerated Prisma Client. The dependency audit reports zero known vulnerabilities. Scoped overrides use `deepmerge-ts@8.0.2` within `@prisma/config` and `mysql2@3.24.4` within Prisma until upstream updates those pins. Prisma remains on 7.10.0.
+
+The deepmerge-ts 8 release changes Map-merging and custom type APIs. This project uses plain-object Prisma configuration, and the installed Prisma loader only calls the existing `deepmerge` function. Configuration validation, client generation, the production build, and regression verification exercise this compatibility. Revisit the overrides when upgrading Prisma. See the [upstream release notes](https://github.com/RebeccaStevens/deepmerge-ts/releases/tag/v8.0.0).
 
 The full verification suite also runs against the production build on port 3001. When using the temporary test server, pass its same test-only `STRIPE_WEBHOOK_SECRET` to the test runner; local environment files may otherwise supply a different secret and correctly fail signature validation. Do not use test server payment settings for a real event.
 
-The new provider modules and routes pass targeted ESLint. Broader existing console/workspace lint still reports pre-existing React effect-state findings; these require a separate state-management cleanup. Live hardware timing and signed-in host acceptance testing remain outstanding. No claim of full production readiness is made.
+The new provider modules and routes pass targeted ESLint. The console now renders playback errors directly instead of copying them into another state variable. Broader existing console/workspace lint still reports other pre-existing React effect-state findings; these require a separate state-management cleanup. Live hardware timing and signed-in host acceptance testing remain outstanding. No claim of full production readiness is made.
