@@ -434,10 +434,10 @@ export default function CsvUploadPage() {
               </div>
 
               <div>
-                <p>Play music in Serato. BTTB follows your public Live Playlist; this import contains song names only.</p>
+                <p>Play music in Serato on this Mac. BTTB follows its local play history; this import contains song names only.</p>
                 <label>Game size <select value={cardCount} onChange={event => setCardCount(Number(event.target.value))} style={{ color: "#172554", backgroundColor: "#e0f2fe", colorScheme: "light", border: "2px solid #38bdf8", borderRadius: "10px", padding: "10px 12px", margin: "8px 0 8px 8px", fontWeight: 700, maxWidth: "100%", cursor: "pointer" }}><option value={5}>Free practice — 5 players</option><option value={100}>DJ plan — 100 players</option><option value={200}>DJ Pro Plus — 200 players</option></select></label>
                 <button type="button" disabled={creating || tracks.length < 25 || tracks.length > 500} onClick={() => void createDjGame()} style={{ padding: 14, marginLeft: 12, background: "#a3e635", color: "#172554", borderRadius: 16 }}>{creating ? "Creating…" : "Create DJ Game"}</button>
-                <p>Requires 25–500 unique songs. Set your Serato Live Playlist to Public before connecting.</p>
+                <p>Requires 25–500 unique songs. Open Serato, connect from the DJ Console, then play a new song.</p>
               </div>
             </div>
 

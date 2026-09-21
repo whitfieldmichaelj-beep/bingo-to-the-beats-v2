@@ -23,6 +23,7 @@ export function parseVirtualDjList(content:string, file:string, metadata:Map<str
   return {id:`virtualdj:${Buffer.from(file).toString("base64url")}`,name:path.basename(file,path.extname(file)),filePath:file,trackCount:tracks.length,tracks};
 }
 async function library() {
+  await fs.access(root());
   const metadata = new Map<string,Record<string,string>>();
   try {
     const db=parser.parse(await fs.readFile(path.join(root(),"database.xml"),"utf8"));
@@ -37,6 +38,7 @@ export const virtualdjAdapter:DjAdapter = {
   listPlaylists:library,
   async loadPlaylist(id) {return (await library()).find(p=>p.id===id) ?? null;},
   async nowPlaying() {
+    await fs.access(root());
     const file=path.join(root(),"History","tracklist.txt");
     let content:string;
     try {content=await fs.readFile(file,"utf8");} catch(e) {if((e as NodeJS.ErrnoException).code==="ENOENT") return null;throw e;}

@@ -36,7 +36,7 @@ for(const endpoint of ['playlists','now-playing']) {
  reads=0;
 }
 const root=mkdtempSync(path.join(tmpdir(),'bttb-vdj-'));const previous=process.env.BTTB_VIRTUALDJ_PATH;
-try {process.env.BTTB_VIRTUALDJ_PATH=root;mkdirSync(path.join(root,'My Lists'));writeFileSync(path.join(root,'My Lists','Party.xml'),xml);assert.equal((await virtual.virtualdjAdapter.listPlaylists()).length,1);assert.equal(await virtual.virtualdjAdapter.loadPlaylist('invalid'),null);assert.equal(await virtual.virtualdjAdapter.nowPlaying(),null);}finally{rmSync(root,{recursive:true});if(previous===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=previous;}
+try {process.env.BTTB_VIRTUALDJ_PATH=path.join(root,'missing');await assert.rejects(virtual.virtualdjAdapter.nowPlaying(),{code:'ENOENT'});await assert.rejects(virtual.virtualdjAdapter.listPlaylists(),{code:'ENOENT'});process.env.BTTB_VIRTUALDJ_PATH=root;mkdirSync(path.join(root,'My Lists'));writeFileSync(path.join(root,'My Lists','Party.xml'),xml);assert.equal((await virtual.virtualdjAdapter.listPlaylists()).length,1);assert.equal(await virtual.virtualdjAdapter.loadPlaylist('invalid'),null);assert.equal(await virtual.virtualdjAdapter.nowPlaying(),null);}finally{rmSync(root,{recursive:true});if(previous===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=previous;}
 console.log('PASS all DJ providers: normalized identities, restore, startup/repeat detection guards, native VirtualDJ playlists, and API owner/provider isolation');
 // Exercise the real game route's provider dispatch, filters and saved source.
 let saved,chosen;

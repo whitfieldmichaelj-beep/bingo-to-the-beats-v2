@@ -1738,12 +1738,6 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   ]);
 
   useEffect(() => {
-    if (playback.playbackError) {
-      setMessage(playback.playbackError);
-    }
-  }, [playback.playbackError]);
-
-  useEffect(() => {
     if (
       session?.source !== "apple" ||
       playback.status !== "revealed"
@@ -3395,7 +3389,7 @@ function runAppleTransportAction(
               </div>
             </section>
 
-            <p className="dj-message">{message}</p>
+            <p className="dj-message">{playback.playbackError || message}</p>
           </section>
 
           <aside className="dj-right-stack">
