@@ -1,6 +1,6 @@
 # Unified DJ provider bridge
 
-The `/dj` workspace (also available through the existing `/serato` URL) remembers the DJ software on the device. Serato, Rekordbox and VirtualDJ share the existing playlist selection, game creation, and DJ Console. Provider metadata changes names, symbols, connection buttons, and crate/playlist terminology.
+The `/dj` workspace (also available through the existing `/serato` URL) remembers the DJ software on the device. Serato, Rekordbox and Virtual DJ share the existing playlist selection, game creation, and DJ Console. Provider metadata changes names, symbols, connection buttons, and crate/playlist terminology.
 
 `lib/dj/types.ts` defines the common adapter contract. `bridge.ts` loads the selected adapter server-side. Tracks retain provider identity, original IDs, paths, metadata and version information. Game playback configuration persists the provider so database restoration restores the same console behavior. DJ plan restrictions apply equally to all three providers.
 
@@ -21,3 +21,11 @@ The first observation establishes a baseline and never calls a song. Later ident
 `npm run test:dj-bridge` covers provider validation, stable identities, saved-source restoration, startup/repeat detection suppression, VirtualDJ XML/M3U fixtures, native adapter behavior, access-denied short circuits, and game creation across all providers. It is included in `npm run verify`. Existing regression tests remain in place.
 
 On this development Mac, Serato's library is present. Rekordbox's database is unavailable and the default VirtualDJ folder is absent. Native Rekordbox SQLite loading passes, but actual Rekordbox/VirtualDJ playback and authenticated browser game creation require those applications/libraries and a signed-in host. The software selector and remembered choice were verified in the browser.
+
+## Release readiness follow-up
+
+Next.js and its lint configuration were upgraded to 16.3.5, with compatible dependency fixes and regenerated Prisma Client. The production dependency audit now reports zero critical advisories and four high advisories in Prisma's dependency chain (`prisma`, `@prisma/config`, `deepmerge-ts`, `mysql2`). The audit's remaining automated recommendation downgrades Prisma across a major version; that downgrade was not applied. Resolve or assess these before public production release.
+
+The full verification suite also runs against the production build on port 3001. When using the temporary test server, pass its same test-only `STRIPE_WEBHOOK_SECRET` to the test runner; local environment files may otherwise supply a different secret and correctly fail signature validation. Do not use test server payment settings for a real event.
+
+The new provider modules and routes pass targeted ESLint. Broader existing console/workspace lint still reports pre-existing React effect-state findings; these require a separate state-management cleanup. Live hardware timing and signed-in host acceptance testing remain outstanding. No claim of full production readiness is made.
