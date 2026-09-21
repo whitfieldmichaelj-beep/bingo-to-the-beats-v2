@@ -33,3 +33,7 @@ The deepmerge-ts 8 release changes Map-merging and custom type APIs. This projec
 The full verification suite also runs against the production build on port 3001. When using the temporary test server, pass its same test-only `STRIPE_WEBHOOK_SECRET` to the test runner; local environment files may otherwise supply a different secret and correctly fail signature validation. Do not use test server payment settings for a real event.
 
 The new provider modules and routes pass targeted ESLint. The console now renders playback errors directly instead of copying them into another state variable. Broader existing console/workspace lint still reports other pre-existing React effect-state findings; these require a separate state-management cleanup. Live hardware timing and signed-in host acceptance testing remain outstanding. No claim of full production readiness is made.
+
+## Confirmed Rekordbox setup note
+
+The DJ reported improved laptop-only detection after changing the playback-time threshold. Keep the 1-second setting instructions prominently visible on the Rekordbox DJ Console, including PERFORMANCE mode, the exact preferences path, the 60-second default delay, and a reminder to check with a different newly played song. The note remains visible after connecting.

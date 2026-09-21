@@ -1481,3 +1481,23 @@ body:has(.dj-compact) > footer { display: none; }
 .dj-compact .dj-art { width: 64px; height: 64px; min-width: 64px; border-radius: 12px; }
 .dj-compact .dj-waveform, .dj-compact .dj-footer { display: none; }
 .dj-compact .dj-panel { padding: 12px; }
+
+/* Keep the Rekordbox timing requirement visible beside its connection controls. */
+.dj-rekordbox-setup {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-left: 4px solid #38bdf8;
+  border-radius: 12px;
+  background: rgba(14, 116, 144, 0.15);
+  color: #e0f2fe;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.dj-rekordbox-setup h3 {
+  margin: 0 0 8px;
+  color: #f0f9ff;
+  font-size: 1rem;
+}
+.dj-rekordbox-setup p { margin: 8px 0 0; }
+.dj-rekordbox-setup-path { color: #ffffff; }

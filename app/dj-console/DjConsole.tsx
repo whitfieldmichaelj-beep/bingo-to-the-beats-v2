@@ -3145,8 +3145,16 @@ function runAppleTransportAction(
               <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
                 Open {providerLabels.name} on this Mac, connect below, and play a new song.
                 BTTB reads local play history. Detection timing depends on when your DJ software records the song.
-                {provider === "rekordbox" && <> For faster detection in PERFORMANCE mode, set Rekordbox Preferences → Advanced → Browse → Playback time setting to 1 second. The default 60 seconds delays detection.</>}
               </p>
+
+              {provider === "rekordbox" && (
+                <aside className="dj-rekordbox-setup" aria-labelledby="rekordbox-timing-title">
+                  <h3 id="rekordbox-timing-title">Rekordbox: set playback time to 1 second</h3>
+                  <p>For faster song detection, use <strong>PERFORMANCE mode</strong> and open:</p>
+                  <p className="dj-rekordbox-setup-path">Preferences → Advanced → Browse → Playback time setting → <strong>1 second</strong></p>
+                  <p>The default 60-second setting delays the song appearing in BTTB. After changing it, connect below and play a different song to check detection.</p>
+                </aside>
+              )}
 
               <div className="dj-button-row">
                 <button
