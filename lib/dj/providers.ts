@@ -1,7 +1,7 @@
 export const DJ_PROVIDERS = {
   serato: { name: "Serato", collection: "crate", collections: "crates", icon: "◉" },
   rekordbox: { name: "Rekordbox", collection: "playlist", collections: "playlists", icon: "◈" },
-  virtualdj: { name: "VirtualDJ", collection: "playlist", collections: "playlists", icon: "◎" },
+  virtualdj: { name: "Virtual DJ", collection: "playlist", collections: "playlists", icon: "◎" },
 } as const;
 export type DjProvider = keyof typeof DJ_PROVIDERS;
 export function isDjProvider(value: unknown): value is DjProvider {

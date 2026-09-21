@@ -455,7 +455,7 @@ export default function MusicPage() {
 
             <MusicSourceCard
               title="DJ Software"
-              description="Choose Serato, Rekordbox, or VirtualDJ. Read your local crates or playlists and use the same DJ Console."
+              description="Choose Serato, Rekordbox, or Virtual DJ. Read your local crates or playlists and use the same DJ Console."
               status="Available"
               statusStyle="border-blue-300/30 bg-blue-400/10 text-blue-200"
               icon="♫"
