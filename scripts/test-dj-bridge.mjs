@@ -174,3 +174,15 @@ assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory,'19:11',
 assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory,'19:10','Other - Song'),null);
 assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory+'#EXTVDJ:<time>19:11</time>','19:10','- BILL MEDLEY - TIME OF MY LIFE'),null);
 console.log('PASS Virtual DJ history file identity with missing artist tags; mismatched times, songs and incomplete writes cannot attach the wrong file');
+const recovery=load('lib/dj/detection.ts');
+const cold=new recovery.DjDetectionGate();assert.equal(cold.accept('old'),false);assert.equal(cold.lastId,'old');
+const savedConnection=recovery.readDjConnection(JSON.stringify({enabled:true,lastId:cold.lastId}));
+const resumed=new recovery.DjDetectionGate(savedConnection.lastId);
+assert.equal(resumed.accept('new-during-outage'),true);assert.equal(resumed.accept('new-during-outage'),false);
+assert.equal(resumed.accept(null),false);assert.equal(resumed.lastId,'new-during-outage');
+assert.equal(recovery.readDjConnection('{broken'),null);
+assert.equal(recovery.readDjConnection('{"enabled":true,"lastId":{}}'),null);
+assert.equal(recovery.readDjConnection('{"enabled":false,"lastId":"old"}').enabled,false);
+assert.notEqual(recovery.djConnectionKey('game-a','virtualdj'),recovery.djConnectionKey('game-b','virtualdj'));
+assert.notEqual(recovery.djConnectionKey('game-a','virtualdj'),recovery.djConnectionKey('game-a','serato'));
+console.log('PASS connection recovery preserves last detection, catches new songs after outages, rejects duplicates, honors disconnect and isolates games/providers');

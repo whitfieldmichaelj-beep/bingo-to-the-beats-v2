@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DjDetectionGate } from "@/lib/dj/detection";
+import { DjDetectionGate, readDjConnection, djConnectionKey } from "@/lib/dj/detection";
 import { DJ_PROVIDERS, djProvider, isDjProvider } from "@/lib/dj/providers";
 import { findSeratoTrackIndex } from "@/lib/serato/track-matching";
 import GameEndedDialog from "@/components/game/GameEndedDialog";
@@ -156,7 +156,7 @@ const PLAYBACK_CHECKPOINT_KEY =
 const GAME_SESSION_BACKUP_KEY =
   "bttb-v2-active-game-backup";
 
-const POLL_INTERVAL_MS = 4000;
+
 const AUTO_NEXT_DELAY_MS = 2500;
 
 // BTTB_APPLE_SMOOTH_TRANSITION_V1
@@ -623,6 +623,7 @@ export default function DjConsole({ gameId }: { gameId: string }) {
   const providerLabels = DJ_PROVIDERS[provider];
   const detectionGate = useRef(new DjDetectionGate());
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionEnabled, setConnectionEnabled] = useState(false);
   const [appleConnected, setAppleConnected] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
@@ -1435,6 +1436,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     seratoPollController.current = controller;
     pollInProgress.current = true;
     setIsPolling(true);
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 8000);
 
     try {
       const response = await fetch(
@@ -1451,8 +1454,11 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
       setIsConnected(true);
       setLastUpdate(clock());
-      if (!detectionGate.current.accept(data.track?.id ?? null)) {
-        setMessage(data.message);
+      const initial = detectionGate.current.lastId === undefined;
+      const accepted = detectionGate.current.accept(data.track?.id ?? null);
+      persistDjConnection(true);
+      if (!accepted) {
+        if (initial) setMessage(data.message);
         return;
       }
 
@@ -1463,13 +1469,11 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
       applySeratoTrack(data.track);
     } catch (error) {
-      if (controller.signal.aborted) return;
-      setMessage(
-        error instanceof Error
-          ? `${providerLabels.name} connection error: ${error.message}`
-          : `${providerLabels.name} connection error.`
-      );
+      if (controller.signal.aborted && !timedOut) return;
+      setIsConnected(false);
+      setMessage(`${providerLabels.name} connection interrupted. Retrying automatically${timedOut ? " after a slow response" : ""}.`);
     } finally {
+      window.clearTimeout(timeout);
       pollInProgress.current = false;
       setIsPolling(false);
     }
@@ -1477,15 +1481,24 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => () => seratoPollController.current?.abort(), []);
 
+  function persistDjConnection(enabled: boolean) {
+    try {
+      localStorage.setItem(djConnectionKey(gameId, provider), JSON.stringify({ enabled, lastId: detectionGate.current.lastId }));
+    } catch { /* Continue in memory if browser storage is unavailable. */ }
+  }
+
   async function connectSerato() {
-    detectionGate.current = new DjDetectionGate();
+    if (gameEndedRef.current || session?.status === "complete") return;
+    persistDjConnection(true);
+    setConnectionEnabled(true);
     setMessage(`Connecting to ${providerLabels.name} locally...`);
     await checkSerato();
   }
 
   function disconnectSerato() {
     seratoPollController.current?.abort();
-    detectionGate.current = new DjDetectionGate();
+    persistDjConnection(false);
+    setConnectionEnabled(false);
     setIsConnected(false);
     setIsPolling(false);
     setLastUpdate("Disconnected");
@@ -1493,18 +1506,23 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   }
 
   useEffect(() => {
-    if (!isConnected) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      void checkSerato();
-    }, provider === "rekordbox" ? 1000 : POLL_INTERVAL_MS);
-
-    return () => window.clearInterval(interval);
-    // checkSerato intentionally uses the latest session and automation settings.
+    if (!session || isRestoringGame || !isDjProvider(session.source) || session.status === "complete" || gameEndedRef.current) return;
+    let saved:ReturnType<typeof readDjConnection> = null;
+    try { saved = readDjConnection(localStorage.getItem(djConnectionKey(gameId, provider))); } catch {}
+    detectionGate.current = new DjDetectionGate(saved?.lastId);
+    setConnectionEnabled(saved?.enabled ?? true);
+    // Restore once per game/source, not on countdown or status changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, provider, session, autoDetect]);
+  }, [session?.sessionId, provider, isRestoringGame]);
+
+  const checkSeratoRef = useRef(checkSerato);
+  useEffect(() => { checkSeratoRef.current = checkSerato; });
+  useEffect(() => {
+    if (!connectionEnabled) return;
+    void checkSeratoRef.current();
+    const interval = window.setInterval(() => { void checkSeratoRef.current(); }, 1000);
+    return () => window.clearInterval(interval);
+  }, [connectionEnabled, provider]);
 
   useEffect(() => {
     if (!session || !playback.currentTrack) {
@@ -3142,12 +3160,12 @@ function runAppleTransportAction(
                     ? isPolling
                       ? "Checking"
                       : "Connected"
-                    : "Not Connected"}
+                    : connectionEnabled ? "Reconnecting" : "Not Connected"}
                 </span>
               </div>
 
               <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-                Open {providerLabels.name} on this computer, connect below, and play a new song.
+                Open {providerLabels.name} on this computer and play a new song. BTTB connects automatically and retries interrupted connections. Use Disconnect to stop detection.
                 BTTB reads local play history. Detection timing depends on when your DJ software records the song.
               </p>
 
