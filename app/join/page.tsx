@@ -1160,7 +1160,7 @@ function JoinGameForm() {
               textAlign: "center",
             }}
           >
-            Secure payment is processed by Stripe.
+            {isPractice ? "Free practice — no payment required." : "Secure payment is processed by Stripe."}
           </p>
         </form>
 

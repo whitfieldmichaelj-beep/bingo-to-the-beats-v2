@@ -71,3 +71,12 @@ Full isolated verification passed after aligning the temporary Stripe test signi
 
 ### Explicit practice repair — September 17
 CSV/crate import now passes an explicit practice option to game persistence. It reserves five-player free access even when subscriptions are disabled or the host has a paid plan. Existing test game YP29AQ was incorrectly non-practice; its unpaid checkout was expired, game corrected to practice, and its sole pending one-card entry made free/active. No paid purchases existed. Live join-options endpoint confirms isPractice=true. TypeScript and import/capacity checks pass.
+
+
+## Player-card recovery rehearsal — September 22, 2026
+
+Browser rehearsal completed in a separate disposable free practice game, leaving the existing completed games unchanged. Joined through the player page, marked Down 4 U, confirmed one saved database mark, reloaded and observed the checked square, then completed the test game and verified the locked final-card view retained its checkmark. The final card exposes text rather than editable song controls.
+
+The player marks endpoint and real-session regression cover ownership, played-song eligibility, save/clear/restore, and completion locking. Load/save requests have a 15-second timeout; failed loads offer a retry control. Earlier browser-only marks that were already lost remain unrecoverable. This desktop browser rehearsal supplements the earlier phone tests; it is not a new physical Safari test.
+
+Corrected the free-practice join footer to say no payment is required. Paid games retain the Stripe payment wording. Remaining release checks include Virtual DJ physical playback, production packaging, and deployment readiness; no production release is claimed.
