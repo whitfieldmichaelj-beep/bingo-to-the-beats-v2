@@ -268,7 +268,7 @@ export async function POST(
         {
           ok: false,
           message:
-            "After removing excluded and duplicate songs, this playlist does not have the 25 unique playable songs required for bingo.",
+            `This playlist has ${playablePlaylist.tracks.length} usable songs after removing ${excludedCount} excluded edits and ${duplicateCount} duplicate versions. Bingo requires 25 different songs. Add at least ${25 - playablePlaylist.tracks.length} more different songs, then refresh the playlist.`,
           playableTrackCount:
             playablePlaylist.tracks.length,
           excludedCount,
