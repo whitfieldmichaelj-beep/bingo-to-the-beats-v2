@@ -15,6 +15,7 @@ export function useCalledTrackSync(
     if (!gameId) return;
     const active = createCalledTrackQueue(gameId);
     queue.current = active;
+    void active.flush();
     const timer = window.setInterval(() => void active.flush(), 2000);
     return () => {
       window.clearInterval(timer);

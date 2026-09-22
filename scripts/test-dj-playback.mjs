@@ -43,3 +43,37 @@ for(const [browser,configured,expected] of [
  ['http://localhost:3001','javascript:alert(1)','http://localhost:3001'],
 ]) assert.equal(origins.playerJoinOrigin(browser,configured),expected);
 console.log('PASS local join links follow the active port and public configured domains remain unchanged');
+
+const records = new Map();
+const storage = {
+ get length() { return records.size; },
+ key: i => [...records.keys()][i] ?? null,
+ getItem: k => records.get(k) ?? null,
+ setItem: (k,v) => records.set(k,v),
+ removeItem: k => records.delete(k),
+};
+failure=true;posts.length=0;
+const beforeReload=queueModule.createCalledTrackQueue('resume-game',storage);
+beforeReload.enqueue({id:'song-a',gameTrackId:'db-a'});
+beforeReload.enqueue({id:'song-b',gameTrackId:'db-b'});
+assert.equal(records.size,2,'Songs persist synchronously before the first request completes');
+await settle();beforeReload.dispose();assert.equal(records.size,2,'Unmount does not discard pending saves');
+const differentGame=queueModule.createCalledTrackQueue('other-game',storage);
+posts.length=0;await differentGame.flush();assert.equal(posts.length,0,'Stored songs cannot replay into another game');differentGame.dispose();
+records.set('bttb:pending-called:v1:resume-game:corrupt','bad json');
+const afterReload=queueModule.createCalledTrackQueue('resume-game',storage);
+failure=false;posts.length=0;await afterReload.flush();
+assert.deepEqual(posts.map(p=>p.gameTrackIds[0]),['db-a','db-b']);
+assert.equal(records.size,1,'Only acknowledged records are removed');afterReload.dispose();
+const acknowledged=queueModule.createCalledTrackQueue('resume-game',storage);
+posts.length=0;await acknowledged.flush();assert.equal(posts.length,0,'Successful saves do not replay on another restart');acknowledged.dispose();
+// Two tabs write separate records; neither can erase the other tab's pending song.
+failure=true;records.clear();
+const tabA=queueModule.createCalledTrackQueue('tabs',storage),tabB=queueModule.createCalledTrackQueue('tabs',storage);
+tabA.enqueue({id:'a'});tabB.enqueue({id:'b'});await settle();
+assert.equal(records.size,2);failure=false;await tabA.flush();assert.equal(records.size,1);
+assert.equal(JSON.parse([...records.values()][0]).id,'b');tabA.dispose();tabB.dispose();
+const blockedStorage={get length(){throw Error('blocked')},setItem(){throw Error('quota')},removeItem(){throw Error('blocked')}};
+const fallback=queueModule.createCalledTrackQueue('fallback',blockedStorage);
+posts.length=0;fallback.enqueue({id:'safe'});await settle();assert.equal(posts[0].providerTrackIds[0],'safe');fallback.dispose();
+console.log('PASS pending songs survive reload, isolate games/tabs, tolerate corrupt or unavailable storage, and clear after acknowledgment');
