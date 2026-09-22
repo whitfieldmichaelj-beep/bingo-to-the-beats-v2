@@ -319,7 +319,8 @@ export async function POST(
     const savedGame =
       await persistGame(
         game,
-        userId
+        userId,
+        { practice: cardCount === 5 }
       );
 
     return NextResponse.json({

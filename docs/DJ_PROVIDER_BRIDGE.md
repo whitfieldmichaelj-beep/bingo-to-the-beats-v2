@@ -49,3 +49,7 @@ Local player join links retain the configured phone-accessible LAN address and u
 Use `npm run dev:phone` for a phone joining through the Mac’s HTTP LAN address. This uses development mode, isolated `.next-phone-test` output, and test-only payment settings. A production `next start` intentionally sets Secure player cookies, which phone browsers reject over plain HTTP; that caused “Player session is required” after joining. Keep Secure cookies enabled in production and serve deployed games over HTTPS. Do not use the phone-test server for paid events.
 
 Set `NEXT_PUBLIC_APP_URL` in the ignored `.env.local` to the Mac’s current LAN address and port 3001. The configured hostname is also used for development asset origins. If the Mac changes networks or its DHCP address changes, update that local setting and restart the phone server.
+
+### Serato 4 live detection correction
+
+The Serato 4 history reader returns `played` but does not set the legacy `playing` flag. BTTB now accepts V4 entries only when `played` is true, a start time exists, and no end time exists. Legacy sessions continue to require `playing`. Tests cover V4 played, loaded-only, and ended entries. In the local Serato practice game 485B2K, the console subsequently detected Hotel (Clean) and Obsessed (Superclean), with the latter reaching the completed countdown. Full Serato player/winner acceptance testing remains separate.

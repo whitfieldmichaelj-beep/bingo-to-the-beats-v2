@@ -39,7 +39,7 @@ const root=mkdtempSync(path.join(tmpdir(),'bttb-vdj-'));const previous=process.e
 try {process.env.BTTB_VIRTUALDJ_PATH=path.join(root,'missing');await assert.rejects(virtual.virtualdjAdapter.nowPlaying(),{code:'ENOENT'});await assert.rejects(virtual.virtualdjAdapter.listPlaylists(),{code:'ENOENT'});process.env.BTTB_VIRTUALDJ_PATH=root;mkdirSync(path.join(root,'My Lists'));writeFileSync(path.join(root,'My Lists','Party.xml'),xml);assert.equal((await virtual.virtualdjAdapter.listPlaylists()).length,1);assert.equal(await virtual.virtualdjAdapter.loadPlaylist('invalid'),null);assert.equal(await virtual.virtualdjAdapter.nowPlaying(),null);}finally{rmSync(root,{recursive:true});if(previous===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=previous;}
 console.log('PASS all DJ providers: normalized identities, restore, startup/repeat detection guards, native VirtualDJ playlists, and API owner/provider isolation');
 // Exercise the real game route's provider dispatch, filters and saved source.
-let saved,chosen;
+let saved,chosen,savedOptions;
 const gameRoute=load('app/api/game/create/route.ts',{
  'next/server':next,
  '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>null},
@@ -51,11 +51,13 @@ const gameRoute=load('app/api/game/create/route.ts',{
  '@/lib/game/playback-config':load('lib/game/playback-config.ts'),
  '@/lib/game/balance-validator':{evaluateGameBalance:()=>({status:'healthy',recommendations:[]})},
  '@/lib/game/service':{getUniquePlaylistTrackCount:t=>t.length,createGameFromPlaylist:playlist=>({id:'game',playlist,tracks:playlist.tracks})},
- '@/lib/game/repository':{createGame:async game=>{saved=game;return game}},
+ '@/lib/game/repository':{createGame:async (game,owner,options)=>{saved=game;savedOptions=options;return game}},
 });
 for(const provider of Object.keys(providers.DJ_PROVIDERS)) {
  const response=await gameRoute.POST({json:async()=>({provider,playlistId:'playlist',cardCount:5,clipLength:45})});
- assert.equal(response.status,200);assert.equal(chosen,provider);assert.equal(saved.playbackConfig.source,provider);assert.equal(saved.playbackConfig.clipLength,45);
+ assert.equal(response.status,200);assert.equal(chosen,provider);assert.equal(saved.playbackConfig.source,provider);assert.equal(saved.playbackConfig.clipLength,45);assert.equal(savedOptions.practice,true);
+ const paid=await gameRoute.POST({json:async()=>({provider,playlistId:"playlist",cardCount:25,clipLength:30})});
+ assert.equal(paid.status,200);assert.equal(savedOptions.practice,false);
 }
 assert.equal((await gameRoute.POST({json:async()=>({provider:'unknown',playlistId:'playlist'})})).status,400);
 console.log('PASS game creation dispatches all providers and persists their playback source and clip length');
@@ -80,3 +82,17 @@ const serato=load('lib/dj/serato.ts',{
 }).seratoAdapter;
 assert.equal((await serato.nowPlaying()).title,'Live');
 console.log('PASS native adapters: Rekordbox read-only configuration, folder exclusion, BPM/version normalization, history events; Serato rejects unplayed entries');
+
+let v4Songs = [
+ {title:'Played v4',artist:'Artist',filePath:'/v4',played:true,startTime:new Date('2026-01-02')},
+ {title:'Only loaded',played:false,startTime:new Date('2026-01-03')},
+ {title:'Finished',played:true,startTime:new Date('2026-01-04'),playTime:new Date('2026-01-05')},
+];
+const serato4=load('lib/dj/serato.ts',{
+ '../serato/playlists':{},'../serato/smart-crates':{},'../serato/playlist-reader':{},
+ '../serato/finder':{findSeratoLibraries:async()=>[]},'./normalize':normalization,
+ 'serato-connect':{hasSeratoV4Database:()=>true,getLatestSessionSongsV4:()=>v4Songs},
+}).seratoAdapter;
+assert.equal((await serato4.nowPlaying()).title,'Played v4');
+v4Songs=v4Songs.slice(1);assert.equal(await serato4.nowPlaying(),null);
+console.log('PASS Serato 4 detects confirmed playback without a legacy playing flag and ignores loaded-only and ended entries');

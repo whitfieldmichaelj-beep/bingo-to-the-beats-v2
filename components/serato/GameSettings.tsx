@@ -190,6 +190,12 @@ export default function GameSettings({
           />
         </label>
 
+        <p style={summaryNoteStyle}>
+          {cardCount === 5
+            ? "Free practice: up to 5 players, one free card each. No checkout."
+            : "For free practice, choose 5 cards. Other card counts use the regular game setup."}
+        </p>
+
         <label style={labelStyle}>
           Clip length
 

@@ -24,7 +24,13 @@ export const seratoAdapter: DjAdapter = {
       const session = getLatestSessionPath(root);
       return session ? getSessionSongs(session) : [];
     }))).flat();
-    const songs = [...legacySongs, ...(hasSeratoV4Database() ? getLatestSessionSongsV4() : [])].filter(t => t.playing && t.startTime && !t.playTime);
+    // Serato 4 supplies `played`, but does not populate the legacy `playing` flag.
+    // Require a confirmed play and an open history entry, not just a loaded deck.
+    const v4Songs = hasSeratoV4Database() ? getLatestSessionSongsV4() : [];
+    const songs = [
+      ...legacySongs.filter(t => t.playing && t.startTime && !t.playTime),
+      ...v4Songs.filter(t => t.played && t.startTime && !t.playTime),
+    ];
     const track = songs.sort((a,b) => b.startTime!.getTime() - a.startTime!.getTime())[0];
     if (!track) return null;
     return { id: `${track.filePath}:${track.startTime!.toISOString()}`, title: track.title, artist: track.artist, filePath: track.filePath, displayText: `${track.artist} - ${track.title}`, playedAtText: track.startTime!.toISOString() };
