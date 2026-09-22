@@ -52,11 +52,8 @@ const pool =
       : 1,
 
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis:
-    process.env.NODE_ENV ===
-    "production"
-      ? 5_000
-      : 0,
+    // A failed local bridge must reject promptly so the app can retry.
+    connectionTimeoutMillis: 5_000,
 
     /*
      * Periodically recycle physical pg clients.

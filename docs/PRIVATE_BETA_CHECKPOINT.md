@@ -114,3 +114,13 @@ Verified the live Virtual DJ console returns to CONNECTED after reload without c
 Live Bill Medley detection matched the correct file but left the timer ready at 30: the automatic-start effect depended on index/status changes, neither of which changed for an already-selected ready song. DJ detection now selects and starts the engine directly, with no second start queued for that effect. A regression test executes the actual console handler against the real timer engine and covers same selected song, subsequent songs and duplicate detections.
 
 Playback and bridge/recovery tests, TypeScript and production build passed. Updated local app loaded. The previously stuck Bill Medley countdown was explicitly resumed through the UI for recovery (not claimed as a fresh automatic detection); the UI showed Countdown Running. Future fresh detections use the corrected handler.
+
+## Completed Virtual DJ and phone acceptance test
+
+User confirmed fresh Toto – Africa Other detection started automatically, its player-card square could be marked, and the mark survived a phone refresh. Game 9FZAE9 / 1de1deae-e619-4c2f-ade2-74abc8b6a3ef produced a valid Any Line claim for Michael Whitfield, Card #1. The server verified all five songs were called: Bill Medley Time of My Life, Never Gonna Give You Up, Every Breath You Take, You Should Be Dancing, and Africa Other. Verified the practice winner through the console and observed automatic game completion. User then confirmed the phone's ended-game view and retained final marks.
+
+## Local verification reliability
+
+Reworked isolated fixture creation to batch database inserts, fetch card squares together, and use unique named queries instead of the unnamed prepared-statement slot that previously failed. This reduces setup traffic substantially while preserving the same cards and songs. Added tests for batch bounds, parameter binding, column consistency and failure propagation. Local application database connections now time out after five seconds instead of waiting indefinitely. These are reliability mitigations, not proof that the underlying local Prisma database memory issue is resolved.
+
+Validation: the complete isolated verification suite passed after the fixture changes, including all previously outstanding DJ recovery/countdown checks and player/payment regressions. Production build passed. Temporary test data was removed. Sustained soak testing and a real Windows playback rehearsal remain separate release checks.

@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { fixtureWriter } from './lib/fixture-writer.mjs';
+const calls=[];
+const writer=fixtureWriter({query:async config=>{calls.push(config);return {rows:[]}}});
+const rows=Array.from({length:2500},(_,i)=>({id:`square-${i}`,title:"Song's $1; DROP TABLE example",marked:false,markedAt:null}));
+await writer.insertRows('CardSquare',rows);
+assert.equal(calls.length,10,'2500 squares use ten bounded inserts');
+assert.equal(calls.reduce((n,c)=>n+c.values.length,0),10000);
+assert.equal(new Set(calls.map(c=>c.name)).size,calls.length);
+assert.ok(calls.every(c=>!c.text.includes("Song's")),'Values are always bound, not interpolated');
+assert.deepEqual(calls[0].values.slice(0,4),Object.values(rows[0]));
+assert.equal(calls.at(-1).values.at(-4),'square-2499');
+const before=calls.length;await writer.insertRows('empty',[]);assert.equal(calls.length,before);
+await writer.insertRows('ordered',[{id:'a',count:1},{count:2,id:'b'}]);assert.deepEqual(calls.at(-1).values,['a',1,'b',2]);
+await assert.rejects(writer.insertRows('invalid',[{id:1},{other:2}]),/same columns/);
+await writer.query('SELECT $1',[42]);await writer.query('SELECT $1',[42]);assert.notEqual(calls.at(-1).name,calls.at(-2).name);
+await assert.rejects(fixtureWriter({query:async()=>{throw Error('unavailable')}}).insertRows('t',[{id:1}]),/unavailable/);
+console.log('PASS bounded fixture batches, parameter safety, stable columns, unique query names and error propagation');
