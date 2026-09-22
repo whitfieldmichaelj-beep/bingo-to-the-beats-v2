@@ -3,6 +3,7 @@
 import "../ui/bttb.css";
 
 import QRCode from "react-qr-code";
+import { playerJoinOrigin } from "@/lib/http/player-join-origin";
 import { useEffect, useMemo, useState } from "react";
 
 type GameAccessPanelProps = {
@@ -11,10 +12,6 @@ type GameAccessPanelProps = {
   compact?: boolean;
   showOpenButton?: boolean;
 };
-
-function normalizeBaseUrl(value: string) {
-  return value.replace(/\/+$/, "");
-}
 
 export default function GameAccessPanel({
   joinCode,
@@ -42,9 +39,7 @@ export default function GameAccessPanel({
       process.env.NEXT_PUBLIC_APP_URL?.trim();
 
     const origin =
-      configuredUrl && configuredUrl.length > 0
-        ? normalizeBaseUrl(configuredUrl)
-        : normalizeBaseUrl(browserOrigin);
+      playerJoinOrigin(browserOrigin, configuredUrl);
 
     return `${origin}/join?code=${encodeURIComponent(
       normalizedCode

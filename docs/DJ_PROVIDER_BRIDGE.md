@@ -37,3 +37,9 @@ The new provider modules and routes pass targeted ESLint. The console now render
 ## Confirmed Rekordbox setup note
 
 The DJ reported improved laptop-only detection after changing the playback-time threshold. Keep the 1-second setting instructions prominently visible on the Rekordbox DJ Console, including PERFORMANCE mode, the exact preferences path, the 60-second default delay, and a reminder to check with a different newly played song. The note remains visible after connecting.
+
+### Playback save reliability and local player links
+
+Played-song saves now stay in a per-game queue while the console is mounted. Failed requests retry every two seconds, including after the DJ changes songs. A successful response with zero matching tracks does not count as a saved song. Switching games or leaving the console stops that queue; unsaved requests are not yet persisted across a browser close or reload. Already acknowledged songs remain in the database.
+
+Local player join links retain the configured phone-accessible LAN address and use the active browser server port. This prevents a preview on port 3001 from sending players to a different server on port 3000. Configured public domains remain authoritative. Playback regression tests cover retries, skipped tracks, duplicate acknowledgments, game isolation, and local/public join origins.
