@@ -80,3 +80,11 @@ Browser rehearsal completed in a separate disposable free practice game, leaving
 The player marks endpoint and real-session regression cover ownership, played-song eligibility, save/clear/restore, and completion locking. Load/save requests have a 15-second timeout; failed loads offer a retry control. Earlier browser-only marks that were already lost remain unrecoverable. This desktop browser rehearsal supplements the earlier phone tests; it is not a new physical Safari test.
 
 Corrected the free-practice join footer to say no payment is required. Paid games retain the Stripe payment wording. Remaining release checks include Virtual DJ physical playback, production packaging, and deployment readiness; no production release is claimed.
+
+## Virtual DJ discovery — September 22, 2026
+
+Fixed discovery of the current macOS Library/Application Support/VirtualDJ home and MyLists playlist directory, with legacy Documents and Library locations retained. Explicit BTTB_VIRTUALDJ_PATH remains authoritative and permission errors are surfaced. Regression fixtures cover current/legacy discovery, missing overrides, playlist import and history detection.
+
+Read-only validation found the installed local library and its latest history entry, Down 4 U (Clean). No saved playlists were present in the supported playlist directories, so live game playback remains pending a user-created Virtual DJ playlist. The local historyDelay setting was 45 seconds; the console now explains the 1-second setting for faster history-based detection. No Virtual DJ files or settings were modified. Official setting reference: https://autoupdate.virtualdj.com/manuals/virtualdj/appendix/optionslist.html
+
+Full isolated verification and production build passed. This validates local history access, not a completed physical Virtual DJ playback rehearsal.

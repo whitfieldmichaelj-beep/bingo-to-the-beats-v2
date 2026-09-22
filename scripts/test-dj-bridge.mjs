@@ -96,3 +96,29 @@ const serato4=load('lib/dj/serato.ts',{
 assert.equal((await serato4.nowPlaying()).title,'Played v4');
 v4Songs=v4Songs.slice(1);assert.equal(await serato4.nowPlaying(),null);
 console.log('PASS Serato 4 detects confirmed playback without a legacy playing flag and ignores loaded-only and ended entries');
+
+// Modern macOS installations use Application Support and MyLists (without a space).
+const modernHome=mkdtempSync(path.join(tmpdir(),'bttb-vdj-modern-'));
+const modernRoot=path.join(modernHome,'Library','Application Support','VirtualDJ');
+const legacyRoot=path.join(modernHome,'Documents','VirtualDJ');
+const savedVdjPath=process.env.BTTB_VIRTUALDJ_PATH;
+try {
+ delete process.env.BTTB_VIRTUALDJ_PATH;
+ mkdirSync(path.join(modernRoot,'MyLists'),{recursive:true});
+ mkdirSync(path.join(modernRoot,'History'));
+ mkdirSync(legacyRoot,{recursive:true});
+ writeFileSync(path.join(modernRoot,'MyLists','Party.vdjfolder'),xml);
+ writeFileSync(path.join(modernRoot,'History','tracklist.txt'),'VirtualDJ History 2026/09/22\n-------------------\n13:56 : Artist - New song\n');
+ const native=load('lib/dj/virtualdj.ts',{'./normalize':normalization,'node:os':{homedir:()=>modernHome,platform:()=>'darwin'}});
+ assert.equal(await native.virtualDjRoot(),modernRoot);
+ assert.equal((await native.virtualdjAdapter.listPlaylists())[0].tracks[0].title,'Song (Club)');
+ assert.equal((await native.virtualdjAdapter.nowPlaying()).title,'New song');
+ rmSync(modernRoot,{recursive:true});
+ assert.equal(await native.virtualDjRoot(),legacyRoot);
+ process.env.BTTB_VIRTUALDJ_PATH=path.join(modernHome,'explicit-missing');
+ await assert.rejects(native.virtualDjRoot(),{code:'ENOENT'});
+ console.log('PASS Virtual DJ modern macOS discovery, MyLists, native history, legacy fallback, and explicit path failure');
+} finally {
+ rmSync(modernHome,{recursive:true});
+ if(savedVdjPath===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=savedVdjPath;
+}

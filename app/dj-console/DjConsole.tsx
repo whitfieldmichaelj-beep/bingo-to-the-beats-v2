@@ -3160,6 +3160,14 @@ function runAppleTransportAction(
                 </aside>
               )}
 
+              {provider === "virtualdj" && (
+                <aside className="dj-rekordbox-setup" aria-labelledby="virtualdj-timing-title">
+                  <h3 id="virtualdj-timing-title">Virtual DJ: reduce the history delay</h3>
+                  <p>For faster song detection, open Virtual DJ settings and search Options for <strong>historyDelay</strong>. Set it to <strong>1 second</strong>.</p>
+                  <p>BTTB detects songs when Virtual DJ adds them to its local history. The default 45-second delay makes detection arrive later. After changing it, connect below and play a different song to check detection.</p>
+                </aside>
+              )}
+
               <div className="dj-button-row">
                 <button
                   className="dj-primary-button"

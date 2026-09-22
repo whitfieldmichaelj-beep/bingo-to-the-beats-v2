@@ -6,7 +6,23 @@ import { normalizeDjTrack } from "./normalize";
 import type { DjAdapter, DjPlaylist } from "./types";
 const parser = new XMLParser({ignoreAttributes:false, attributeNamePrefix:"", parseAttributeValue:false, processEntities:true});
 const array = <T>(value:T | T[] | undefined):T[] => value === undefined ? [] : Array.isArray(value) ? value : [value];
-const root = () => process.env.BTTB_VIRTUALDJ_PATH || path.join(os.homedir(),"Documents","VirtualDJ");
+export async function virtualDjRoot():Promise<string> {
+  if (process.env.BTTB_VIRTUALDJ_PATH) {
+    await fs.access(process.env.BTTB_VIRTUALDJ_PATH);
+    return process.env.BTTB_VIRTUALDJ_PATH;
+  }
+  const home = os.homedir();
+  const candidates = os.platform() === "darwin"
+    ? [path.join(home, "Library", "Application Support", "VirtualDJ"), path.join(home, "Documents", "VirtualDJ"), path.join(home, "Library", "VirtualDJ")]
+    : [path.join(process.env.LOCALAPPDATA || path.join(home, "AppData", "Local"), "VirtualDJ"), path.join(home, "Documents", "VirtualDJ")];
+  for (const candidate of candidates) {
+    try { await fs.access(candidate); return candidate; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  const error = new Error("Virtual DJ library not found. Open Virtual DJ on this computer first.") as NodeJS.ErrnoException;
+  error.code = "ENOENT";
+  throw error;
+}
 async function files(dir:string):Promise<string[]> {
   let entries;
   try { entries=await fs.readdir(dir,{withFileTypes:true}); } catch(e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
@@ -23,23 +39,23 @@ export function parseVirtualDjList(content:string, file:string, metadata:Map<str
   return {id:`virtualdj:${Buffer.from(file).toString("base64url")}`,name:path.basename(file,path.extname(file)),filePath:file,trackCount:tracks.length,tracks};
 }
 async function library() {
-  await fs.access(root());
+  const root = await virtualDjRoot();
   const metadata = new Map<string,Record<string,string>>();
   try {
-    const db=parser.parse(await fs.readFile(path.join(root(),"database.xml"),"utf8"));
+    const db=parser.parse(await fs.readFile(path.join(root,"database.xml"),"utf8"));
     for(const song of array<{FilePath:string;Tags?:Record<string,string>}>(db.VirtualDJ_Database?.Song)) {
       const t=song.Tags ?? {}; metadata.set(song.FilePath,{title:t.Title,artist:t.Author,album:t.Album,remix:t.Remix});
     }
   } catch(e) {if ((e as NodeJS.ErrnoException).code!=="ENOENT") throw e;}
-  const paths=[...await files(path.join(root(),"My Lists")),...await files(path.join(root(),"Playlists"))];
+  const paths=[...await files(path.join(root,"MyLists")),...await files(path.join(root,"My Lists")),...await files(path.join(root,"Playlists"))];
   return Promise.all(paths.map(async file=>parseVirtualDjList(await fs.readFile(file,"utf8"),file,metadata)));
 }
 export const virtualdjAdapter:DjAdapter = {
   listPlaylists:library,
   async loadPlaylist(id) {return (await library()).find(p=>p.id===id) ?? null;},
   async nowPlaying() {
-    await fs.access(root());
-    const file=path.join(root(),"History","tracklist.txt");
+    const root = await virtualDjRoot();
+    const file=path.join(root,"History","tracklist.txt");
     let content:string;
     try {content=await fs.readFile(file,"utf8");} catch(e) {if((e as NodeJS.ErrnoException).code==="ENOENT") return null;throw e;}
     const lines=content.trim().split(/\r?\n/);
