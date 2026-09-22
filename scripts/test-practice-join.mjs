@@ -25,5 +25,27 @@ const cookie=result.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie);
 result=await fetch(`${base}/api/game/join`,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({joinCode:code,playerName:'Practice tester',cardQuantity:1})});
 const rejoined=await result.json();assert.equal(rejoined.rejoined,true);assert.equal(rejoined.player.purchaseId,body.player.purchaseId);
 assert.equal(Number((await pool.query('SELECT count(*) FROM "GamePlayerSeat" WHERE "gameId"=$1',[gameId])).rows[0].count),1);
+// Exercise persistence through the real signed player session and database.
+const marksUrl = `${base}/api/game/player/marks`;
+const readMarks = () => fetch(`${marksUrl}?gameId=${gameId}`, { headers: { Cookie: cookie } });
+const writeMarks = marks => fetch(marksUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ gameId, marks }) });
+assert.equal((await fetch(`${marksUrl}?gameId=${gameId}`)).status, 401);
+await pool.query('UPDATE "GameTrack" SET called=false, "calledAt"=NULL WHERE "gameId"=$1', [gameId]);
+const square = (await pool.query('SELECT * FROM "CardSquare" WHERE "cardId"=$1 ORDER BY position LIMIT 1', [cardId])).rows[0];
+const selection = [{ cardId, position: square.position }];
+assert.equal((await writeMarks(selection)).status, 400, 'uncalled songs cannot be marked');
+assert.equal((await writeMarks([{ cardId: original.id, position: square.position }])).status, 400, 'cards outside this purchase cannot be edited');
+await pool.query('UPDATE "GameTrack" SET called=true, "calledAt"=NOW() WHERE "gameId"=$1 AND "trackId"=$2', [gameId, square.trackId]);
+result = await writeMarks(selection); assert.equal(result.status, 200, await result.text());
+let stored = (await pool.query('SELECT marked, "markedAt" FROM "CardSquare" WHERE id=$1', [square.id])).rows[0];
+assert.equal(stored.marked, true); assert.ok(stored.markedAt);
+assert.deepEqual((await (await readMarks()).json()).marks, selection, 'fresh request restores saved marks');
+result = await writeMarks([]); assert.equal(result.status, 200);
+assert.deepEqual((await (await readMarks()).json()).marks, [], 'cleared marks remain cleared');
+result = await writeMarks(selection); assert.equal(result.status, 200);
+await pool.query('UPDATE "Game" SET status=\'COMPLETED\', "completedAt"=NOW() WHERE id=$1', [gameId]);
+assert.equal((await writeMarks([])).status, 409, 'completed games reject changes');
+assert.deepEqual((await (await readMarks()).json()).marks, selection, 'completed cards retain their selections');
+console.log('PASS real player mark persistence: signed session, ownership, called-song eligibility, database save, restore, clear, and completion lock');
 console.log('PASS real free-practice join: correct options, invalid quantity 400, one free active card, reconnect without a second purchase or player spot');
 }finally{await pool.query('DELETE FROM "Game" WHERE id=$1',[gameId]);await pool.query('DELETE FROM "HostBilling" WHERE "clerkId"=$1',[host]);await pool.query('DELETE FROM "User" WHERE id=$1',[host]);await pool.end();}

@@ -281,6 +281,7 @@ export default function CardsPage() {
   const [loaded, setLoaded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
   const [marksReady, setMarksReady] = useState(false);
+  const [marksReload, setMarksReload] = useState(0);
   const [marksMessage, setMarksMessage] = useState("Loading saved marks…");
   const savingMarks = useRef(false);
   const [marksSaving, setMarksSaving] = useState(false);
@@ -464,8 +465,9 @@ export default function CardsPage() {
     if (!session) return;
     let cancelled = false;
     async function restoreMarks() {
+      setMarksMessage("Loading saved marks…");
       try {
-        const response = await fetch(`/api/game/player/marks?gameId=${encodeURIComponent(session!.game.id)}`, { cache: "no-store" });
+        const response = await fetch(`/api/game/player/marks?gameId=${encodeURIComponent(session!.game.id)}`, { cache: "no-store", signal: AbortSignal.timeout(15000) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
         if (cancelled) return;
@@ -489,7 +491,7 @@ export default function CardsPage() {
     }
     void restoreMarks();
     return () => { cancelled = true; };
-  }, [session, cards]);
+  }, [session, cards, marksReload]);
 
   const activeCard = cards[activeCardIndex] ?? null;
 
@@ -838,6 +840,7 @@ export default function CardsPage() {
       const marks = cards.flatMap((card) => card.squares.filter((square) => selected.has(getSongKey(square)) && isSquarePlayed(square)).map((square) => ({ cardId: card.id, position: square.squareIndex })));
       const response = await fetch("/api/game/player/marks", {
         method: "PUT", headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({ gameId: session.game.id, marks }),
       });
       const data = await response.json();
@@ -852,7 +855,7 @@ export default function CardsPage() {
       } catch { /* Database save succeeded. */ }
       setMarksMessage("Marks saved");
     } catch (error) {
-      setMarksMessage(error instanceof Error ? error.message : "Could not save marks. Please tap the song again.");
+      setMarksMessage(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Could not save marks. Check your connection and tap the song again.");
     } finally { savingMarks.current = false; setMarksSaving(false); }
   }
 
@@ -1108,6 +1111,7 @@ export default function CardsPage() {
           </p>
 
           <p role="status">{marksMessage}</p>
+          {!marksReady && <button type="button" onClick={() => setMarksReload((value) => value + 1)}>Retry loading marks</button>}
           <details style={{ textAlign: "left", marginTop: "20px" }}>
             <summary>View your final cards (locked)</summary>
             {cards.map((card) => <section key={card.id}>
@@ -1697,6 +1701,7 @@ export default function CardsPage() {
               <strong style={{ color: "#c4b5fd" }}>
                 {activeMarks.size} / {activeCard.squareCount} marked
                 <span role="status" style={{ display: "block" }}>{marksMessage}</span>
+                {!marksReady && <button type="button" onClick={() => setMarksReload((value) => value + 1)}>Retry loading marks</button>}
               </strong>
             </div>
 
