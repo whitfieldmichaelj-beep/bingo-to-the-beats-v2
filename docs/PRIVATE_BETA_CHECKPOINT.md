@@ -96,3 +96,9 @@ Located BTTB TEST CRATE at /Volumes/T7 Serato D/VirtualDJ/MyLists/BTTB TEST CRAT
 The authenticated local playlist response supplies detected library locations. The Virtual DJ setup page shows the Mac and external-drive locations, with a reminder to keep the music drive connected. On this machine these are /Users/djmikedoelo/Library/Application Support/VirtualDJ and /Volumes/T7 Serato D/VirtualDJ. Local music libraries were not modified.
 
 Windows parity: the location guide now includes %LOCALAPPDATA%\VirtualDJ, %USERPROFILE%\Documents\VirtualDJ, external drive-letter examples and Virtual DJ's folder shortcut. Detected locations are labeled without assuming a Mac. Windows discovery tests simulate modern/legacy folders and mounted drive letters; a physical Windows playback rehearsal is still outstanding. Path reference: https://virtualdj.com/wiki/How%2Bto%2BTransfer%2BTo%2BA%2BNew%2BComputer.html
+
+## Virtual DJ live playback rehearsal
+
+User played songs from 80S-90S POP in game 1de1deae-e619-4c2f-ade2-74abc8b6a3ef (9FZAE9). Console visibly received Africa, Time of My Life and You Should Be Dancing, with the song reveal state observed. Found missing artist tags made the plain text history split Time of My Life incorrectly. Adapter now attaches a music file path from the matching final daily history entry only when both time and display text agree, and restores its original metadata. This uses the existing unique file matching rule; mismatched/incomplete history writes do not attach a path.
+
+Targeted DJ bridge tests, TypeScript and production build passed. Live read-only check confirmed You Should Be Dancing carries a file path matching the saved game. Full regression was attempted twice but blocked during temporary fixture setup by local PostgreSQL prepared-statement and memory allocation errors. No full-suite pass is claimed for this change. The live user's game was not restarted or ended.

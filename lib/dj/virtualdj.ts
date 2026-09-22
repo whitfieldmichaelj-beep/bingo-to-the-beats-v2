@@ -75,6 +75,20 @@ async function library() {
   }
   return Promise.all([...new Set(paths)].map(async file=>parseVirtualDjList(await fs.readFile(file,"utf8"),file,metadata)));
 }
+export function matchingVirtualDjHistoryEntry(content:string, time:string, displayText:string): { filePath:string; artist:string; title:string } | null {
+  const lines = content.trim().split(/\r?\n/);
+  const filePath = lines.at(-1)?.trim() ?? "";
+  const metadata = lines.at(-2) ?? "";
+  if (!path.isAbsolute(filePath) || !metadata.startsWith("#EXTVDJ:")) return null;
+  const entry = parser.parse(`<entry>${metadata.slice(8)}</entry>`)?.entry;
+  const artist = String(entry?.artist ?? "").trim();
+  const title = String(entry?.title ?? "").trim();
+  const clean = (value:string) => value.trim().replace(/\s+/g, " ");
+  // History files can update separately. Never attach a previous song's path.
+  if (!title || String(entry?.time) !== time || clean(`${artist} - ${title}`) !== clean(displayText)) return null;
+  return { filePath, artist: artist || "Unknown Artist", title };
+}
+
 export const virtualdjAdapter:DjAdapter = {
   libraryLocations: virtualDjLibraryRoots,
   listPlaylists:library,
@@ -88,6 +102,15 @@ export const virtualdjAdapter:DjAdapter = {
     const line=lines.at(-1) ?? "";
     const match=line.match(/^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*:\s*(.+?)\s+-\s+(.+)$/);
     if (!match) return null;
-    return {id:`virtualdj:${lines.length}:${line}`,artist:match[2],title:match[3],displayText:`${match[2]} - ${match[3]}`,playedAtText:match[1]};
+    const displayText = `${match[2]} - ${match[3]}`;
+    const date = [...lines].reverse().map(row => row.match(/^VirtualDJ History (\d{4})\/(\d{2})\/(\d{2})$/)).find(Boolean);
+    let entry:ReturnType<typeof matchingVirtualDjHistoryEntry> = null;
+    if (date) {
+      try {
+        const history = await fs.readFile(path.join(root, "History", `${date[1]}-${date[2]}-${date[3]}.m3u`), "utf8");
+        entry = matchingVirtualDjHistoryEntry(history, match[1], displayText);
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    return {id:`virtualdj:${lines.length}:${line}`,artist:entry?.artist ?? match[2],title:entry?.title ?? match[3],filePath:entry?.filePath,displayText,playedAtText:match[1]};
   },
 };

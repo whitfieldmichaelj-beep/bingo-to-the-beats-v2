@@ -166,3 +166,11 @@ try {
  if(winOverride===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=winOverride;
  if(localAppData===undefined)delete process.env.LOCALAPPDATA;else process.env.LOCALAPPDATA=localAppData;
 }
+
+const missingArtistHistory='#EXTVDJ:<time>19:10</time><artist></artist><title>BILL MEDLEY - TIME OF MY LIFE</title>\n/music/song.mp3\n';
+const recovered=virtual.matchingVirtualDjHistoryEntry(missingArtistHistory,'19:10','- BILL MEDLEY - TIME OF MY LIFE');
+assert.equal(recovered.filePath,'/music/song.mp3');assert.equal(recovered.title,'BILL MEDLEY - TIME OF MY LIFE');assert.equal(recovered.artist,'Unknown Artist');
+assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory,'19:11','- BILL MEDLEY - TIME OF MY LIFE'),null);
+assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory,'19:10','Other - Song'),null);
+assert.equal(virtual.matchingVirtualDjHistoryEntry(missingArtistHistory+'#EXTVDJ:<time>19:11</time>','19:10','- BILL MEDLEY - TIME OF MY LIFE'),null);
+console.log('PASS Virtual DJ history file identity with missing artist tags; mismatched times, songs and incomplete writes cannot attach the wrong file');
