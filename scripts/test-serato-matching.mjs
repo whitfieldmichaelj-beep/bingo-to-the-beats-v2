@@ -14,3 +14,11 @@ assert.equal(match(tracks,''),-1);
 assert.equal(match([{name:'Envy (Acapella)',artist:'Fat Joe'}],'Envy'),-1);
 assert.equal(match(tracks,' ENVY [CLEAN] '),1);
 console.log('PASS exact Clean/Instrumental versions, ambiguous edits, missing artists, punctuation and empty-title protection');
+
+const pathTracks=[{name:'Filename title with symbols',artist:'Unknown Artist',filePath:'/music/song.mp3'}];
+const missingTags={title:'Different history title',artist:'',displayText:'Different history title',filePath:'/music/song.mp3'};
+assert.equal(exports.findSeratoTrackIndex(pathTracks,missingTags),0);
+assert.equal(exports.findSeratoTrackIndex([...pathTracks,...pathTracks],missingTags),-1);
+assert.equal(exports.findSeratoTrackIndex(pathTracks,{...missingTags,filePath:'/music/SONG.mp3'}),-1);
+assert.equal(exports.findSeratoTrackIndex(pathTracks,{...missingTags,filePath:'/music/other.mp3'}),-1);
+console.log('PASS unique exact file identity matches missing tags; duplicate, case-different and unrelated paths remain protected');

@@ -2814,6 +2814,10 @@ function runAppleTransportAction(
       )}
       <BingoVerificationPanel
         gameId={session?.sessionId}
+        onWinnerVerified={() => {
+          disconnectSerato();
+          void updateStatus("complete");
+        }}
         onNewClaim={(claim) => {
           if (
             session?.status ===

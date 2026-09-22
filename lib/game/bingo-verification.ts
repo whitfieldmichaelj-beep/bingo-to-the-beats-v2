@@ -584,6 +584,13 @@ export async function reviewBingoClaim(
 
   const verified =
     await prisma.$transaction(async (tx) => {
+      // Serialize winner confirmations for this game before changing either record.
+      await tx.$queryRaw`SELECT id FROM "Game" WHERE id = ${gameId} FOR UPDATE`;
+      const competingWinner = await tx.winner.findFirst({
+        where: { gameId, verified: true, id: { not: claimId } },
+        select: { id: true },
+      });
+      if (competingWinner) return "winner-exists" as const;
       /*
        * Guard the actual WINNER transition too. If a Stripe
        * refund changed the purchase to REFUNDED after our
@@ -631,8 +638,17 @@ export async function reviewBingoClaim(
         },
       });
 
+      // The winner and ended game must commit together, even if the browser closes.
+      await tx.game.updateMany({
+        where: { id: gameId, status: { not: "COMPLETED" } },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
       return true;
     });
+
+  if (verified === "winner-exists") {
+    return { ok: false as const, code: "WINNER_EXISTS", message: "This game already has a verified winner." };
+  }
 
   if (!verified) {
     return {

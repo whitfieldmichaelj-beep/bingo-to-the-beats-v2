@@ -13,6 +13,7 @@ import {
 
 type Props = {
   gameId?: string | null;
+  onWinnerVerified?: () => void;
   onNewClaim?: (
     claim: BingoClaim
   ) => void;
@@ -67,6 +68,7 @@ function alertTone() {
 export default function BingoVerificationPanel({
   gameId,
   onNewClaim,
+  onWinnerVerified,
 }: Props) {
   const {
     claims,
@@ -81,6 +83,14 @@ export default function BingoVerificationPanel({
 
   const lastNotifiedId =
     useRef<string | null>(null);
+
+  const lastCompletedWinner = useRef<string | null>(null);
+  const verifiedWinner = claims.find(claim => claim.status === "verified");
+  useEffect(() => {
+    if (!verifiedWinner || lastCompletedWinner.current === verifiedWinner.id) return;
+    lastCompletedWinner.current = verifiedWinner.id;
+    onWinnerVerified?.();
+  }, [verifiedWinner, onWinnerVerified]);
 
   const pending = claims.filter(
     (claim) =>
@@ -144,9 +154,14 @@ export default function BingoVerificationPanel({
         );
       }
 
+      if (action === "verify") {
+        lastCompletedWinner.current = activeClaim.id;
+        onWinnerVerified?.();
+      }
+
       setMessage(
         action === "verify"
-          ? "Winner verified."
+          ? "Winner verified. Game ended."
           : "Claim rejected."
       );
 
