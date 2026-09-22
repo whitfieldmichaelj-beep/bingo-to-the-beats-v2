@@ -26,13 +26,17 @@ const p=virtual.parseVirtualDjList(xml,'/DJ/My Lists/Party.xml');assert.equal(p.
 assert.equal(virtual.parseVirtualDjList('#EXTM3U\n../Song.mp3\n','/DJ/Playlists/Party.m3u').tracks[0].filePath,'/DJ/Song.mp3');
 let denied=null,reads=0;
 const next={NextResponse:{json:(body,options={})=>({body,status:options.status??200})}};
-const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
+const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],libraryLocations:async()=>["/test/VirtualDJ"],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
 for(const endpoint of ['playlists','now-playing']) {
  const route=load(`app/api/dj/[provider]/${endpoint}/route.ts`,mocks);
  const req={nextUrl:new URL('http://localhost/?gameId=test')};
  denied={status:403};assert.equal(await route.GET(req,{params:Promise.resolve({provider:'serato'})}),denied);assert.equal(reads,0);
  denied=null;assert.equal((await route.GET(req,{params:Promise.resolve({provider:'invalid'})})).status,400);
- for(const provider of Object.keys(providers.DJ_PROVIDERS))assert.equal((await route.GET(req,{params:Promise.resolve({provider})})).status,200);
+ for(const provider of Object.keys(providers.DJ_PROVIDERS)) {
+  const response=await route.GET(req,{params:Promise.resolve({provider})});
+  assert.equal(response.status,200);
+  if(endpoint==='playlists')assert.equal(response.body.libraryLocations[0],'/test/VirtualDJ');
+ }
  reads=0;
 }
 const root=mkdtempSync(path.join(tmpdir(),'bttb-vdj-'));const previous=process.env.BTTB_VIRTUALDJ_PATH;
@@ -109,7 +113,7 @@ try {
  mkdirSync(legacyRoot,{recursive:true});
  writeFileSync(path.join(modernRoot,'MyLists','Party.vdjfolder'),xml);
  writeFileSync(path.join(modernRoot,'History','tracklist.txt'),'VirtualDJ History 2026/09/22\n-------------------\n13:56 : Artist - New song\n');
- const native=load('lib/dj/virtualdj.ts',{'./normalize':normalization,'node:os':{homedir:()=>modernHome,platform:()=>'darwin'}});
+ const native=load('lib/dj/virtualdj.ts',{'./normalize':normalization,'node:os':{homedir:()=>modernHome,platform:()=>'darwin'},'node:fs/promises':{...require('node:fs/promises'),readdir:(dir,opts)=>dir==='/Volumes'?Promise.resolve([]):require('node:fs/promises').readdir(dir,opts)}});
  assert.equal(await native.virtualDjRoot(),modernRoot);
  assert.equal((await native.virtualdjAdapter.listPlaylists())[0].tracks[0].title,'Song (Club)');
  assert.equal((await native.virtualdjAdapter.nowPlaying()).title,'New song');
@@ -121,4 +125,44 @@ try {
 } finally {
  rmSync(modernHome,{recursive:true});
  if(savedVdjPath===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=savedVdjPath;
+}
+
+const drivesHome=mkdtempSync(path.join(tmpdir(),'bttb-vdj-drives-'));
+const driveRoot=path.join(drivesHome,'drive','VirtualDJ');
+const driveHome=path.join(drivesHome,'Library','Application Support','VirtualDJ');
+const priorDriveOverride=process.env.BTTB_VIRTUALDJ_PATH;
+try {
+ delete process.env.BTTB_VIRTUALDJ_PATH;
+ mkdirSync(driveHome,{recursive:true});mkdirSync(path.join(driveRoot,'MyLists'),{recursive:true});
+ writeFileSync(path.join(driveRoot,'MyLists','External.vdjfolder'),'<VirtualFolder><song path="/music/external.mp3"/></VirtualFolder>');
+ writeFileSync(path.join(driveRoot,'database.xml'),'<VirtualDJ_Database><Song FilePath="/music/external.mp3"><Tags Title="External Song" Author="External Artist"/></Song></VirtualDJ_Database>');
+ const disk=require('node:fs/promises');
+ const redirect=p=>p.startsWith('/Volumes/Test Drive')?p.replace('/Volumes/Test Drive',path.join(drivesHome,'drive')):p;
+ const external=load('lib/dj/virtualdj.ts',{'./normalize':normalization,'node:os':{homedir:()=>drivesHome,platform:()=>'darwin'},'node:fs/promises':{
+  ...disk,stat:p=>disk.stat(redirect(p)),readFile:(p,...a)=>disk.readFile(redirect(p),...a),
+  readdir:(p,...a)=>p==='/Volumes'?Promise.resolve([{name:'Test Drive',isDirectory:()=>true},{name:'No DJ Library',isDirectory:()=>true}]):disk.readdir(redirect(p),...a),
+ }});
+ const lists=await external.virtualdjAdapter.listPlaylists();assert.equal(lists.length,1);assert.equal(lists[0].name,'External');assert.equal(lists[0].tracks[0].title,'External Song');assert.equal(lists[0].tracks[0].artist,'External Artist');
+ assert.equal((await external.virtualdjAdapter.loadPlaylist(lists[0].id)).tracks.length,1);
+ rmSync(path.join(drivesHome,'drive'),{recursive:true});assert.equal((await external.virtualdjAdapter.listPlaylists()).length,0,'disconnected drives do not retain stale playlists');
+ console.log('PASS external Virtual DJ playlists, external metadata, stable loading, unrelated volumes and drive removal');
+} finally {
+ rmSync(drivesHome,{recursive:true});
+ if(priorDriveOverride===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=priorDriveOverride;
+}
+const winOverride=process.env.BTTB_VIRTUALDJ_PATH, localAppData=process.env.LOCALAPPDATA;
+try {
+ delete process.env.BTTB_VIRTUALDJ_PATH;process.env.LOCALAPPDATA=String.raw`C:\Users\DJ\AppData\Local`;
+ let modern=true;
+ const win=load('lib/dj/virtualdj.ts',{'./normalize':normalization,'node:os':{homedir:()=>String.raw`C:\Users\DJ`,platform:()=>'win32'},'node:fs/promises':{
+  access:async file=>{if(file===(modern?String.raw`C:\Users\DJ\AppData\Local\VirtualDJ`:String.raw`C:\Users\DJ\Documents\VirtualDJ`))return;throw Object.assign(new Error('missing'),{code:'ENOENT'})},
+  stat:async file=>{if(file===String.raw`E:\VirtualDJ`)return {isDirectory:()=>true};throw Object.assign(new Error('missing'),{code:'ENOENT'})},
+ }});
+ assert.equal(await win.virtualDjRoot(),String.raw`C:\Users\DJ\AppData\Local\VirtualDJ`);
+ assert.equal((await win.virtualDjLibraryRoots()).join('|'),String.raw`C:\Users\DJ\AppData\Local\VirtualDJ|E:\VirtualDJ`);
+ modern=false;assert.equal(await win.virtualDjRoot(),String.raw`C:\Users\DJ\Documents\VirtualDJ`);
+ console.log('PASS Windows PC current/legacy library locations and external drive letters');
+} finally {
+ if(winOverride===undefined)delete process.env.BTTB_VIRTUALDJ_PATH;else process.env.BTTB_VIRTUALDJ_PATH=winOverride;
+ if(localAppData===undefined)delete process.env.LOCALAPPDATA;else process.env.LOCALAPPDATA=localAppData;
 }

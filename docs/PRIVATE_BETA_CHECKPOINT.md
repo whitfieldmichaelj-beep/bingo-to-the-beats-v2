@@ -88,3 +88,11 @@ Fixed discovery of the current macOS Library/Application Support/VirtualDJ home 
 Read-only validation found the installed local library and its latest history entry, Down 4 U (Clean). No saved playlists were present in the supported playlist directories, so live game playback remains pending a user-created Virtual DJ playlist. The local historyDelay setting was 45 seconds; the console now explains the 1-second setting for faster history-based detection. No Virtual DJ files or settings were modified. Official setting reference: https://autoupdate.virtualdj.com/manuals/virtualdj/appendix/optionslist.html
 
 Full isolated verification and production build passed. This validates local history access, not a completed physical Virtual DJ playback rehearsal.
+
+## Virtual DJ external playlist and visible locations
+
+Located BTTB TEST CRATE at /Volumes/T7 Serato D/VirtualDJ/MyLists/BTTB TEST CRATE.vdjfolder and loaded all 45 unique songs read-only. Virtual DJ adapter now discovers mounted macOS drive libraries and reads their metadata along with the Mac library. Explicit library overrides remain isolated. Tests cover external playlist loading, metadata, disconnected drives and unrelated volumes.
+
+The authenticated local playlist response supplies detected library locations. The Virtual DJ setup page shows the Mac and external-drive locations, with a reminder to keep the music drive connected. On this machine these are /Users/djmikedoelo/Library/Application Support/VirtualDJ and /Volumes/T7 Serato D/VirtualDJ. Local music libraries were not modified.
+
+Windows parity: the location guide now includes %LOCALAPPDATA%\VirtualDJ, %USERPROFILE%\Documents\VirtualDJ, external drive-letter examples and Virtual DJ's folder shortcut. Detected locations are labeled without assuming a Mac. Windows discovery tests simulate modern/legacy folders and mounted drive letters; a physical Windows playback rehearsal is still outstanding. Path reference: https://virtualdj.com/wiki/How%2Bto%2BTransfer%2BTo%2BA%2BNew%2BComputer.html

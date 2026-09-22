@@ -54,6 +54,7 @@ type CreatedGame = {
 };
 
 type PlaylistsResponse = {
+  libraryLocations?: string[];
   ok?: boolean;
   playlists?: unknown[];
   message?: string;
@@ -278,6 +279,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
   const [gameDetails, setGameDetails] =
     useState<StoredGameDetails | null>(null);
   const [libraryTrackCount, setLibraryTrackCount] = useState(0);
+  const [libraryLocations, setLibraryLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState(
@@ -325,6 +327,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
     try {
       setLoading(true);
       setError("");
+      setLibraryLocations([]);
       setMessage(`Reading your ${labels.name} ${labels.collections}...`);
 
       const response = await fetch(`/api/dj/${provider}/playlists`, {
@@ -345,6 +348,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       );
 
       setPlaylists(nextPlaylists);
+      setLibraryLocations((data.libraryLocations ?? []).filter((location) => typeof location === "string"));
 
       const totalTracks =
         data.library?.totalTracks ??
@@ -564,6 +568,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
 
   return {
     hero: {
+      libraryLocations,
       loading,
       playlistCount: playlists.length,
       libraryTrackCount,

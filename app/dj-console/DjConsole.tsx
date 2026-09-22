@@ -3147,7 +3147,7 @@ function runAppleTransportAction(
               </div>
 
               <p id="serato-setup-help" style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-                Open {providerLabels.name} on this Mac, connect below, and play a new song.
+                Open {providerLabels.name} on this computer, connect below, and play a new song.
                 BTTB reads local play history. Detection timing depends on when your DJ software records the song.
               </p>
 

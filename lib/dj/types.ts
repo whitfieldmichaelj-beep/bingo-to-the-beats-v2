@@ -30,6 +30,7 @@ export interface DjDetection {
   playedAtText: string | null;
 }
 export interface DjAdapter {
+  libraryLocations?(): Promise<string[]>;
   listPlaylists(): Promise<DjPlaylist[]>;
   loadPlaylist(id: string): Promise<DjPlaylist | null>;
   nowPlaying(): Promise<DjDetection | null>;

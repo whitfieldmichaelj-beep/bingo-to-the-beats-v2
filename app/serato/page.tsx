@@ -145,6 +145,25 @@ function DjWorkspace({provider,onProviderChange}:{provider:DjProvider;onProvider
           hasError={workspace.hero.hasError}
         />
 
+        {provider === "virtualdj" && (
+          <section aria-label="Virtual DJ library locations" style={{ margin: "20px 0", padding: "18px", border: "1px solid #475569", borderRadius: "14px" }}>
+            <h2 style={{ margin: "0 0 10px", fontSize: "18px" }}>Virtual DJ library locations</h2>
+            <p style={{ color: "#cbd5e1" }}>BTTB reads playlists from these folders. Keep your external music drive connected while playing.</p>
+            <p style={{ color: "#cbd5e1", overflowWrap: "anywhere" }}><strong>Windows PC:</strong> <code>{String.raw`%LOCALAPPDATA%\VirtualDJ`}</code> (usually <code>{String.raw`C:\Users\YourName\AppData\Local\VirtualDJ`}</code>). Older installations may use <code>{String.raw`%USERPROFILE%\Documents\VirtualDJ`}</code>.</p>
+            <p style={{ color: "#cbd5e1", overflowWrap: "anywhere" }}><strong>Mac:</strong> <code>~/Library/Application Support/VirtualDJ</code>. Older installations may use <code>~/Documents/VirtualDJ</code>.</p>
+            <p style={{ color: "#cbd5e1" }}>External-drive libraries may be in <code>{String.raw`D:\VirtualDJ`}</code> on Windows (the drive letter varies), or <code>/Volumes/YourDrive/VirtualDJ</code> on Mac. Playlists are inside <code>MyLists</code> or <code>Playlists</code>.</p>
+            <p style={{ color: "#cbd5e1" }}>To find your exact folder, open Virtual DJ → Settings → Options and click the folder icon in the lower-right corner.</p>
+            <ul style={{ paddingLeft: "20px" }}>
+              {workspace.hero.libraryLocations.map((location) => (
+                <li key={location} style={{ marginTop: "10px" }}>
+                  <strong>Detected library</strong>
+                  <div style={{ overflowWrap: "anywhere", marginTop: "4px", color: "#cbd5e1" }}>{location}</div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section
           className="serato-workspace-grid"
           style={workspaceGridStyle}
