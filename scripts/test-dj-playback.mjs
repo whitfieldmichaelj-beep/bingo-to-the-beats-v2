@@ -77,3 +77,30 @@ const blockedStorage={get length(){throw Error('blocked')},setItem(){throw Error
 const fallback=queueModule.createCalledTrackQueue('fallback',blockedStorage);
 posts.length=0;fallback.enqueue({id:'safe'});await settle();assert.equal(posts[0].providerTrackIds[0],'safe');fallback.dispose();
 console.log('PASS pending songs survive reload, isolate games/tabs, tolerate corrupt or unavailable storage, and clear after acknowledgment');
+
+// Exercise the actual console handler with the real timer engine. No React
+// selection effect is run: the first selected song must start on detection.
+const consoleSource=readFileSync('app/dj-console/DjConsole.tsx','utf8');
+const handlerStart=consoleSource.indexOf('  function applySeratoTrack(');
+const handlerEnd=consoleSource.indexOf('\n  useEffect(',handlerStart);
+const handlerCode=ts.transpileModule(consoleSource.slice(handlerStart,handlerEnd),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+const firstEngine=exports.usePlaybackEngine(tracks,30,{continuous:false});
+let selectedIndex=0;
+const selectedSession={sessionId:'same-track-test',tracks:[{id:'first',name:'First',artist:'DJ'},{id:'second',name:'Second',artist:'DJ'}],currentIndex:0,status:'ready',playedTrackIds:[],clipLength:30};
+const pendingStart={current:false},previousDetection={current:null};
+const handlerContext=vm.createContext({
+ playback:firstEngine,session:selectedSession,provider:'serato',providerLabels:{name:'Serato'},autoDetect:true,
+ isPlaying:false,isRevealed:false,gameEndedRef:{current:false},autoStartNextRef:pendingStart,previousTrackId:previousDetection,
+ findSeratoTrackIndex:()=>selectedIndex,setDetectedTrack(){},addActivity(){},setMessage(){},saveSession(next){handlerContext.session=next},broadcast(){},getRecentPlayedTracks:()=>[],
+});
+vm.runInContext(handlerCode,handlerContext);
+const beforeSameTrack=timers.length;
+vm.runInContext("applySeratoTrack({id:'live-first',title:'First',artist:'DJ',displayText:'DJ - First'})",handlerContext);
+assert.equal(timers.length,beforeSameTrack+1,'Already-selected ready song starts immediately');
+assert.equal(pendingStart.current,false,'No second start remains queued in the selection effect');
+vm.runInContext("applySeratoTrack({id:'live-first',title:'First',artist:'DJ',displayText:'DJ - First'})",handlerContext);
+assert.equal(timers.length,beforeSameTrack+1,'Duplicate detection does not restart countdown');
+selectedIndex=1;
+vm.runInContext("applySeratoTrack({id:'live-second',title:'Second',artist:'DJ',displayText:'DJ - Second'})",handlerContext);
+assert.equal(timers.length,beforeSameTrack+2,'A different detected song also starts immediately');
+console.log('PASS actual console detection starts the selected first song and subsequent songs exactly once without waiting for a React selection effect');

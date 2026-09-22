@@ -1167,8 +1167,11 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       playedTrackIds,
     };
 
-    autoStartNextRef.current = true;
+    // A detected song may already be selected and ready. Start directly because
+    // React will not rerun the selection effect when index/status are unchanged.
+    autoStartNextRef.current = false;
     playback.goToTrack(matchedIndex);
+    void playback.start();
     saveSession(nextSession);
     setDetectedTrack(matchedTrack);
     addActivity(matchedTrack);
