@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import GameAccessPanel from "../../../components/game/GameAccessPanel";
 import PlayerBingoClaimPanel from "@/components/game/PlayerBingoClaimPanel";
@@ -280,6 +280,10 @@ export default function CardsPage() {
   const [marksStorageKey, setMarksStorageKey] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+  const [marksReady, setMarksReady] = useState(false);
+  const [marksMessage, setMarksMessage] = useState("Loading saved marks…");
+  const savingMarks = useRef(false);
+  const [marksSaving, setMarksSaving] = useState(false);
   const [
     playerSessionChanged,
     setPlayerSessionChanged,
@@ -456,6 +460,37 @@ export default function CardsPage() {
     return session.card ? [session.card] : [];
   }, [session]);
 
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    async function restoreMarks() {
+      try {
+        const response = await fetch(`/api/game/player/marks?gameId=${encodeURIComponent(session!.game.id)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message);
+        if (cancelled) return;
+        const saved = new Set<string>();
+        for (const card of cards) for (const square of card.squares) {
+          if (data.marks.some((mark: { cardId: string; position: number }) => mark.cardId === card.id && mark.position === square.squareIndex)) saved.add(getSongKey(square));
+        }
+        // Preserve legacy browser selections on this device during the transition.
+        const storageKey = getMarksStorageKey(session!.game.id, session!.player.playerId);
+        let migrated = false;
+        try { migrated = localStorage.getItem(`${storageKey}:server-saved`) === "true"; } catch { /* Server marks remain available. */ }
+        const local = migrated ? [] : readSelectedSongKeys(storageKey);
+        const keys = Array.from(new Set([...saved, ...local]));
+        setSelectedSongKeys(keys);
+        setMarksReady(true);
+        setMarksMessage("");
+        if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
+      } catch {
+        if (!cancelled) setMarksMessage("Could not load saved marks. Refresh this page to try again.");
+      }
+    }
+    void restoreMarks();
+    return () => { cancelled = true; };
+  }, [session, cards]);
+
   const activeCard = cards[activeCardIndex] ?? null;
 
   const calledGameTrackIdSet = useMemo(
@@ -490,10 +525,6 @@ export default function CardsPage() {
       setCalledGameTrackIds([]);
       setCalledTrackIds([]);
       setPlayedSongsLoaded(false);
-      return;
-    }
-
-    if (gameEnded) {
       return;
     }
 
@@ -712,7 +743,6 @@ export default function CardsPage() {
           (square) =>
             isSquarePlayed(square) &&
             (
-              square.marked ||
               selectedSongKeySet.has(getSongKey(square))
             )
         )
@@ -736,7 +766,6 @@ export default function CardsPage() {
               (square) =>
                 isSquarePlayed(square) &&
                 (
-                  square.marked ||
                   selectedSongKeySet.has(getSongKey(square))
                 )
             )
@@ -799,20 +828,36 @@ export default function CardsPage() {
     setWinningCardId(null);
   }
 
-  function saveSelectedSongKeys(nextSongKeys: string[]) {
-    setSelectedSongKeys(nextSongKeys);
-
-    if (!marksStorageKey) {
-      return;
-    }
-
-    localStorage.setItem(
-      marksStorageKey,
-      JSON.stringify(nextSongKeys)
-    );
+  async function saveSelectedSongKeys(nextSongKeys: string[]) {
+    if (!session || !marksReady || gameEnded || savingMarks.current) return;
+    savingMarks.current = true;
+    setMarksSaving(true);
+    setMarksMessage("Saving marks…");
+    try {
+      const selected = new Set(nextSongKeys);
+      const marks = cards.flatMap((card) => card.squares.filter((square) => selected.has(getSongKey(square)) && isSquarePlayed(square)).map((square) => ({ cardId: card.id, position: square.squareIndex })));
+      const response = await fetch("/api/game/player/marks", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: session.game.id, marks }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) setGameEnded(true);
+        throw new Error(data.message || "Could not save marks. Please tap the song again.");
+      }
+      setSelectedSongKeys(nextSongKeys);
+      try {
+        localStorage.setItem(marksStorageKey, JSON.stringify(nextSongKeys));
+        localStorage.setItem(`${marksStorageKey}:server-saved`, "true");
+      } catch { /* Database save succeeded. */ }
+      setMarksMessage("Marks saved");
+    } catch (error) {
+      setMarksMessage(error instanceof Error ? error.message : "Could not save marks. Please tap the song again.");
+    } finally { savingMarks.current = false; setMarksSaving(false); }
   }
 
   function toggleSong(square: CardSquare) {
+    if (gameEnded || !marksReady || savingMarks.current) return;
     const songKey = getSongKey(square);
     const current = new Set(selectedSongKeys);
 
@@ -890,9 +935,7 @@ export default function CardsPage() {
       filtered.length !==
       selectedSongKeys.length
     ) {
-      saveSelectedSongKeys(
-        filtered
-      );
+      setSelectedSongKeys(filtered);
     }
   }, [
     playedSongsLoaded,
@@ -1064,6 +1107,21 @@ export default function CardsPage() {
             {session.game.playlistName}
           </p>
 
+          <p role="status">{marksMessage}</p>
+          <details style={{ textAlign: "left", marginTop: "20px" }}>
+            <summary>View your final cards (locked)</summary>
+            {cards.map((card) => <section key={card.id}>
+              <h2>Card {card.cardNumber}</h2>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${card.columns}, minmax(0, 1fr))`, gap: "4px" }}>
+                {card.squares.map((square) => {
+                  const marked = selectedSongKeySet.has(getSongKey(square));
+                  return <div key={square.squareIndex} style={{ padding: "8px 3px", fontSize: "11px", overflowWrap: "anywhere", background: marked ? "#166534" : "#1e293b", border: "1px solid #64748b", borderRadius: "6px" }}>
+                    {marked ? "✓ " : ""}{square.title}<br />{square.artist}
+                  </div>;
+                })}
+              </div>
+            </section>)}
+          </details>
           <button
             type="button"
             onClick={leaveGame}
@@ -1638,6 +1696,7 @@ export default function CardsPage() {
 
               <strong style={{ color: "#c4b5fd" }}>
                 {activeMarks.size} / {activeCard.squareCount} marked
+                <span role="status" style={{ display: "block" }}>{marksMessage}</span>
               </strong>
             </div>
 
@@ -1663,10 +1722,7 @@ export default function CardsPage() {
                   <button
                     key={`${activeCard.id}-${square.squareIndex}`}
                     type="button"
-                    disabled={
-                      !isMarked &&
-                      !isPlayed
-                    }
+                    disabled={!marksReady || marksSaving || (!isMarked && !isPlayed)}
                     onClick={() =>
                       toggleSong(square)
                     }
