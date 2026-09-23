@@ -104,6 +104,7 @@ export default function CallerPage() {
     headerHeight,
     setHeaderHeight,
   ] = useState(0);
+  const [winner, setWinner] = useState<{ gameId: string; playerName: string; cardNumber: number } | null>(null);
 
   /*
    * BTTB_CALLER_PLAYER_ROSTER_V1
@@ -245,6 +246,29 @@ export default function CallerPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const gameId = state?.sessionId;
+    if (!gameId || winner?.gameId === gameId) return;
+    let cancelled = false;
+    let pending = false;
+    async function refreshWinner() {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch(`/api/game/${encodeURIComponent(gameId!)}/called-tracks`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+        const data = await response.json();
+        if (!cancelled && response.ok && data.ok && data.winner) {
+          setWinner({ ...data.winner, gameId: gameId! });
+        }
+      } catch { /* Retry without removing a confirmed result. */ }
+      finally { pending = false; }
+    }
+    void refreshWinner();
+    const timer = window.setInterval(() => { void refreshWinner(); }, 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [state?.sessionId, winner?.gameId]);
+  const confirmedWinner = winner?.gameId === state?.sessionId ? winner : null;
+
   const joinCode =
     (
       gameSession?.joinCode ??
@@ -294,7 +318,7 @@ export default function CallerPage() {
 
   if (
     !state ||
-    (!state.currentTrack && state.status !== "complete")
+    (!state.currentTrack && state.status !== "complete" && !confirmedWinner)
   ) {
     return (
       <main
@@ -905,10 +929,10 @@ export default function CallerPage() {
               "0 clamp(4px, 1vw, 14px)",
           }}
         >
-          {state.status === "complete" ? (
+          {state.status === "complete" || confirmedWinner ? (
             <div role="status" style={{ textAlign: "center" }}>
-              <h1 style={{ fontSize: "clamp(36px, 6vh, 64px)", margin: "0 0 16px" }}>Game complete</h1>
-              <p style={{ fontSize: "clamp(18px, 3vh, 28px)", color: "#c4b5fd" }}>Thanks for playing Bingo to the Beats!</p>
+              <h1 style={{ fontSize: "clamp(36px, 6vh, 64px)", margin: "0 0 16px" }}>{confirmedWinner ? `${confirmedWinner.playerName} wins!` : "Game complete"}</h1>
+              <p style={{ fontSize: "clamp(18px, 3vh, 28px)", color: "#c4b5fd" }}>{confirmedWinner ? `BINGO! Card #${confirmedWinner.cardNumber} • Game over` : "Thanks for playing Bingo to the Beats!"}</p>
               <p style={{ color: "#cbd5e1" }}>Keep your card open for the final results.</p>
             </div>
           ) : track && (<>

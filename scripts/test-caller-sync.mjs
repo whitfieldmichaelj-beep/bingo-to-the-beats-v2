@@ -41,10 +41,10 @@ assert.ok(!readFileSync('app/game/caller/page.tsx','utf8').includes('gameSession
 console.log('PASS caller history follows actual out-of-order songs, excludes skipped/hidden songs and includes the revealed current song once');
 
 // Render the real caller with completed snapshots; no live game is ended.
-for(const currentTrack of [null,{id:'last',name:'Final song',artist:'DJ',album:'',image:null}]) {
+for(const hasWinner of [false,true]) for(const currentTrack of [null,{id:'last',name:'Final song',artist:'DJ',album:'',image:null}]) {
  const exports={},rosterCalls=[];let stateIndex=0;
  const completed={sessionId:'finished',status:'complete',currentTrack,secondsRemaining:17,clipLength:30,isPlaying:false,isRevealed:false,currentIndex:0,totalTracks:1,recentTracks:[{id:'last',name:'Final song',artist:'DJ'}]};
- const values=[completed,{sessionId:'finished',joinCode:'FINAL'},'http://localhost:3001',0];
+ const values=[completed,{sessionId:'finished',joinCode:'FINAL'},'http://localhost:3001',0,hasWinner?{gameId:'finished',playerName:'Mike',cardNumber:5}:null];
  const jsx=(type,props)=>({type,props});
  vm.runInNewContext(compile(readFileSync('app/game/caller/page.tsx','utf8')),{exports,process:{env:{}},require:id=>{
   if(id==='react')return {useState:()=>[values[stateIndex++],()=>{}],useEffect(){},useMemo:f=>f()};
@@ -55,7 +55,8 @@ for(const currentTrack of [null,{id:'last',name:'Final song',artist:'DJ',album:'
  const tree=exports.default();
  function text(node){if(node==null||typeof node==='boolean')return '';if(typeof node!=='object')return String(node);if(Array.isArray(node))return node.map(text).join(' ');return text(node.props?.children)}
  const visible=text(tree);
- assert.ok(visible.includes('Game complete'));
+ assert.ok(visible.includes(hasWinner ? 'Mike wins!' : 'Game complete'));
+ if(hasWinner) assert.ok(visible.includes('Card #5 • Game over'));
  assert.ok(visible.includes('Final song'),'Final history stays visible');
  assert.ok(!visible.includes('SONG HIDDEN')&&!visible.includes('Paused by host')&&!visible.includes('seconds'),'Ended callers do not invite further play or show a countdown');
  assert.equal(rosterCalls[0][3],false,'Completed caller requests final roster without continuous polling');

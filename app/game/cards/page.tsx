@@ -406,8 +406,10 @@ export default function CardsPage() {
           const data =
             (await response.json()) as {
               gameStatus?: string;
+              winner?: { cardId: string; playerName: string; cardNumber: number } | null;
             };
 
+          if (data.winner) setWinner(data.winner);
           if (
             data.gameStatus ===
             "COMPLETED"
@@ -1009,7 +1011,7 @@ export default function CardsPage() {
     );
   }
 
-  if (playerSessionChanged) {
+  if (playerSessionChanged && !gameEnded) {
     return (
       <main style={centeredPageStyle}>
         <section
@@ -1077,7 +1079,7 @@ export default function CardsPage() {
               lineHeight: 1,
             }}
           >
-            🎵
+            🏆
           </div>
 
           <p
@@ -1095,17 +1097,15 @@ export default function CardsPage() {
               fontSize: "clamp(42px, 10vw, 68px)",
             }}
           >
-            Game Ended
+            {winner ? `${winner.playerName} wins!` : "Game Ended"}
           </h1>
 
-          <p
-            style={{
-              ...mutedTextStyle,
-              fontSize: "18px",
-            }}
-          >
-            {winner ? `BINGO! ${winner.playerName} wins with Card #${winner.cardNumber}.` : "Thanks for playing!"}
+          <p role="status" aria-live="polite" style={{ fontSize: "24px", fontWeight: 700 }}>
+            {winner ? `BINGO! Card #${winner.cardNumber} • Game over` : "This game has ended."}
           </p>
+          <Link href={`/game/results?gameId=${encodeURIComponent(session.game.id)}`} style={primaryLinkStyle}>
+            View game results
+          </Link>
 
           <p
             style={{

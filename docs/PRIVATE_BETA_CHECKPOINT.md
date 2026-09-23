@@ -168,3 +168,11 @@ Saving the last selected square now checks the configured winning pattern agains
 The winning player immediately sees Game Ended and the winner's saved name/card number. Other player screens receive the same result through their existing one-second played-song polling; reload restores the winner and final marks. The DJ's existing verified-winner listener handles console completion. No live rehearsal game was ended for testing.
 
 Validation: focused marks tests and real isolated practice integration cover incomplete versus completed patterns, called-song eligibility, winner announcement, final saved marks, and completion locks. Production build and full isolated verification passed. Changed backend files lint clean; the player page retains its pre-existing five lint errors and five warnings (identical before/after), with no added diagnostics.
+
+## Visible winner on Caller Screen and retained results
+
+User clarified that the missing announcement was on the Caller Screen. It previously displayed only Game complete. The caller now reads the saved verified winner for its bound game, prominently shows the name and card number, retries failed requests, and stops result polling after confirmation. Confirmed in the live TGCRNX caller: Mike wins!, BINGO! Card #5 • Game over, with final song history retained. No winner records were changed.
+
+Player completion also has a prominent winner headline and a permanent game-specific results link; completion heartbeats include winner details. /game/results?gameId=... displays verified results without requiring the old player session. Completed player results take precedence over a stale session-change notice.
+
+Validation: full isolated regression suite passed for heartbeat/results changes, including real completion heartbeat and public result-page checks. Additional actual-component tests passed for caller winners with/without a current track and player result rendering/session-change races. Final production build passed and live caller browser verification showed the winner.

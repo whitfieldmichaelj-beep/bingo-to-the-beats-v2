@@ -226,8 +226,12 @@ export async function POST(
       );
     }
 
+    const result = heartbeat.gameStatus === "COMPLETED"
+      ? await prisma.winner.findFirst({ where: { gameId, verified: true }, select: { card: { select: { id: true, playerName: true, cardNumber: true } } } })
+      : null;
     return NextResponse.json({
       ok: true,
+      winner: result ? { cardId: result.card.id, playerName: result.card.playerName || "Player", cardNumber: result.card.cardNumber } : null,
       connected:
         heartbeat.connected,
       gameStatus:
