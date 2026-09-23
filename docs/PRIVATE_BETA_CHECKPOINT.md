@@ -156,3 +156,7 @@ Caller windows now open with an explicit game ID, read game-specific saved snaps
 The caller previously preferred a slice of playlist positions for its recent-song list, which is incorrect when a DJ plays songs out of order. It now uses the console's actual played IDs, includes the current song once on reveal, and excludes skipped songs. Restored played IDs are ordered by saved call timestamps. Browser validation showed TGCRNX's actual last five songs on its linked Caller Screen, including Catch Me (I'm Falling) and Talking In Your Sleep, with the correct player/join code. A fresh countdown/reveal check is pending user playback.
 
 Tests exercise two competing games, missed messages, unavailable BroadcastChannel, listener cleanup, scoped publishing and out-of-order history. Full isolated verification and production build passed.
+
+## Caller completion display and live confirmation
+
+User confirmed the live Caller Screen now shows the played song. Completed callers now show Game complete instead of hidden-song/countdown/listening instructions, retain final history, and stop periodic roster polling. Regression tests cover completion with and without a current song and restoring the latest game-specific snapshot after remount. Caller, polling, winner-completion tests and production build passed. Current live game was not ended for testing.

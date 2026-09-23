@@ -116,7 +116,8 @@ export default function CallerPage() {
   } = useGameRoster(
     state?.sessionId,
     70,
-    5000
+    5000,
+    state?.status !== "complete"
   );
 
   useEffect(() => {
@@ -293,7 +294,7 @@ export default function CallerPage() {
 
   if (
     !state ||
-    !state.currentTrack
+    (!state.currentTrack && state.status !== "complete")
   ) {
     return (
       <main
@@ -904,6 +905,13 @@ export default function CallerPage() {
               "0 clamp(4px, 1vw, 14px)",
           }}
         >
+          {state.status === "complete" ? (
+            <div role="status" style={{ textAlign: "center" }}>
+              <h1 style={{ fontSize: "clamp(36px, 6vh, 64px)", margin: "0 0 16px" }}>Game complete</h1>
+              <p style={{ fontSize: "clamp(18px, 3vh, 28px)", color: "#c4b5fd" }}>Thanks for playing Bingo to the Beats!</p>
+              <p style={{ color: "#cbd5e1" }}>Keep your card open for the final results.</p>
+            </div>
+          ) : track && (<>
           <p
             style={{
               margin: 0,
@@ -1159,15 +1167,13 @@ export default function CallerPage() {
                 "clamp(11px, 1.45vh, 14px)",
             }}
           >
-            {state.status ===
-            "complete"
-              ? "Game playlist complete"
-              : state.isRevealed
+            {state.isRevealed
                 ? "Check your card — the next song is coming"
                 : state.isPlaying
                   ? "Listen and mark your bingo card"
                   : "Paused by host"}
           </p>
+          </>)}
         </section>
 
         {/* RIGHT — LAST 5 PLAYED */}
