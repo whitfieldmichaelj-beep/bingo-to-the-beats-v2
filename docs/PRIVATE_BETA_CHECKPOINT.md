@@ -176,3 +176,9 @@ User clarified that the missing announcement was on the Caller Screen. It previo
 Player completion also has a prominent winner headline and a permanent game-specific results link; completion heartbeats include winner details. /game/results?gameId=... displays verified results without requiring the old player session. Completed player results take precedence over a stale session-change notice.
 
 Validation: full isolated regression suite passed for heartbeat/results changes, including real completion heartbeat and public result-page checks. Additional actual-component tests passed for caller winners with/without a current track and player result rendering/session-change races. Final production build passed and live caller browser verification showed the winner.
+
+## No-charge multi-player rehearsal
+
+Phone-test mode now rejects live or unknown Stripe keys before constructing the payment client. The rehearsal launcher uses a placeholder test key; no paid checkout is needed for free practice. Guard tests cover both standard and restricted live/test key prefixes.
+
+A separate temporary practice game exercised five independent signed player sessions through the local app and database. All five joined, an existing player reconnected without duplicate allocation, a sixth was blocked, the winning selection completed the game, and every player's heartbeat and saved-card read returned the same verified winner. Other players' marks remained unchanged. No Stripe checkout or live-game mutation occurred. Temporary game and account fixtures were deleted. This is simulated multi-player coverage, not yet a real multi-device or full-capacity event test.

@@ -86,6 +86,7 @@ node scripts/test-fixture-writer.mjs
 node scripts/test-console-polling.mjs
 node scripts/test-caller-sync.mjs
 node scripts/test-player-results.mjs
+node scripts/test-stripe-rehearsal.mjs
 node scripts/test-dj-workspace-startup.mjs
 npm run test:dj-bridge
 npm run test:spotify-loading
@@ -107,6 +108,7 @@ run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:player-enrollment
 echo
 echo "Running free practice join tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" BASE_URL="$BASE_URL" npm run test:practice-join
+node scripts/test-multiplayer-rehearsal.mjs
 
 echo "Running refund tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:purchase-refunds

@@ -11,6 +11,10 @@ export function getStripe(): Stripe {
     throw new Error("STRIPE_SECRET_KEY is not configured.");
   }
 
+  if (process.env.BTTB_PHONE_TEST === "1" && !secretKey.startsWith("sk_test_") && !secretKey.startsWith("rk_test_")) {
+    throw new Error("Live payments are disabled during phone-test rehearsals.");
+  }
+
   if (!stripeClient) {
     stripeClient = new Stripe(secretKey);
   }
