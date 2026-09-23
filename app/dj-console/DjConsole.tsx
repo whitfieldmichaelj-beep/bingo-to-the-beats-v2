@@ -224,13 +224,18 @@ function createPlaybackTracks(
 
 function getRecentPlayedTracks(
   session: GameSession,
-  playedTrackIds = session.playedTrackIds
+  playedTrackIds = session.playedTrackIds,
+  includeCurrent = false
 ): Track[] {
   const trackById = new Map(
     session.tracks.map((track) => [track.id, track])
   );
 
-  return playedTrackIds
+  const currentId = session.tracks[session.currentIndex]?.id;
+  const visibleIds = includeCurrent && currentId
+    ? [...playedTrackIds.filter(id => id !== currentId), currentId]
+    : playedTrackIds;
+  return visibleIds
     .map((trackId) => trackById.get(trackId) ?? null)
     .filter((track): track is Track => track !== null)
     .reverse()
@@ -837,6 +842,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       JSON.stringify(nextSession)
     );
 
+    localStorage.setItem(`${GAME_SESSION_KEY}:${nextSession.sessionId}`, JSON.stringify(nextSession));
+
     localStorage.setItem(
       GAME_SESSION_BACKUP_KEY,
       JSON.stringify(nextSession)
@@ -1026,16 +1033,14 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     if (
       localStorage.getItem(
-        CALLER_STATE_KEY
+        `${CALLER_STATE_KEY}:${nextState.sessionId}`
       ) === serialized
     ) {
       return;
     }
 
-    localStorage.setItem(
-      CALLER_STATE_KEY,
-      serialized
-    );
+    localStorage.setItem(`${CALLER_STATE_KEY}:${nextState.sessionId}`, serialized);
+    localStorage.setItem(CALLER_STATE_KEY, serialized);
 
     try {
       const channel =
@@ -1065,6 +1070,8 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       GAME_SESSION_KEY,
       serialized
     );
+
+    localStorage.setItem(`${GAME_SESSION_KEY}:${nextSession.sessionId}`, JSON.stringify(nextSession));
 
     localStorage.setItem(
       GAME_SESSION_BACKUP_KEY,
@@ -1332,7 +1339,9 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
             tracks:
               restoredTracks,
             playedTrackIds:
-              game.calledTrackIds,
+              game.tracks.filter(track => calledIds.has(track.id))
+                .sort((a, b) => Date.parse(a.calledAt ?? "") - Date.parse(b.calledAt ?? ""))
+                .map(track => track.id),
             joinCode:
               game.joinCode,
           };
@@ -1557,6 +1566,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       };
 
       setSession(nextSession);
+      localStorage.setItem(`${GAME_SESSION_KEY}:${nextSession.sessionId}`, JSON.stringify(nextSession));
       localStorage.setItem(
         GAME_SESSION_KEY,
         JSON.stringify(nextSession)
@@ -1571,7 +1581,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       currentIndex: playback.currentIndex,
       totalTracks: session.tracks.length,
       playedCount: session.playedTrackIds.length,
-      recentTracks: getRecentPlayedTracks(session),
+      recentTracks: getRecentPlayedTracks({ ...session, currentIndex: playback.currentIndex }, session.playedTrackIds, isRevealed),
       clipLength: session.clipLength,
       secondsRemaining: playback.secondsRemaining,
       isPlaying,
@@ -2490,9 +2500,10 @@ function runAppleTransportAction(
   }
 
   function openCallerScreen() {
+    if (!session) { setMessage("Load a game before opening its Caller Screen."); return; }
     const popup = window.open(
-      "/game/caller",
-      "bttb-caller",
+      `/game/caller?gameId=${encodeURIComponent(session.sessionId)}`,
+      `bttb-caller-${session.sessionId}`,
       "popup=yes,width=1200,height=800"
     );
 

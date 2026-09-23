@@ -61,38 +61,18 @@ const GAME_SESSION_KEY =
 const CHANNEL_NAME =
   "bttb-v2-game-sync";
 
-function readCallerState():
-  CallerState | null {
+function readSavedGameValue<T extends { sessionId: string }>(key: string, gameId?: string): T | null {
   try {
-    const saved =
-      localStorage.getItem(
-        CALLER_STATE_KEY
-      );
-
-    return saved
-      ? (JSON.parse(saved) as CallerState)
-      : null;
-  } catch {
-    return null;
-  }
+    const raw = (gameId ? localStorage.getItem(`${key}:${gameId}`) : null) ?? localStorage.getItem(key);
+    const value = raw ? JSON.parse(raw) as T : null;
+    return value && (!gameId || value.sessionId === gameId) ? value : null;
+  } catch { return null; }
 }
-
-function readGameSession():
-  GameSessionSnapshot | null {
-  try {
-    const saved =
-      localStorage.getItem(
-        GAME_SESSION_KEY
-      );
-
-    return saved
-      ? (JSON.parse(
-          saved
-        ) as GameSessionSnapshot)
-      : null;
-  } catch {
-    return null;
-  }
+function readCallerState(gameId?: string) {
+  return readSavedGameValue<CallerState>(CALLER_STATE_KEY, gameId);
+}
+function readGameSession(gameId?: string) {
+  return readSavedGameValue<GameSessionSnapshot>(GAME_SESSION_KEY, gameId);
 }
 
 function normalizeBaseUrl(
@@ -140,92 +120,38 @@ export default function CallerPage() {
   );
 
   useEffect(() => {
-    setState(
-      readCallerState()
-    );
-
-    setGameSession(
-      readGameSession()
-    );
-
-    setBrowserOrigin(
-      window.location.origin
-    );
-
-    let channel:
-      BroadcastChannel | null =
-      null;
-
+    // Bind this display once. Other open consoles must never switch its game.
+    let gameId = new URLSearchParams(window.location.search).get("gameId") ||
+      readCallerState()?.sessionId || readGameSession()?.sessionId;
+    let active = true;
+    function acceptState(candidate: CallerState | null) {
+      if (!active || !candidate?.sessionId || (gameId && candidate.sessionId !== gameId)) return;
+      gameId ??= candidate.sessionId;
+      setState(previous => JSON.stringify(previous) === JSON.stringify(candidate) ? previous : candidate);
+      const snapshot = readGameSession(gameId);
+      setGameSession(previous => JSON.stringify(previous) === JSON.stringify(snapshot) ? previous : snapshot);
+    }
+    function refresh() { acceptState(readCallerState(gameId)); }
+    refresh();
+    setBrowserOrigin(window.location.origin);
+    let channel: BroadcastChannel | null = null;
     try {
-      channel =
-        new BroadcastChannel(
-          CHANNEL_NAME
-        );
-
-      channel.onmessage = (
-        event:
-          MessageEvent<CallerState>
-      ) => {
-        setState(
-          event.data
-        );
-
-        setGameSession(
-          readGameSession()
-        );
-      };
-    } catch {
-      channel = null;
+      channel = new BroadcastChannel(CHANNEL_NAME);
+      channel.onmessage = (event: MessageEvent<CallerState>) => acceptState(event.data);
+    } catch { /* Storage polling also works when BroadcastChannel is unavailable. */ }
+    function handleStorage(event: StorageEvent) {
+      if (!event.key || [CALLER_STATE_KEY, GAME_SESSION_KEY,
+        `${CALLER_STATE_KEY}:${gameId}`, `${GAME_SESSION_KEY}:${gameId}`].includes(event.key)) refresh();
     }
-
-    function handleStorage(
-      event: StorageEvent
-    ) {
-      if (
-        event.key ===
-          CALLER_STATE_KEY &&
-        event.newValue
-      ) {
-        try {
-          setState(
-            JSON.parse(
-              event.newValue
-            ) as CallerState
-          );
-        } catch {
-          // Ignore malformed state.
-        }
-      }
-
-      if (
-        event.key ===
-          GAME_SESSION_KEY &&
-        event.newValue
-      ) {
-        try {
-          setGameSession(
-            JSON.parse(
-              event.newValue
-            ) as GameSessionSnapshot
-          );
-        } catch {
-          // Ignore malformed state.
-        }
-      }
-    }
-
-    window.addEventListener(
-      "storage",
-      handleStorage
-    );
-
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 1000);
     return () => {
+      active = false;
       channel?.close();
-
-      window.removeEventListener(
-        "storage",
-        handleStorage
-      );
+      window.clearInterval(timer);
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", refresh);
     };
   }, []);
 
@@ -439,33 +365,8 @@ export default function CallerPage() {
   const track =
     state.currentTrack;
 
-  /*
-   * History comes from the real shuffled queue.
-   * Hidden current song: show tracks before it.
-   * Revealed current song: include it immediately.
-   */
-  const historyEndIndex =
-    state.isRevealed
-      ? state.currentIndex + 1
-      : state.currentIndex;
-
-  const recentTracks =
-    gameSession &&
-    gameSession.sessionId ===
-      state.sessionId
-      ? gameSession.tracks
-          .slice(
-            0,
-            Math.min(
-              historyEndIndex,
-              gameSession
-                .tracks.length
-            )
-          )
-          .reverse()
-          .slice(0, 5)
-      : state.recentTracks ??
-        [];
+  // The DJ can play songs in any order; never infer plays from playlist position.
+  const recentTracks = state.recentTracks ?? [];
 
   const visiblePlayers =
     roster.players.slice(0, 10);
@@ -1381,11 +1282,7 @@ export default function CallerPage() {
                         }}
                       >
                         #
-                        {Math.max(
-                          1,
-                          historyEndIndex -
-                            index
-                        )}
+                        {index + 1}
                       </span>
 
                       <strong

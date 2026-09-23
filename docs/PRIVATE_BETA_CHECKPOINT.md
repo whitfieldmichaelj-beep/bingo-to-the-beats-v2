@@ -148,3 +148,11 @@ Live follow-up: the requested three-song rehearsal exceeded its target. Read-onl
 Each matched DJ detection previously inserted both a raw-history row and a matched playlist row. It now inserts only the matched row; unmatched and manual observations still appear once. Existing adjacent raw/matched display pairs are filtered conservatively, preserving different artists, versions and separate plays. Console reload now restores its history from saved called-song timestamps rather than clearing the list. Verified the live TGCRNX console displays its eight saved songs once after reload.
 
 Playback/history regression tests, production build and the complete isolated verification suite passed. No called-song or player-card records were changed by this display correction.
+
+## Caller Screen game binding and played-song history
+
+Caller windows now open with an explicit game ID, read game-specific saved snapshots, and ignore broadcasts from other games. A one-second storage check recovers missed browser events. The game snapshot used for the join code is also saved per game. Legacy caller URLs bind once to the initial game instead of following whichever console broadcasts next.
+
+The caller previously preferred a slice of playlist positions for its recent-song list, which is incorrect when a DJ plays songs out of order. It now uses the console's actual played IDs, includes the current song once on reveal, and excludes skipped songs. Restored played IDs are ordered by saved call timestamps. Browser validation showed TGCRNX's actual last five songs on its linked Caller Screen, including Catch Me (I'm Falling) and Talking In Your Sleep, with the correct player/join code. A fresh countdown/reveal check is pending user playback.
+
+Tests exercise two competing games, missed messages, unavailable BroadcastChannel, listener cleanup, scoped publishing and out-of-order history. Full isolated verification and production build passed.
