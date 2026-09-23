@@ -10,12 +10,17 @@ import Hero from "../../components/serato/SeratoHero";
 import { useSeratoWorkspace } from "../../hooks/useSeratoWorkspace";
 
 export default function SeratoWorkspacePage() {
-  const [provider, setProvider] = useState<DjProvider>("serato");
+  const [provider, setProvider] = useState<DjProvider | null>(null);
   useEffect(() => {
     // Restore the device preference once after hydration; the server has no localStorage.
+    let selected = new URLSearchParams(window.location.search).get("provider");
+    if (!selected) {
+      try { selected = localStorage.getItem(DJ_PROVIDER_KEY); } catch {}
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    try { setProvider(djProvider(new URLSearchParams(window.location.search).get("provider") || localStorage.getItem(DJ_PROVIDER_KEY))); } catch {}
+    setProvider(djProvider(selected));
   }, []);
+  if (provider === null) return <main style={pageStyle}><p role="status">Preparing your DJ workspace...</p></main>;
   return <DjWorkspace key={provider} provider={provider} onProviderChange={value => {
     try {localStorage.setItem(DJ_PROVIDER_KEY,value);} catch {}
     setProvider(value);

@@ -84,6 +84,7 @@ node scripts/test-winner-completion.mjs
 node scripts/test-player-marks.mjs
 node scripts/test-fixture-writer.mjs
 node scripts/test-console-polling.mjs
+node scripts/test-dj-workspace-startup.mjs
 npm run test:dj-bridge
 npm run test:spotify-loading
 npm run test:spotify-oauth
