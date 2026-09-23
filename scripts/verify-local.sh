@@ -83,6 +83,7 @@ node scripts/test-serato-matching.mjs
 node scripts/test-winner-completion.mjs
 node scripts/test-player-marks.mjs
 node scripts/test-fixture-writer.mjs
+node scripts/test-console-polling.mjs
 npm run test:dj-bridge
 npm run test:spotify-loading
 npm run test:spotify-oauth

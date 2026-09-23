@@ -87,7 +87,8 @@ export function useGameRoster(
   gameId: string | null | undefined,
   winnerPercent = 70,
   intervalMs =
-    DEFAULT_POLL_INTERVAL_MS
+    DEFAULT_POLL_INTERVAL_MS,
+  polling = true
 ) {
   const [roster, setRoster] =
     useState<GameRoster>(
@@ -117,6 +118,7 @@ export function useGameRoster(
       );
 
     let cancelled = false;
+    let loaded = false;
     let requestInProgress = false;
     let timer:
       | number
@@ -136,7 +138,7 @@ export function useGameRoster(
     function scheduleNextPoll() {
       clearTimer();
 
-      if (cancelled) {
+      if (cancelled || !polling) {
         return;
       }
 
@@ -171,6 +173,7 @@ export function useGameRoster(
       controller =
         new AbortController();
 
+      const requestTimeout = window.setTimeout(() => controller?.abort(), 10000);
       try {
         const response = await fetch(
           `/api/game/${encodeURIComponent(
@@ -198,6 +201,7 @@ export function useGameRoster(
         }
 
         if (!cancelled) {
+          loaded = true;
           setRoster({
             players:
               data.players ?? [],
@@ -232,6 +236,7 @@ export function useGameRoster(
           );
         }
       } finally {
+        window.clearTimeout(requestTimeout);
         requestInProgress = false;
 
         if (!cancelled) {
@@ -244,7 +249,8 @@ export function useGameRoster(
     function refreshWhenActive() {
       if (
         document.hidden ||
-        !navigator.onLine
+        !navigator.onLine ||
+        (!polling && loaded)
       ) {
         return;
       }
@@ -294,6 +300,7 @@ export function useGameRoster(
     gameId,
     winnerPercent,
     intervalMs,
+    polling,
   ]);
 
   return {

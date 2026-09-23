@@ -13,6 +13,7 @@ import {
 
 type Props = {
   gameId?: string | null;
+  polling?: boolean;
   onWinnerVerified?: () => void;
   onNewClaim?: (
     claim: BingoClaim
@@ -68,12 +69,13 @@ function alertTone() {
 export default function BingoVerificationPanel({
   gameId,
   onNewClaim,
+  polling = true,
   onWinnerVerified,
 }: Props) {
   const {
     claims,
     refresh,
-  } = useBingoClaims(gameId, 1500);
+  } = useBingoClaims(gameId, 1500, polling);
 
   const [reviewing, setReviewing] =
     useState(false);

@@ -6,13 +6,15 @@ import { useGameRoster } from "@/hooks/useGameRoster";
 
 type LivePlayerRosterProps = {
   gameId?: string | null;
+  data?: ReturnType<typeof useGameRoster>;
 };
 
 export default function LivePlayerRoster({
   gameId,
+  data,
 }: LivePlayerRosterProps) {
-  const { roster, loading, error } =
-    useGameRoster(gameId, 70, 10000);
+  const localData = useGameRoster(data ? null : gameId, 70, 10000);
+  const { roster, loading, error } = data ?? localData;
 
   if (!gameId) {
     return (

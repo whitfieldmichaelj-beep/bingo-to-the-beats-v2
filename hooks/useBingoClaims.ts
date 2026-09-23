@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -27,84 +28,72 @@ export type BingoClaim = {
 };
 
 export function useBingoClaims(
-  gameId:
-    | string
-    | null
-    | undefined,
-  intervalMs = 1500
+  gameId: string | null | undefined,
+  intervalMs = 1500,
+  polling = true
 ) {
-  const [claims, setClaims] =
-    useState<BingoClaim[]>([]);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    if (!gameId) {
-      setClaims([]);
-      setError(null);
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `/api/game/${encodeURIComponent(
-          gameId
-        )}/bingo`,
-        {
-          cache: "no-store",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(
-          data.message ||
-            "Unable to load BINGO claims."
-        );
-      }
-
-      setClaims(
-        Array.isArray(data.claims)
-          ? data.claims
-          : []
-      );
-
-      setError(null);
-    } catch (refreshError) {
-      setError(
-        refreshError instanceof Error
-          ? refreshError.message
-          : "Unable to load BINGO claims."
-      );
-    }
-  }, [gameId]);
+  const [claims, setClaims] = useState<BingoClaim[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+  const refresh = useCallback(() => refreshRef.current(), []);
 
   useEffect(() => {
-    void refresh();
+    setClaims([]);
+    setError(null);
+    if (!gameId) return;
+    let cancelled = false;
+    let loaded = false;
+    let pending: Promise<void> | null = null;
+    let controller: AbortController | null = null;
 
-    if (!gameId) {
-      return;
-    }
-
-    const timer = window.setInterval(
-      () => {
-        if (!document.hidden) {
-          void refresh();
+    function load(): Promise<void> {
+      if (pending) return pending;
+      if (cancelled) return Promise.resolve();
+      controller = new AbortController();
+      const signal = controller.signal;
+      const timeout = window.setTimeout(() => controller?.abort(), 10000);
+      pending = (async () => {
+        try {
+          const response = await fetch(`/api/game/${encodeURIComponent(gameId!)}/bingo`, {
+            cache: "no-store", signal,
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.message || "Unable to load BINGO claims.");
+          if (!cancelled && !signal.aborted) {
+            setClaims(Array.isArray(data.claims) ? data.claims : []);
+            setError(null);
+            loaded = true;
+          }
+        } catch (failure) {
+          if (!cancelled) setError(signal.aborted
+            ? "BINGO check timed out. Please retry."
+            : failure instanceof Error ? failure.message : "Unable to load BINGO claims.");
+        } finally {
+          window.clearTimeout(timeout);
+          pending = null;
         }
-      },
-      Math.max(1000, intervalMs)
-    );
-
+      })();
+      return pending;
+    }
+    function checkWhenActive() {
+      if (!document.hidden && navigator.onLine && (polling || !loaded)) void load();
+    }
+    refreshRef.current = load;
+    checkWhenActive();
+    const timer = polling ? window.setInterval(checkWhenActive, Math.max(1000, intervalMs)) : null;
+    document.addEventListener("visibilitychange", checkWhenActive);
+    window.addEventListener("online", checkWhenActive);
+    window.addEventListener("focus", checkWhenActive);
     return () => {
-      window.clearInterval(timer);
+      cancelled = true;
+      controller?.abort();
+      refreshRef.current = async () => {};
+      if (timer !== null) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", checkWhenActive);
+      window.removeEventListener("online", checkWhenActive);
+      window.removeEventListener("focus", checkWhenActive);
     };
-  }, [gameId, intervalMs, refresh]);
+  }, [gameId, intervalMs, polling]);
 
-  return {
-    claims,
-    error,
-    refresh,
-  };
+  return { claims, error, refresh };
 }

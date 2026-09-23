@@ -666,13 +666,10 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const elapsedStartedAtRef = useRef<number | null>(null);
   const elapsedSessionIdRef = useRef<string | null>(null);
 
-  const { roster } = useGameRoster(
-    session?.status === "complete"
-      ? null
-      : session?.sessionId,
-    70,
-    10000
+  const rosterData = useGameRoster(
+    session?.sessionId, 70, 10000, session?.status !== "complete"
   );
+  const { roster } = rosterData;
   const playback = usePlaybackEngine(
     [],
     session?.clipLength ?? 30,
@@ -2834,6 +2831,7 @@ function runAppleTransportAction(
         />
       )}
       <BingoVerificationPanel
+        polling={session?.status !== "complete"}
         gameId={session?.sessionId}
         onWinnerVerified={() => {
           disconnectSerato();
@@ -3124,6 +3122,7 @@ function runAppleTransportAction(
             />
 
             <LivePlayerRoster
+              data={rosterData}
               gameId={session?.sessionId}
             />
           </div>
