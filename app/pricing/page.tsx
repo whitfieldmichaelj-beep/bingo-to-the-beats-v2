@@ -92,10 +92,10 @@ export default function PricingPage() {
           </p>
 
           <div className="host-type-options" aria-label="Choose your host type" style={{ marginTop: 28 }}>
-            <button type="button" className={`host-type-card ${hostType === "dj" ? "selected" : ""}`} aria-pressed={hostType === "dj"} onClick={() => selectHostType("dj")}><strong>I’m a DJ</strong><span>Serato or streaming services</span></button>
+            <button type="button" className={`host-type-card ${hostType === "dj" ? "selected" : ""}`} aria-pressed={hostType === "dj"} onClick={() => selectHostType("dj")}><strong>I’m a DJ</strong><span>Serato, Rekordbox, and Virtual DJ</span></button>
             <button type="button" className={`host-type-card ${hostType === "other" ? "selected" : ""}`} aria-pressed={hostType === "other"} onClick={() => selectHostType("other")}><strong>Other host</strong><span>Home, hotels, bars, restaurants &amp; events</span></button>
           </div>
-          {hostType && <p aria-live="polite" style={{ color: "#cbd5e1", lineHeight: 1.6 }}>{hostType === "dj" ? "Choose Serato Weekly, Serato Pro, or Serato Pro Plus for your DJ shows." : "Connect a streaming service and choose your plan by audience size below. No DJ equipment needed."}</p>}
+          {hostType && <p aria-live="polite" style={{ color: "#cbd5e1", lineHeight: 1.6 }}>{hostType === "dj" ? "Choose DJ Weekly, DJ Pro, or DJ Pro Plus for your shows with Serato, Rekordbox, or Virtual DJ." : "Connect a streaming service and choose your plan by audience size below. No DJ equipment needed."}</p>}
 
           {hostType !== "dj" && <div
             style={{
@@ -301,7 +301,7 @@ export default function PricingPage() {
                   <li>Unique bingo cards</li>
                   <li>Live host and caller screens</li>
                   <li>Player joining by game code</li>
-                  <li>{hostType === "dj" ? "Serato and supported streaming services" : "Supported streaming services"}</li>
+                  <li>{hostType === "dj" ? "Serato, Rekordbox, Virtual DJ, and supported streaming services" : "Supported streaming services"}</li>
                   <li>One active game at a time</li>
                 </ul>
 

@@ -19,9 +19,9 @@ const audiencePlans: HostPlan[] = ratePlans.flatMap(plan => {
   return options;
 });
 export const djPlans: HostPlan[] = [
-  { id: "serato-weekly", name: "Serato Weekly", amountCents: 4999, interval: "week", maxPlayers: 100, serato: true, description: "Short-term use." },
-  { id: "serato-pro", name: "Serato Pro", amountCents: 9999, interval: "month", maxPlayers: 100, serato: true, description: "For DJs hosting every weekend." },
-  { id: "serato-pro-plus", name: "Serato Pro Plus", amountCents: 14999, interval: "month", maxPlayers: 200, serato: true, description: "For larger weekly events." },
+  { id: "serato-weekly", name: "DJ Weekly", amountCents: 1995, interval: "week", maxPlayers: 25, serato: true, description: "Short-term use." },
+  { id: "serato-pro", name: "DJ Pro", amountCents: 4995, interval: "month", maxPlayers: 100, serato: true, description: "For DJs hosting every weekend." },
+  { id: "serato-pro-plus", name: "DJ Pro Plus", amountCents: 5999, interval: "month", maxPlayers: 200, serato: true, description: "For larger weekly events." },
 ];
 export const hostPlans: HostPlan[] = [...audiencePlans, ...djPlans];
 

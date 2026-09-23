@@ -11,7 +11,7 @@ function load(file, mocks) {
 const rates = load('app/lib/ratePlans.ts', {});
 const plans = load('lib/billing/plans.ts', { '../../app/lib/ratePlans': rates });
 const kind = 'bttb_host_subscription';
-const makeSub = (id, created, status='active') => ({ id, created, status, customer:'cus_host', metadata:{kind,clerkId:'host',planId:'serato-pro'}, cancel_at_period_end:false, items:{data:[{quantity:1,current_period_end:2000000000,price:{currency:'usd',unit_amount:9999,recurring:{interval:'month',interval_count:1}}}]}});
+const makeSub = (id, created, status='active') => ({ id, created, status, customer:'cus_host', metadata:{kind,clerkId:'host',planId:'serato-pro'}, cancel_at_period_end:false, items:{data:[{quantity:1,current_period_end:2000000000,price:{currency:'usd',unit_amount:4995,recurring:{interval:'month',interval_count:1}}}]}});
 let billing = {clerkId:'host',stripeCustomerId:'cus_host',stripeSubscriptionId:'sub_old',checkoutSessionId:'cs_new'};
 const subscriptions = {sub_old:makeSub('sub_old',100,'canceled'),sub_new:makeSub('sub_new',200)};
 let updates=0;
