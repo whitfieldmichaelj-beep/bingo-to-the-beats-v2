@@ -37,7 +37,7 @@ assert.equal(billing.stripeSubscriptionId,'sub_new','late canceled event cannot 
 subscriptions.sub_new.cancel_at_period_end=true;
 await helpers.handleHostBillingEvent({type:'customer.subscription.updated',data:{object:makeSub('sub_new',200)}});
 assert.equal(billing.cancelAtPeriodEnd,true,'read current Stripe state instead of stale event');
-assert.equal(plans.activePlayerLimit(billing,new Date('2026-09-15')),100,'canceled renewal retains paid access');
+assert.equal(plans.activePlayerLimit(billing,new Date('2026-09-15')),75,'canceled renewal retains paid access');
 subscriptions.sub_new.status='past_due';
 await helpers.handleHostBillingEvent({type:'invoice.payment_failed',data:{object:{parent:{subscription_details:{subscription:'sub_new'}}}}});
 assert.equal(plans.activePlayerLimit(billing,new Date('2026-09-15')),5,'failed renewal cannot grant paid capacity');

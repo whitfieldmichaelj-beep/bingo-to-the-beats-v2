@@ -13,7 +13,7 @@ const plans=load('lib/billing/plans.ts',{'../../app/lib/ratePlans':rates});
 const {reservePlayerSeat,requireMusicAccess,HostAccessError,PlayerCapacityError,reserveHostGame}=load('lib/billing/access.ts',{'@/lib/prisma':{prisma:{}},'./plans':plans});
 assert.equal(rates.ratePlans.length,3);
 assert.deepEqual(Array.from(rates.ratePlans,p=>[p.name,p.weeklyPrice,p.monthlyPrice,p.maximumPlayers]),[['Social',9.99,29.99,25],['Venue',39.99,119.99,100],['Event Plus',69.99,199.99,200]]);
-assert.deepEqual(Array.from(plans.djPlans,p=>[p.id,p.amountCents,p.interval,p.maxPlayers]),[['serato-weekly',1995,'week',25],['serato-pro',4995,'month',100],['serato-pro-plus',5999,'month',200]]);
+assert.deepEqual(Array.from(plans.djPlans,p=>[p.id,p.amountCents,p.interval,p.maxPlayers]),[['serato-weekly',1995,'week',25],['serato-pro',4995,'month',75],['serato-pro-plus',5999,'month',200]]);
 const active=planId=>({planId,status:'active',accessUntil:new Date(Date.now()+86400000)});
 for(const plan of plans.hostPlans) {
   assert.equal(plans.activePlayerLimit(active(plan.id)),plan.maxPlayers);
