@@ -142,3 +142,9 @@ Created free five-card rehearsal TGCRNX (18970290-5201-4764-826d-ed2573b7924c), 
 Validation: startup and polling regression tests, changed-file lint, production build and the full isolated verification suite passed; temporary verification data was removed.
 
 Live follow-up: the requested three-song rehearsal exceeded its target. Read-only database inspection confirmed six distinct called songs in TGCRNX: Miss You Much, Holiday, Lets Go Crazy, You Should Be Dancing, Sledgehammer, and Dont Wanna Fall In Love (7 inch Remix). The console showed Sledgehammer matched automatically with the timer at zero / Song Revealed; player Mike joined with one free card. This passes the bounded multi-song detection/persistence check. It does not replace extended event-length testing or Windows hardware acceptance.
+
+## Recently Played duplicate correction
+
+Each matched DJ detection previously inserted both a raw-history row and a matched playlist row. It now inserts only the matched row; unmatched and manual observations still appear once. Existing adjacent raw/matched display pairs are filtered conservatively, preserving different artists, versions and separate plays. Console reload now restores its history from saved called-song timestamps rather than clearing the list. Verified the live TGCRNX console displays its eight saved songs once after reload.
+
+Playback/history regression tests, production build and the complete isolated verification suite passed. No called-song or player-card records were changed by this display correction.

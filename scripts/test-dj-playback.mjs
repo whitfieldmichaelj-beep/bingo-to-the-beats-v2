@@ -81,17 +81,18 @@ console.log('PASS pending songs survive reload, isolate games/tabs, tolerate cor
 // Exercise the actual console handler with the real timer engine. No React
 // selection effect is run: the first selected song must start on detection.
 const consoleSource=readFileSync('app/dj-console/DjConsole.tsx','utf8');
-const handlerStart=consoleSource.indexOf('  function applySeratoTrack(');
+const handlerStart=consoleSource.indexOf('  function addActivity(');
 const handlerEnd=consoleSource.indexOf('\n  useEffect(',handlerStart);
 const handlerCode=ts.transpileModule(consoleSource.slice(handlerStart,handlerEnd),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
 const firstEngine=exports.usePlaybackEngine(tracks,30,{continuous:false});
 let selectedIndex=0;
+let history=[];
 const selectedSession={sessionId:'same-track-test',tracks:[{id:'first',name:'First',artist:'DJ'},{id:'second',name:'Second',artist:'DJ'}],currentIndex:0,status:'ready',playedTrackIds:[],clipLength:30};
 const pendingStart={current:false},previousDetection={current:null};
 const handlerContext=vm.createContext({
  playback:firstEngine,session:selectedSession,provider:'serato',providerLabels:{name:'Serato'},autoDetect:true,
  isPlaying:false,isRevealed:false,gameEndedRef:{current:false},autoStartNextRef:pendingStart,previousTrackId:previousDetection,
- findSeratoTrackIndex:()=>selectedIndex,setDetectedTrack(){},addActivity(){},setMessage(){},saveSession(next){handlerContext.session=next},broadcast(){},getRecentPlayedTracks:()=>[],
+ findSeratoTrackIndex:()=>selectedIndex,setDetectedTrack(){},setActivity(update){history=update(history)},localStorage:{setItem(){}},ACTIVITY_KEY:"test-history",setMessage(){},saveSession(next){handlerContext.session=next},broadcast(){},getRecentPlayedTracks:()=>[],
 });
 vm.runInContext(handlerCode,handlerContext);
 const beforeSameTrack=timers.length;
@@ -104,3 +105,39 @@ selectedIndex=1;
 vm.runInContext("applySeratoTrack({id:'live-second',title:'Second',artist:'DJ',displayText:'DJ - Second'})",handlerContext);
 assert.equal(timers.length,beforeSameTrack+2,'A different detected song also starts immediately');
 console.log('PASS actual console detection starts the selected first song and subsequent songs exactly once without waiting for a React selection effect');
+
+assert.equal(history.length,2,'One Recently Played row per matched song, including repeated polls');
+assert.deepEqual(Array.from(history,item=>item.track.id),['second','first']);
+selectedIndex=-1;
+vm.runInContext("applySeratoTrack({id:'unmatched',title:'Outside playlist',artist:'DJ',displayText:'DJ - Outside playlist'})",handlerContext);
+assert.equal(history.length,3,'An unmatched detection remains visible once');
+assert.equal(history[0].track.name,'Outside playlist');
+handlerContext.autoDetect=false;selectedIndex=0;
+vm.runInContext("applySeratoTrack({id:'manual',title:'Manual song',artist:'DJ',displayText:'DJ - Manual song'})",handlerContext);
+assert.equal(history.length,4,'Detection with automation off is still shown once');
+assert.equal(timers.length,beforeSameTrack+2,'Unmatched and manual detections do not start timers');
+console.log('PASS Recently Played uses one matched row per detection and retains unmatched/manual observations');
+
+const activityModule={};
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/dj/activity.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports:activityModule});
+const matched={track:{id:'virtualdj:one',name:'Holiday',artist:'Madonna'},detectedAt:'2026-09-23T01:00:00.100Z'};
+const raw={track:{...matched.track,id:'serato-observation'},detectedAt:'2026-09-23T01:00:00.000Z'};
+assert.equal(activityModule.visibleDjActivity([matched,raw]).length,1,'Existing raw/matched duplicate pairs are hidden');
+for(const different of [
+ {...raw,detectedAt:'2026-09-23T00:59:00.000Z'},
+ {...raw,track:{...raw.track,name:'Holiday (Remix)'}},
+ {...raw,track:{...raw.track,artist:'Another artist'}},
+ {...raw,track:{...raw.track,id:'virtualdj:other'}},
+]) assert.equal(activityModule.visibleDjActivity([matched,different]).length,2,'Distinct plays, artists and versions remain visible');
+assert.equal(activityModule.visibleDjActivity([raw]).length,1,'Unmatched history remains visible');
+console.log('PASS existing duplicate display cleanup preserves separate plays and versions');
+
+const restored=activityModule.restoredDjActivity([
+ {track:{id:'older'},calledAt:'2026-09-23T01:00:00Z'},
+ {track:{id:'uncalled'},calledAt:null},
+ {track:{id:'latest'},calledAt:'2026-09-23T01:01:00Z'},
+ {track:{id:'invalid'},calledAt:'invalid'},
+]);
+assert.deepEqual(Array.from(restored,item=>item.track.id),['latest','older']);
+assert.equal(restored[0].detectedAt,'2026-09-23T01:01:00Z');
+console.log('PASS reloading restores only saved called songs in playback order with their actual timestamps');

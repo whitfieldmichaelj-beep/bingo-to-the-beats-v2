@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { visibleDjActivity, restoredDjActivity } from "@/lib/dj/activity";
 import { DjDetectionGate, readDjConnection, djConnectionKey } from "@/lib/dj/detection";
 import { DJ_PROVIDERS, djProvider, isDjProvider } from "@/lib/dj/providers";
 import { findSeratoTrackIndex } from "@/lib/serato/track-matching";
@@ -96,6 +97,7 @@ type RestorableGame = {
   tracks: Array<{
     id: string;
     gameTrackId: string;
+    calledAt?: string | null;
     title: string;
     artist: string;
     album?: string;
@@ -1102,9 +1104,9 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     };
 
     setDetectedTrack(liveTrack);
-    addActivity(liveTrack);
 
     if (!autoDetect) {
+      addActivity(liveTrack);
       setMessage(
         `${seratoTrack.displayText} detected. Auto Detect is turned off.`
       );
@@ -1112,6 +1114,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     }
 
     if (!session) {
+      addActivity(liveTrack);
       setMessage(
         `${seratoTrack.displayText} detected. Create a game to start its countdown.`
       );
@@ -1122,6 +1125,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
       gameEndedRef.current ||
       session.status === "complete"
     ) {
+      addActivity(liveTrack);
       setMessage(
         `${seratoTrack.displayText} detected. Game is complete, so the Bingo session was not changed.`
       );
@@ -1131,6 +1135,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const matchedIndex = findSeratoTrackIndex(session.tracks, seratoTrack);
 
     if (matchedIndex === -1) {
+      addActivity(liveTrack);
       setMessage(
         `${seratoTrack.displayText} detected, but no unique song/version matches the current Bingo playlist.`
       );
@@ -1352,7 +1357,9 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
           ACTIVITY_KEY
         );
 
-        setActivity([]);
+        setActivity(restoredDjActivity(game.tracks.map((track, index) => ({
+          track: restoredTracks[index], calledAt: track.calledAt,
+        }))));
 
         saveSession(
           restoredSession
@@ -3476,7 +3483,7 @@ function runAppleTransportAction(
                     Played songs will appear here.
                   </p>
                 ) : (
-                  activity.slice(0, 8).map((item) => (
+                  visibleDjActivity(activity).slice(0, 8).map((item) => (
                     <div
                       className="dj-activity-item"
                       key={item.id}
