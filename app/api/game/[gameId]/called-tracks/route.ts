@@ -72,8 +72,14 @@ export async function GET(
         },
       });
 
+    const game = await prisma.game.findUnique({ where: { id: gameId }, select: {
+      status: true, winners: { where: { verified: true }, take: 1, select: { card: { select: { id: true, playerName: true, cardNumber: true } } } },
+    } });
+    const card = game?.winners[0]?.card;
     return NextResponse.json({
       ok: true,
+      gameStatus: game?.status,
+      winner: card ? { cardId: card.id, playerName: card.playerName || "Player", cardNumber: card.cardNumber } : null,
 
       // CardSquare.gameTrackId -> GameTrack.id
       calledGameTrackIds:

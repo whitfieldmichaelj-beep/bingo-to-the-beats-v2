@@ -280,6 +280,7 @@ export default function CardsPage() {
   const [marksStorageKey, setMarksStorageKey] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+  const [winner, setWinner] = useState<{ playerName: string; cardNumber: number; cardId: string } | null>(null);
   const [marksReady, setMarksReady] = useState(false);
   const [marksReload, setMarksReload] = useState(0);
   const [marksMessage, setMarksMessage] = useState("Loading saved marks…");
@@ -484,6 +485,7 @@ export default function CardsPage() {
         setSelectedSongKeys(keys);
         setMarksReady(true);
         setMarksMessage("");
+        if (data.winner) setWinner(data.winner);
         if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
       } catch {
         if (!cancelled) setMarksMessage("Could not load saved marks. Refresh this page to try again.");
@@ -570,6 +572,8 @@ export default function CardsPage() {
             : []
         );
 
+        if (data.winner) setWinner(data.winner);
+        if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
         setPlayedSongsLoaded(true);
       } catch {
         // Keep the last known played-song state.
@@ -848,6 +852,8 @@ export default function CardsPage() {
         if (response.status === 409) setGameEnded(true);
         throw new Error(data.message || "Could not save marks. Please tap the song again.");
       }
+      if (data.winner) setWinner(data.winner);
+      if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
       setSelectedSongKeys(nextSongKeys);
       try {
         localStorage.setItem(marksStorageKey, JSON.stringify(nextSongKeys));
@@ -1098,7 +1104,7 @@ export default function CardsPage() {
               fontSize: "18px",
             }}
           >
-            Thanks for playing!
+            {winner ? `BINGO! ${winner.playerName} wins with Card #${winner.cardNumber}.` : "Thanks for playing!"}
           </p>
 
           <p

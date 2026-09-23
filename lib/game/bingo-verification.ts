@@ -44,7 +44,7 @@ function normalizePattern(value: string) {
     : "single-line";
 }
 
-function patternGroups(pattern: string): number[][] {
+export function patternGroups(pattern: string): number[][] {
   const rows = Array.from({ length: 5 }, (_, row) =>
     Array.from({ length: 5 }, (_, column) => row * 5 + column)
   );
@@ -359,8 +359,6 @@ export async function submitBingoClaim(
       cardId,
     },
     update: {
-      verified: false,
-      verifiedAt: null,
       winningType: verification.pattern,
     },
     create: {

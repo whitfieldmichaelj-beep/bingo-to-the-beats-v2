@@ -3,6 +3,8 @@ import { readPlayerSession } from "@/lib/auth/player-session";
 import { prisma } from "@/lib/prisma";
 import { hasUnavailableDispute } from "@/lib/payments/disputes";
 
+import { patternGroups } from "@/lib/game/bingo-verification";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,7 @@ async function handle(request: NextRequest, writing: boolean) {
     const result = await prisma.$transaction(async (tx) => {
       // Serialize saves with winner confirmation so no selection can change after completion.
       await tx.$queryRaw`SELECT "id" FROM "Game" WHERE "id" = ${gameId} FOR UPDATE`;
-      const game = await tx.game.findUnique({ where: { id: gameId }, select: { status: true } });
+      const game = await tx.game.findUnique({ where: { id: gameId }, select: { status: true, winningRule: true } });
       const purchase = await tx.purchase.findUnique({
         where: { gameId_playerKey: { gameId, playerKey: session.playerId } },
         include: { disputes: true },
@@ -31,6 +33,7 @@ async function handle(request: NextRequest, writing: boolean) {
       const cards = await tx.bingoCard.findMany({
         where: { gameId, playerKey: session.playerId, purchaseId: purchase.id, status: { not: "VOID" } },
         include: { squares: true },
+        orderBy: { cardNumber: "asc" },
       });
       if (writing) {
         if (game.status === "COMPLETED" || game.status === "CANCELLED") {
@@ -50,12 +53,29 @@ async function handle(request: NextRequest, writing: boolean) {
         const cardIds = cards.map((c) => c.id);
         await tx.cardSquare.updateMany({ where: { cardId: { in: cardIds }, marked: true, id: { notIn: [...selected] } }, data: { marked: false, markedAt: null } });
         await tx.cardSquare.updateMany({ where: { cardId: { in: cardIds }, marked: false, id: { in: [...selected] } }, data: { marked: true, markedAt: new Date() } });
+        // The game row lock makes the first valid saved pattern the only winner.
+        const winningCard = cards.find((card) => patternGroups(game.winningRule).some((group) =>
+          group.every((position) => card.squares.some((square) => square.position === position && selected.has(square.id)))
+        ));
+        if (winningCard) {
+          const verifiedAt = new Date();
+          await tx.bingoCard.update({ where: { id: winningCard.id }, data: { status: "WINNER" } });
+          await tx.winner.upsert({
+            where: { cardId: winningCard.id },
+            create: { gameId, cardId: winningCard.id, verified: true, verifiedAt, winningType: game.winningRule },
+            update: { verified: true, verifiedAt, winningType: game.winningRule },
+          });
+          await tx.game.update({ where: { id: gameId }, data: { status: "COMPLETED", completedAt: verifiedAt } });
+          game.status = "COMPLETED";
+        }
       }
+      const verifiedWinner = await tx.winner.findFirst({ where: { gameId, verified: true }, select: { card: { select: { id: true, playerName: true, cardNumber: true } } } });
+      const winner = verifiedWinner ? { cardId: verifiedWinner.card.id, playerName: verifiedWinner.card.playerName || "Player", cardNumber: verifiedWinner.card.cardNumber } : null;
       const marks = await tx.cardSquare.findMany({
         where: { cardId: { in: cards.map((c) => c.id) }, marked: true },
         select: { cardId: true, position: true },
       });
-      return { status: 200, data: { ok: true, marks, gameStatus: game.status } };
+      return { status: 200, data: { ok: true, marks, gameStatus: game.status, winner } };
     });
     return NextResponse.json(result.data, { status: result.status });
   } catch {

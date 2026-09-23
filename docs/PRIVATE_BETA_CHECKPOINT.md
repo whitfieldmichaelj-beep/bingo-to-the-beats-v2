@@ -160,3 +160,11 @@ Tests exercise two competing games, missed messages, unavailable BroadcastChanne
 ## Caller completion display and live confirmation
 
 User confirmed the live Caller Screen now shows the played song. Completed callers now show Game complete instead of hidden-song/countdown/listening instructions, retain final history, and stop periodic roster polling. Regression tests cover completion with and without a current song and restoring the latest game-specific snapshot after remount. Caller, polling, winner-completion tests and production build passed. Current live game was not ended for testing.
+
+## Automatic last-square BINGO
+
+Saving the last selected square now checks the configured winning pattern against the player's purchased card and server-called songs. Under the same game row lock and transaction, a valid pattern saves the marks, verifies the winner, marks the card WINNER, and completes the game. Later mark writes are locked. A pending manual claim can no longer downgrade a verified winner.
+
+The winning player immediately sees Game Ended and the winner's saved name/card number. Other player screens receive the same result through their existing one-second played-song polling; reload restores the winner and final marks. The DJ's existing verified-winner listener handles console completion. No live rehearsal game was ended for testing.
+
+Validation: focused marks tests and real isolated practice integration cover incomplete versus completed patterns, called-song eligibility, winner announcement, final saved marks, and completion locks. Production build and full isolated verification passed. Changed backend files lint clean; the player page retains its pre-existing five lint errors and five warnings (identical before/after), with no added diagnostics.

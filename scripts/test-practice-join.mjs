@@ -11,7 +11,7 @@ async function insert(table,row){const keys=Object.keys(row);await pool.query(`I
 try{
 const source=(await pool.query('SELECT * FROM "Game" WHERE "joinCode"=$1',[process.env.JOIN_CODE||'NU3C9E'])).rows[0];assert.ok(source);
 await insert('User',{id:host,clerkId:host,updatedAt:new Date()});
-await insert('Game',{...source,id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:1});
+await insert('Game',{...source,id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',winningRule:'single-line',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:1});
 await insert('HostBilling',{clerkId:host,activeGameId:gameId,updatedAt:new Date()});
 for(const track of (await pool.query('SELECT * FROM "GameTrack" WHERE "gameId"=$1',[source.id])).rows)await insert('GameTrack',{...track,id:randomUUID(),gameId});
 const original=(await pool.query('SELECT * FROM "BingoCard" WHERE "gameId"=$1 LIMIT 1',[source.id])).rows[0];assert.ok(original);
@@ -43,9 +43,17 @@ assert.deepEqual((await (await readMarks()).json()).marks, selection, 'fresh req
 result = await writeMarks([]); assert.equal(result.status, 200);
 assert.deepEqual((await (await readMarks()).json()).marks, [], 'cleared marks remain cleared');
 result = await writeMarks(selection); assert.equal(result.status, 200);
-await pool.query('UPDATE "Game" SET status=\'COMPLETED\', "completedAt"=NOW() WHERE id=$1', [gameId]);
+const row = (await pool.query('SELECT position, "trackId" FROM "CardSquare" WHERE "cardId"=$1 AND position < 5 ORDER BY position', [cardId])).rows;
+await pool.query('UPDATE "GameTrack" SET called=true, "calledAt"=NOW() WHERE "gameId"=$1 AND "trackId"=ANY($2::text[])', [gameId, row.map(s=>s.trackId)]);
+const winningMarks = row.map(s=>({cardId,position:s.position}));
+result=await writeMarks(winningMarks.slice(0,4)); assert.equal(result.status,200); assert.notEqual((await result.json()).gameStatus,'COMPLETED');
+result=await writeMarks(winningMarks); const won=await result.json(); assert.equal(result.status,200,JSON.stringify(won)); assert.equal(won.gameStatus,'COMPLETED'); assert.equal(won.winner.playerName,'Practice tester');
+const publicState=await (await fetch(`${base}/api/game/${gameId}/called-tracks`)).json();
+assert.equal(publicState.gameStatus,'COMPLETED'); assert.equal(publicState.winner.cardId,cardId,'other player screens receive the winner');
+assert.equal((await pool.query('SELECT verified FROM "Winner" WHERE "cardId"=$1',[cardId])).rows[0].verified,true);
 assert.equal((await writeMarks([])).status, 409, 'completed games reject changes');
-assert.deepEqual((await (await readMarks()).json()).marks, selection, 'completed cards retain their selections');
+assert.equal((await (await readMarks()).json()).marks.length,5,'completed cards retain winning selections');
+console.log('PASS real automatic BINGO: last square, verified winner, completion, public announcement, saved final card');
 console.log('PASS real player mark persistence: signed session, ownership, called-song eligibility, database save, restore, clear, and completion lock');
 console.log('PASS real free-practice join: correct options, invalid quantity 400, one free active card, reconnect without a second purchase or player spot');
 }finally{await pool.query('DELETE FROM "Game" WHERE id=$1',[gameId]);await pool.query('DELETE FROM "HostBilling" WHERE "clerkId"=$1',[host]);await pool.query('DELETE FROM "User" WHERE id=$1',[host]);await pool.end();}
