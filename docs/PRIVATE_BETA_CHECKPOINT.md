@@ -217,3 +217,17 @@ Validation in an isolated Mac worktree:
 - A subsequent one-minute run captured 378 identical API payloads. Its initial direct-database expectation was wrong because the raw pg driver interpreted timestamp-without-time-zone values in the Mac's local timezone. Recomparison to SQL-formatted stored timestamps matched all 378 captured responses. No stored timestamps, Prisma behavior, or application code were changed to force a match. This does not erase or explain the earlier single inconsistency.
 
 See PRIVATE_BETA_STARTUP.md for supported startup, safety, recovery and separate-tester provisioning requirements. Remaining gates are real multi-device play, event-length active operation with retained mismatch diagnostics, and acceptance/setup on the invited testers' actual computers. No private-beta or public-release approval is claimed from a launcher or a short read-only check.
+
+## September 26 — live two-device VirtualDJ completion accepted
+
+Mike completed the existing 80S-90S POP free-practice game using VirtualDJ, the Mac DJ Console and Caller Screen, and two player devices on the local beta setup. This continued the existing game and its prior called-song history; no completed game was reopened or reset.
+
+User-confirmed observations: both player cards were visible; the Africa mark survived a player-page refresh; after the game ended, the DJ Console, Caller Screen and both player screens showed the same winner and card number. Mike confirmed the final player refresh retained the result and marks and that the final card was locked. Device models, browser versions and measured delivery latency were not recorded.
+
+Independent read-only checks found game status COMPLETED with one verified winner on Card #2. Both assigned cards retained seven marked squares. The winning card's third row (positions 10-14) contained five server-called songs; the game contained ten called songs in total. The player announcement API returned HTTP 200 with the same completed status and winner, and the saved results page returned HTTP 200 with the winner headline. The assistant did not manually award the win, mark songs, edit cards or end the game.
+
+During the rehearsal, the saved VirtualDJ historyDelay setting was observed at 45 seconds. Mike identified historyDelay as the source of the delayed display; no BTTB code was changed for that report. The Caller Screen's existing countdown/reveal rule was retained. No new latency benchmark is claimed.
+
+Acceptance outcome: the real two-device card persistence, automatic game completion and cross-screen final-result check is passed for this tested local VirtualDJ setup, based on user observation plus the read-only checks above. Do not repeat this completed milestone as though it remains untested.
+
+Still open: event-length active playback/recovery with retained diagnostic payloads (including the earlier unexplained one-in-600 response difference), and setup/acceptance on another invited DJ's actual computer and software version. This bounded rehearsal does not establish full-capacity behavior, Windows acceptance, all-provider parity, hosted companion readiness or live-billing readiness. This entry changes documentation only; no application or database settings were changed and no new code-test run is implied.
