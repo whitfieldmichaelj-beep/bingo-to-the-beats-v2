@@ -47,3 +47,6 @@ next-env.d.ts
 
 /lib/generated/prisma
 app/generated/prisma/
+
+# Isolated no-charge private-beta launcher
+/.next-private-beta/

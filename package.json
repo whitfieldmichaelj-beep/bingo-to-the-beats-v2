@@ -39,7 +39,10 @@
     "test:dj-playback": "node scripts/test-dj-playback.mjs",
     "test:crate-import": "node scripts/test-crate-import.mjs",
     "test:dj-bridge": "node scripts/test-dj-bridge.mjs",
-    "dev:phone": "BTTB_PHONE_TEST=1 WATCHPACK_POLLING=true npm run dev:test -- --port 3001"
+    "dev:phone": "BTTB_PHONE_TEST=1 WATCHPACK_POLLING=true npm run dev:test -- --port 3001",
+    "beta:start": "node scripts/start-private-beta.mjs",
+    "beta:check": "node scripts/start-private-beta.mjs --check",
+    "test:beta-startup": "node --test scripts/test-beta-startup.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",

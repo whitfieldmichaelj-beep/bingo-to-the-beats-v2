@@ -89,6 +89,7 @@ node scripts/test-caller-sync.mjs
 node scripts/test-player-results.mjs
 node scripts/test-stripe-rehearsal.mjs
 node scripts/test-dj-workspace-startup.mjs
+node --test scripts/test-beta-startup.mjs
 npm run test:dj-bridge
 npm run test:spotify-loading
 npm run test:spotify-oauth
