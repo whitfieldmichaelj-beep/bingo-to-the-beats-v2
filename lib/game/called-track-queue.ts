@@ -7,6 +7,61 @@ function browserStorage(): QueueStorage | undefined {
   catch { return undefined; }
 }
 
+// Covers both the HTTP response and its JSON body. A stalled save must not
+// hold the queue forever or prevent the next song from being attempted.
+export const CALLED_TRACK_SAVE_TIMEOUT_MS = 10_000;
+
+type SaveResult = { ok?: boolean; matched?: number };
+
+async function postCalledTrack(
+  gameId: string,
+  track: CalledTrack,
+  queueSignal: AbortSignal
+): Promise<SaveResult | null> {
+  if (queueSignal.aborted) throw new Error("Song queue disposed.");
+
+  const requestController = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancelRequest = () => {};
+
+  const interrupted = new Promise<never>((_, reject) => {
+    const stop = (message: string) => {
+      // Settle our deadline even when a transport/body reader fails to honor
+      // abort. Promise.race still observes that reader's later rejection.
+      reject(new Error(message));
+      requestController.abort();
+    };
+    cancelRequest = () => stop("Song queue disposed.");
+    queueSignal.addEventListener("abort", cancelRequest, { once: true });
+    timer = setTimeout(
+      () => stop("Played-song save timed out; retaining it for retry."),
+      CALLED_TRACK_SAVE_TIMEOUT_MS
+    );
+  });
+
+  try {
+    return await Promise.race([
+      interrupted,
+      (async () => {
+        const response = await fetch(`/api/game/${encodeURIComponent(gameId)}/called-tracks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: requestController.signal,
+          body: JSON.stringify({
+            gameTrackIds: track.gameTrackId ? [track.gameTrackId] : [],
+            providerTrackIds: track.id ? [track.id] : [],
+          }),
+        });
+        if (!response.ok) return null;
+        return await response.json() as SaveResult | null;
+      })(),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    queueSignal.removeEventListener("abort", cancelRequest);
+  }
+}
+
 /** One queue per mounted game; acknowledgments never clear another game's songs. */
 export function createCalledTrackQueue(gameId: string, storage: QueueStorage | undefined = browserStorage()) {
   const pending = new Map<string, CalledTrack>();
@@ -38,18 +93,8 @@ export function createCalledTrackQueue(gameId: string, storage: QueueStorage | u
       for (const [key, track] of pending) {
         if (controller.signal.aborted) break;
         try {
-          const response = await fetch(`/api/game/${encodeURIComponent(gameId)}/called-tracks`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: controller.signal,
-            body: JSON.stringify({
-              gameTrackIds: track.gameTrackId ? [track.gameTrackId] : [],
-              providerTrackIds: track.id ? [track.id] : [],
-            }),
-          });
-          if (!response.ok) continue;
-          const result = await response.json();
-          if (result.ok && result.matched > 0 && !controller.signal.aborted) {
+          const result = await postCalledTrack(gameId, track, controller.signal);
+          if (result?.ok && typeof result.matched === "number" && result.matched > 0 && !controller.signal.aborted) {
             sent.add(key);
             pending.delete(key);
             try { storage?.removeItem(storageKey(key)); } catch { /* A later replay is idempotent. */ }

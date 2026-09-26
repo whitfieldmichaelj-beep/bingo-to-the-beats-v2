@@ -187,11 +187,11 @@ export async function POST(
       );
     }
 
-    if (game.status === "COMPLETED") {
+    if (game.status === "COMPLETED" || game.status === "CANCELLED") {
       return NextResponse.json(
         {
           ok: false,
-          code: "GAME_COMPLETED",
+          code: game.status === "CANCELLED" ? "GAME_CANCELLED" : "GAME_COMPLETED",
           message:
             "This game has already ended. Called songs are locked.",
         },
@@ -216,96 +216,126 @@ export async function POST(
         body.providerTrackIds
       );
 
-    const byGameTrackId =
-      gameTrackIds.length > 0
-        ? await prisma.gameTrack.findMany({
-            where: {
-              gameId,
-              id: {
-                in:
-                  gameTrackIds,
-              },
-            },
-            select: {
-              id: true,
-            },
-          })
-        : [];
+    return await prisma.$transaction(async (tx) => {
+      // Serialize song saves with card marking and winner confirmation.
+      // Re-read ownership/status AFTER the lock: either can change while
+      // the request is awaiting its access check or another transaction.
+      await tx.$queryRaw`SELECT "id" FROM "Game" WHERE "id" = ${gameId} FOR UPDATE`;
 
-    const byProviderTrackId =
-      providerTrackIds.length > 0
-        ? await prisma.gameTrack.findMany({
-            where: {
-              gameId,
-              track: {
-                providerTrackId: {
+      const lockedGame = await tx.game.findFirst({
+        where: { id: gameId, host: { clerkId: userId } },
+        select: { id: true, status: true },
+      });
+
+      if (!lockedGame) {
+        return NextResponse.json(
+          { ok: false, message: "Game not found for this host." },
+          { status: 404 }
+        );
+      }
+
+      if (lockedGame.status === "COMPLETED" || lockedGame.status === "CANCELLED") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: lockedGame.status === "CANCELLED" ? "GAME_CANCELLED" : "GAME_COMPLETED",
+            message: "This game has already ended. Called songs are locked.",
+          },
+          { status: 409 }
+        );
+      }
+
+      const byGameTrackId =
+        gameTrackIds.length > 0
+          ? await tx.gameTrack.findMany({
+              where: {
+                gameId,
+                id: {
                   in:
-                    providerTrackIds,
+                    gameTrackIds,
                 },
               },
-            },
-            select: {
-              id: true,
-            },
-          })
-        : [];
+              select: {
+                id: true,
+              },
+            })
+          : [];
 
-    const matchedIds:
-      string[] =
-      Array.from(
-        new Set<string>([
-          ...byGameTrackId.map(
-            (track) =>
-              track.id
-          ),
-          ...byProviderTrackId.map(
-            (track) =>
-              track.id
-          ),
-        ])
-      );
+      const byProviderTrackId =
+        providerTrackIds.length > 0
+          ? await tx.gameTrack.findMany({
+              where: {
+                gameId,
+                track: {
+                  providerTrackId: {
+                    in:
+                      providerTrackIds,
+                  },
+                },
+              },
+              select: {
+                id: true,
+              },
+            })
+          : [];
 
-    if (
-      matchedIds.length ===
-      0
-    ) {
+      const matchedIds:
+        string[] =
+        Array.from(
+          new Set<string>([
+            ...byGameTrackId.map(
+              (track) =>
+                track.id
+            ),
+            ...byProviderTrackId.map(
+              (track) =>
+                track.id
+            ),
+          ])
+        );
+
+      if (
+        matchedIds.length ===
+        0
+      ) {
+        return NextResponse.json({
+          ok: true,
+          matched: 0,
+          updated: 0,
+        });
+      }
+
+      const calledAt =
+        new Date();
+
+      const result =
+        await tx.gameTrack.updateMany({
+          where: {
+            gameId,
+            id: {
+              in:
+                matchedIds,
+            },
+            called: false,
+          },
+          data: {
+            called: true,
+            calledAt,
+            playedAt:
+              calledAt,
+          },
+        });
+
       return NextResponse.json({
         ok: true,
-        matched: 0,
-        updated: 0,
+        matched:
+          matchedIds.length,
+        updated:
+          result.count,
+        calledAt:
+          calledAt.toISOString(),
       });
-    }
-
-    const calledAt =
-      new Date();
-
-    const result =
-      await prisma.gameTrack.updateMany({
-        where: {
-          gameId,
-          id: {
-            in:
-              matchedIds,
-          },
-          called: false,
-        },
-        data: {
-          called: true,
-          calledAt,
-          playedAt:
-            calledAt,
-        },
-      });
-
-    return NextResponse.json({
-      ok: true,
-      matched:
-        matchedIds.length,
-      updated:
-        result.count,
-      calledAt:
-        calledAt.toISOString(),
-    });
+    }, { isolationLevel: "ReadCommitted", maxWait: 5000, timeout: 10000 });
   } catch (error) {
     if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     console.error(

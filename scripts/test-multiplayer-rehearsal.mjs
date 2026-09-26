@@ -15,8 +15,8 @@ await insert('Game',{...source,id:gameId,hostId:host,joinCode:code,title:'Isolat
 await insert('HostBilling',{clerkId:host,activeGameId:gameId,updatedAt:new Date()});
 for(const track of (await pool.query('SELECT * FROM "GameTrack" WHERE "gameId"=$1',[source.id])).rows)await insert('GameTrack',{...track,id:randomUUID(),gameId});
 const original=(await pool.query('SELECT * FROM "BingoCard" WHERE "gameId"=$1 LIMIT 1',[source.id])).rows[0];assert.ok(original);
-const cardId=randomUUID();await insert('BingoCard',{...original,id:cardId,gameId,cardNumber:1,status:'AVAILABLE',playerName:null,playerKey:null,purchaseId:null});
-for(const square of (await pool.query('SELECT * FROM "CardSquare" WHERE "cardId"=$1',[original.id])).rows)await insert('CardSquare',{...square,id:randomUUID(),cardId,marked:false,markedAt:null});
+const fixtureCardId=randomUUID();await insert('BingoCard',{...original,id:fixtureCardId,gameId,cardNumber:1,status:'AVAILABLE',playerName:null,playerKey:null,purchaseId:null});
+for(const square of (await pool.query('SELECT * FROM "CardSquare" WHERE "cardId"=$1',[original.id])).rows)await insert('CardSquare',{...square,id:randomUUID(),cardId:fixtureCardId,marked:false,markedAt:null});
 for(let number=2;number<=5;number++) {
  const additionalId=randomUUID();
  await insert('BingoCard',{...original,id:additionalId,gameId,cardNumber:number,status:'AVAILABLE',playerName:null,playerKey:null,purchaseId:null});
@@ -26,9 +26,12 @@ let result=await fetch(`${base}/api/game/join-options?code=${code}`);assert.equa
 const join=quantity=>fetch(`${base}/api/game/join`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({joinCode:code,playerName:'Practice tester',cardQuantity:quantity})});
 result=await join(6);assert.equal(result.status,400,await result.text());
 result=await join(1);const body=await result.json();assert.equal(result.status,200,JSON.stringify(body));assert.equal(body.player.purchaseStatus,'PAID');assert.equal(body.player.amountCents,0);assert.equal(body.cards.length,1);
+// Allocation order is not guaranteed: test the card this player actually owns.
+const cardId=body.cards[0].id;assert.equal(typeof cardId,'string');
 const cookie=result.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie);
 result=await fetch(`${base}/api/game/join`,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({joinCode:code,playerName:'Practice tester',cardQuantity:1})});
 const rejoined=await result.json();assert.equal(rejoined.rejoined,true);assert.equal(rejoined.player.purchaseId,body.player.purchaseId);
+assert.equal(rejoined.cards[0].id,cardId,'Reconnect retains the assigned card');
 assert.equal(Number((await pool.query('SELECT count(*) FROM "GamePlayerSeat" WHERE "gameId"=$1',[gameId])).rows[0].count),1);
 const otherPlayers=[];
 for(let number=2;number<=5;number++) {
@@ -37,6 +40,7 @@ for(let number=2;number<=5;number++) {
 }
 assert.equal(Number((await pool.query('SELECT count(*) FROM "GamePlayerSeat" WHERE "gameId"=$1',[gameId])).rows[0].count),5);
 assert.equal((await join(1)).status,409,'sixth player is blocked at practice capacity');
+assert.equal(new Set([cardId,...otherPlayers.map(player=>player.cardId)]).size,5,'Each player owns a different card');
 // Exercise persistence through the real signed player session and database.
 const marksUrl = `${base}/api/game/player/marks`;
 const readMarks = () => fetch(`${marksUrl}?gameId=${gameId}`, { headers: { Cookie: cookie } });
@@ -48,6 +52,7 @@ const selection = [{ cardId, position: square.position }];
 assert.equal((await writeMarks(selection)).status, 400, 'uncalled songs cannot be marked');
 assert.equal((await writeMarks([{ cardId: original.id, position: square.position }])).status, 400, 'cards outside this purchase cannot be edited');
 await pool.query('UPDATE "GameTrack" SET called=true, "calledAt"=NOW() WHERE "gameId"=$1 AND "trackId"=$2', [gameId, square.trackId]);
+assert.equal((await writeMarks([{cardId:otherPlayers[0].cardId,position:square.position}])).status,400,'A played song on another player card is still rejected');
 result = await writeMarks(selection); assert.equal(result.status, 200, await result.text());
 let stored = (await pool.query('SELECT marked, "markedAt" FROM "CardSquare" WHERE id=$1', [square.id])).rows[0];
 assert.equal(stored.marked, true); assert.ok(stored.markedAt);

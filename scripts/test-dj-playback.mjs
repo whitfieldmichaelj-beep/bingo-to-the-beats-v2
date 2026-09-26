@@ -20,7 +20,7 @@ sync.useCalledTrackSync('game',[{id:'first'},{id:'second'}],1,false);assert.equa
 console.log('PASS out-of-order DJ songs do not call earlier or skipped songs; an unstarted selection calls nothing');
 const queueModule={};const posts=[];let failure=true;let unmatched=false;
 vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/called-track-queue.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
- exports:queueModule,AbortController,fetch:async(url,options)=>{posts.push({url,...JSON.parse(options.body)});return {ok:!failure,json:async()=>({ok:true,matched:unmatched?0:1})}},
+ exports:queueModule,AbortController,setTimeout,clearTimeout,fetch:async(url,options)=>{posts.push({url,...JSON.parse(options.body)});return {ok:!failure,json:async()=>({ok:true,matched:unmatched?0:1})}},
 });
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const queue=queueModule.createCalledTrackQueue('game-a');

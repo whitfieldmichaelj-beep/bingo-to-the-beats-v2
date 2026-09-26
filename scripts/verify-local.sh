@@ -81,6 +81,7 @@ npm run test:crate-import
 npm run test:dj-playback
 node scripts/test-serato-matching.mjs
 node scripts/test-winner-completion.mjs
+node --test scripts/test-called-track-lock.mjs scripts/test-called-track-recovery.mjs
 node scripts/test-player-marks.mjs
 node scripts/test-fixture-writer.mjs
 node scripts/test-console-polling.mjs

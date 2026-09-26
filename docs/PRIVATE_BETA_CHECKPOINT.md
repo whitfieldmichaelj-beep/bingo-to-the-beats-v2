@@ -182,3 +182,22 @@ Validation: full isolated regression suite passed for heartbeat/results changes,
 Phone-test mode now rejects live or unknown Stripe keys before constructing the payment client. The rehearsal launcher uses a placeholder test key; no paid checkout is needed for free practice. Guard tests cover both standard and restricted live/test key prefixes.
 
 A separate temporary practice game exercised five independent signed player sessions through the local app and database. All five joined, an existing player reconnected without duplicate allocation, a sixth was blocked, the winning selection completed the game, and every player's heartbeat and saved-card read returned the same verified winner. Other players' marks remained unchanged. No Stripe checkout or live-game mutation occurred. Temporary game and account fixtures were deleted. This is simulated multi-player coverage, not yet a real multi-device or full-capacity event test.
+
+
+## September 26 — installed beta reliability update
+
+Applied the reviewed reliability package to the existing Mac project, preserving the approved console and provider design. Called-song saves now recheck ownership and completed/cancelled status inside the same game-row lock used by winner confirmation. The browser song-save queue has a ten-second deadline covering response headers and body, retains pending songs after timeouts, and ignores late acknowledgments from timed-out attempts.
+
+The existing local Prisma default service was listening but read-only database connections repeatedly timed out. With Mike's approval, stopped and restarted only that existing service using Prisma's stop/start commands. No database reset, deletion, migration, Mac restart, payment configuration change or music-library change was performed. Connectivity returned. This is recovery evidence, not a resolution of the earlier prolonged-use database issue.
+
+Validation completed on the Mac:
+- All 38 focused handler/queue tests passed, including real loopback HTTP with the unmodified ten-second deadline. Handler concurrency dependencies are modeled, not a PostgreSQL concurrency/load test.
+- Existing non-database regression scripts, TypeScript and changed-application-file lint passed.
+- Production build passed in a detached validation worktree using next build --webpack. Original running app build directories were not replaced.
+- Full npm run verify passed against that production-built app at localhost:3012 with the local database, disposable game fixtures and test-only payment credentials. The temporary server was stopped afterward.
+- The five-player API/database rehearsal passed within the suite and three more times afterward. Each run verified distinct card ownership, reconnect, capacity, saved marks, the same winner reaching all sessions and completion locking. These are signed test sessions, not five physical devices.
+- Before/after checksums for IDs and relevant game, card, purchase, winner, marked-square and called-song state were unchanged across six core tables. Temporary fixture data was removed.
+
+The first full run revealed a pre-existing flaky test assumption: test-multiplayer-rehearsal.mjs used the first fixture card rather than the card actually allocated by enrollment. The test now uses the returned card ID and additionally asserts retained ownership on reconnect, five distinct assigned cards and rejection of another player's card even after its song has played. Production allocation and ownership rules were not weakened. The corrected complete rerun passed.
+
+Remaining private-beta gates: real multi-device and event-length operation, acceptance of the invited DJs' software/computer versions, and repeatable supported tester setup. A separately authenticated hosted desktop companion, public self-service deployment validation, Windows hardware acceptance and live billing are not completed or release-approved by these tests.
