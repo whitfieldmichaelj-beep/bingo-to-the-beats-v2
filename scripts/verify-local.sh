@@ -84,6 +84,7 @@ node scripts/test-winner-completion.mjs
 node --test scripts/test-called-track-lock.mjs scripts/test-called-track-recovery.mjs
 node scripts/test-player-marks.mjs
 node scripts/test-fixture-writer.mjs
+node --test scripts/test-local-statement-cleanup.mjs
 node scripts/test-console-polling.mjs
 node scripts/test-caller-sync.mjs
 node scripts/test-player-results.mjs

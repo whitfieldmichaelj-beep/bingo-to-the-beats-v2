@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { installLocalStatementCleanup } from "./database/local-statement-cleanup";
 
 type PrismaGlobals = {
   prisma?: PrismaClient;
@@ -57,8 +58,9 @@ const pool =
 
     /*
      * Periodically recycle physical pg clients.
-     * This bounds the lifetime of uniquely named prepared statements
-     * on a client and also gives dev hot-reload sessions a clean slate.
+     * Recycling is retained for connection hygiene, but the local bridge
+     * can retain plans across TCP disconnects. Explicit per-query Close
+     * below is what bounds this application's local prepared statements.
      */
     maxUses:
       process.env.NODE_ENV ===
@@ -72,6 +74,10 @@ const pool =
         ? 30 * 60
         : 10 * 60,
   });
+
+// Preserve unique naming while releasing each completed query's plan.
+// Ordinary hosted PostgreSQL keeps the existing driver behavior.
+if (localPrismaBridge) installLocalStatementCleanup(pool);
 
 if (
   process.env.NODE_ENV !==
