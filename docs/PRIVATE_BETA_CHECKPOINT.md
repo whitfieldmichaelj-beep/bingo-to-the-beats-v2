@@ -231,3 +231,15 @@ During the rehearsal, the saved VirtualDJ historyDelay setting was observed at 4
 Acceptance outcome: the real two-device card persistence, automatic game completion and cross-screen final-result check is passed for this tested local VirtualDJ setup, based on user observation plus the read-only checks above. Do not repeat this completed milestone as though it remains untested.
 
 Still open: event-length active playback/recovery with retained diagnostic payloads (including the earlier unexplained one-in-600 response difference), and setup/acceptance on another invited DJ's actual computer and software version. This bounded rehearsal does not establish full-capacity behavior, Windows acceptance, all-provider parity, hosted companion readiness or live-billing readiness. This entry changes documentation only; no application or database settings were changed and no new code-test run is implied.
+
+## September 26 local time — captured completed-game consistency follow-up
+
+After the accepted two-device game, observed the already-completed HE294R and TGCRNX games against the existing no-charge beta app. The run began at 2026-09-27T00:12:43.874Z (UTC) and lasted 300.19 seconds. It performed 300 cycles with one GET per game per cycle: 600 of 600 HTTP responses matched their own independently read database baseline. There were no HTTP failures, transport failures, malformed responses, semantic mismatches, or ordering-only changes. Response p95 was 59.23 ms; the maximum was 933.88 ms.
+
+Twenty periodic read-only SQL preservation checks found the completed status, verified winner, called-song records and saved card marks unchanged. The SQL baseline formatted stored timestamp-without-time-zone values explicitly, avoiding the raw pg driver timezone error found in the earlier diagnostic. Each game's baseline used a repeatable-read, read-only transaction that was promptly closed; the five-minute run did not hold one database transaction open.
+
+Every HTTP response body, status and timing was retained under BTTB Backups on the operator's Mac, with private filesystem permissions. Raw records contain game/player data and were not committed. HTTP errors, invalid responses, transport errors, meaningful state differences and ordering-only differences were classified separately rather than being collapsed into “state changed.”
+
+Outcome: this bounded completed-game consistency check passed. The previous isolated one-in-600 response difference was not reproduced; its lost payload prevents a retroactive explanation. This is NOT an event-length active-playback test, a load test, or a claim that the earlier database timeout issue is permanently resolved. No code, live game records, music settings, account configuration or running service was changed by the probe. Only this evidence note is added to the project.
+
+Remaining supported-beta acceptance: extended active playback/recovery with retained diagnostics, plus setup and acceptance on another invited DJ's provisioned computer/software version. The live two-device completion milestone remains passed and does not need to be repeated from scratch.
