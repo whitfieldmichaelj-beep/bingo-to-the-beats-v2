@@ -1,3 +1,4 @@
+import { expireGames, expireGameInTransaction } from "@/lib/game/expiration";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { activePlayerLimit, activeHostPlan } from "./plans";
@@ -18,18 +19,21 @@ export async function reserveHostGame(tx: Prisma.TransactionClient, clerkId: str
   const practice = forcePractice || !activeHostPlan(billing);
   const limit = practice ? 5 : activePlayerLimit(billing);
   requireMusicAccess(billing, source, practice);
-  // Paid plans limit unique people, not how many cards are generated.
-  if (practice && cardCount > 5) throw new HostAccessError("Free practice allows five players with one card each. Choose a host plan or create a five-card practice game.");
-  if (billing.activeGameId && billing.activeGameId !== gameId) {
-    const active = await tx.game.findUnique({ where: { id: billing.activeGameId }, select: { status: true } });
-    if (active && !["COMPLETED", "CANCELLED"].includes(active.status)) throw new HostAccessError("End your current game before creating another. Your plan allows one active game at a time.");
-  }
+  // Seats count unique players. Practice supplies up to ten cards for each of five seats.
+  if (practice && cardCount > 50) throw new HostAccessError("Free practice allows five players with up to ten cards each (50 cards total).");
+  // Creation cancels previous games atomically after saving the replacement.
   await tx.hostBilling.update({ where: { clerkId }, data: { activeGameId: gameId } });
   return { maxPlayers: limit, isPractice: practice, hostBillingRequired: true };
 }
 export async function requireGameHostAccess(gameId: string, expectedHost?: string, expectedSource?: string) {
-  const game = await prisma.game.findUnique({ where: { id: gameId }, select: { hostBillingRequired: true, isPractice: true, playbackConfig: true, host: { select: { clerkId: true } } } });
+  await expireGames({ id: gameId, ...(expectedHost ? { host: { clerkId: expectedHost } } : {}) });
+  const game = await prisma.game.findUnique({ where: { id: gameId }, select: { status: true, hostBillingRequired: true, isPractice: true, playbackConfig: true, host: { select: { clerkId: true } } } });
   if (!game || (expectedHost && game.host.clerkId !== expectedHost)) throw new HostAccessError("Game not found for this host.");
+  if (["COMPLETED", "CANCELLED"].includes(game.status)) {
+    const error = new HostAccessError("This game has ended and cannot be reopened. Create a new game to play.");
+    error.status = 409;
+    throw error;
+  }
   const source = (game.playbackConfig as { source?: string } | null)?.source ?? "";
   if (expectedSource && source !== expectedSource) throw new HostAccessError("This game is not configured for the selected DJ software.");
   if (!game.hostBillingRequired) return;
@@ -51,9 +55,16 @@ export async function getPlayerCapacity(gameId: string) {
 // serializable retries prevent two players claiming the final spot concurrently.
 export async function reservePlayerSeat(tx: Prisma.TransactionClient, gameId: string, playerKey: string) {
   await tx.$queryRaw`SELECT "id" FROM "Game" WHERE "id" = ${gameId} FOR UPDATE`;
-  const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, select: { hostBillingRequired: true, isPractice: true, status: true, playbackConfig: true, host: { select: { clerkId: true } } } });
+  await expireGameInTransaction(tx, gameId);
+  const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, select: { maxPlayers: true, hostBillingRequired: true, isPractice: true, status: true, playbackConfig: true, host: { select: { clerkId: true } } } });
   if (["COMPLETED", "CANCELLED"].includes(game.status)) throw new PlayerCapacityError("This game has ended.");
-  if (!game.hostBillingRequired) return;
+  if (!game.hostBillingRequired) {
+    const existing = await tx.purchase.findUnique({ where: { gameId_playerKey: { gameId, playerKey } }, select: { id: true } });
+    if (existing) return;
+    const used = await tx.purchase.count({ where: { gameId, status: { in: ["PENDING", "PAID"] } } });
+    if (used >= game.maxPlayers) throw new PlayerCapacityError(`All ${game.maxPlayers} player spots are filled.`);
+    return;
+  }
   const billing = await tx.hostBilling.findUnique({ where: { clerkId: game.host.clerkId } });
   if (billing?.activeGameId !== gameId) throw new HostAccessError("This is not the host’s active game.");
   requireMusicAccess(billing, (game.playbackConfig as { source?: string } | null)?.source ?? "", game.isPractice);

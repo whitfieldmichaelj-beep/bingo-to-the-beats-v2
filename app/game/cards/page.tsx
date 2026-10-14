@@ -1,6 +1,11 @@
 "use client";
+import { patternGroups } from "@/lib/game/card-layout";
+import { startPlayerSongPolling } from "@/lib/game/player-song-polling";
+import BackstagePass from "@/components/game/BackstagePass";
 
+import RehearsalPanel from "@/components/game/RehearsalPanel";
 import Link from "next/link";
+import { parseGamePrize, type GamePrize } from "@/lib/game/prize";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import GameAccessPanel from "../../../components/game/GameAccessPanel";
@@ -55,6 +60,7 @@ type PlayerSession = {
     joinedAt: string;
   };
   game: {
+    prize?: GamePrize | null;
     id: string;
     joinCode: string;
     playlistName: string;
@@ -156,7 +162,7 @@ function sendPresenceBeacon(
   );
 }
 
-function formatWinningPattern(pattern: WinningPattern) {
+function formatWinningPattern(pattern: WinningPattern, size = 5) {
   switch (pattern) {
     case "four-corners":
       return "Four Corners";
@@ -174,7 +180,7 @@ function formatWinningPattern(pattern: WinningPattern) {
     case "single-line":
     case "any-line":
     default:
-      return "Any 5 in a Row";
+      return `Any ${size} in a Row`;
   }
 }
 
@@ -190,43 +196,9 @@ function hasWinningPattern(
   markedIndexes: Set<number>,
   pattern: WinningPattern
 ) {
-  const rows = Array.from({ length: 5 }, (_, row) =>
-    Array.from({ length: 5 }, (_, column) => row * 5 + column)
+  return patternGroups(pattern, card.rows, card.columns).some(group =>
+    group.every(index => markedIndexes.has(index) && card.squares.some(square => square.squareIndex === index))
   );
-
-  const columns = Array.from({ length: 5 }, (_, column) =>
-    Array.from({ length: 5 }, (_, row) => row * 5 + column)
-  );
-
-  const diagonals = [
-    [0, 6, 12, 18, 24],
-    [4, 8, 12, 16, 20],
-  ];
-
-  const complete = (indexes: number[]) =>
-    indexes.every((index) => markedIndexes.has(index));
-
-  switch (pattern) {
-    case "four-corners":
-      return complete([0, 4, 20, 24]);
-    case "x-pattern":
-      return diagonals.every(complete);
-    case "full-card":
-    case "blackout":
-      return card.squares.every((square) =>
-        markedIndexes.has(square.squareIndex)
-      );
-    case "across":
-      return rows.some(complete);
-    case "down":
-      return columns.some(complete);
-    case "diagonal":
-      return diagonals.some(complete);
-    case "single-line":
-    case "any-line":
-    default:
-      return [...rows, ...columns, ...diagonals].some(complete);
-  }
 }
 
 function normalizeSongPart(value: string): string {
@@ -283,6 +255,7 @@ export default function CardsPage() {
   const [winner, setWinner] = useState<{ playerName: string; cardNumber: number; cardId: string } | null>(null);
   const [marksReady, setMarksReady] = useState(false);
   const [marksReload, setMarksReload] = useState(0);
+  const [playedSongsMessage, setPlayedSongsMessage] = useState("");
   const [marksMessage, setMarksMessage] = useState("Loading saved marks…");
   const savingMarks = useRef(false);
   const [marksSaving, setMarksSaving] = useState(false);
@@ -311,6 +284,9 @@ export default function CardsPage() {
     dismissedWinningCardIds,
     setDismissedWinningCardIds,
   ] = useState<string[]>([]);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [livePrize, setLivePrize] = useState<GamePrize | null | undefined>(undefined);
+  const prize = livePrize === undefined ? session?.game.prize : livePrize;
 
   useEffect(() => {
     try {
@@ -467,12 +443,25 @@ export default function CardsPage() {
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
+    let retry: number | undefined;
+    let requestInProgress = false;
+    let restored = false;
     async function restoreMarks() {
+      if (cancelled || requestInProgress || restored) return;
+      requestInProgress = true;
+      window.clearTimeout(retry);
       setMarksMessage("Loading saved marks…");
       try {
         const response = await fetch(`/api/game/player/marks?gameId=${encodeURIComponent(session!.game.id)}`, { cache: "no-store", signal: AbortSignal.timeout(15000) });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            if (!cancelled) setMarksMessage("Your player session needs to be restored. Rejoin using the same name and game code.");
+            return;
+          }
+          throw new Error(data.message);
+        }
+        if (!Array.isArray(data.marks)) throw new Error("Invalid saved marks response.");
         if (cancelled) return;
         const saved = new Set<string>();
         for (const card of cards) for (const square of card.squares) {
@@ -485,16 +474,22 @@ export default function CardsPage() {
         const local = migrated ? [] : readSelectedSongKeys(storageKey);
         const keys = Array.from(new Set([...saved, ...local]));
         setSelectedSongKeys(keys);
+        restored = true;
         setMarksReady(true);
         setMarksMessage("");
         if (data.winner) setWinner(data.winner);
         if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
       } catch {
-        if (!cancelled) setMarksMessage("Could not load saved marks. Refresh this page to try again.");
-      }
+        if (!cancelled) {
+          setMarksMessage("Reconnecting to your saved marks… Retrying automatically.");
+          retry = window.setTimeout(() => { void restoreMarks(); }, 3000);
+        }
+      } finally { requestInProgress = false; }
     }
+    const wake = () => { if (!document.hidden) void restoreMarks(); };
+    window.addEventListener("online", wake);
     void restoreMarks();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; window.clearTimeout(retry); window.removeEventListener("online", wake); };
   }, [session, cards, marksReload]);
 
   const activeCard = cards[activeCardIndex] ?? null;
@@ -534,72 +529,17 @@ export default function CardsPage() {
       return;
     }
 
-    let cancelled = false;
-
-    async function refreshPlayedSongs() {
-      try {
-        const response = await fetch(
-          `/api/game/${encodeURIComponent(
-            gameId
-          )}/called-tracks`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        const data =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !data.ok ||
-          cancelled
-        ) {
-          return;
-        }
-
-        setCalledGameTrackIds(
-          Array.isArray(
-            data.calledGameTrackIds
-          )
-            ? data.calledGameTrackIds
-            : []
-        );
-
-        setCalledTrackIds(
-          Array.isArray(
-            data.calledTrackIds
-          )
-            ? data.calledTrackIds
-            : []
-        );
-
-        if (data.winner) setWinner(data.winner);
-        if (["COMPLETED", "CANCELLED"].includes(data.gameStatus)) setGameEnded(true);
-        setPlayedSongsLoaded(true);
-      } catch {
-        // Keep the last known played-song state.
-      }
-    }
-
-    void refreshPlayedSongs();
-
-    const interval =
-      window.setInterval(
-        () => {
-          if (!document.hidden) {
-            void refreshPlayedSongs();
-          }
-        },
-        1000
-      );
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(
-        interval
-      );
-    };
+    return startPlayerSongPolling(gameId, (data) => {
+      setCalledGameTrackIds(data.calledGameTrackIds ?? []);
+      setCalledTrackIds(data.calledTrackIds ?? []);
+      setPlayedSongsLoaded(true);
+      setPlayedSongsMessage("");
+      if (data.winner) setWinner(data.winner);
+      if (["COMPLETED", "CANCELLED"].includes(data.gameStatus ?? "")) setGameEnded(true);
+      setLivePrize(parseGamePrize(data.prize));
+    }, () => {
+      setPlayedSongsMessage("Reconnecting to played songs… Your saved marks are safe. Updates will retry automatically.");
+    });
   }, [session?.game?.id, gameEnded]);
 
 
@@ -986,7 +926,7 @@ export default function CardsPage() {
 
   if (!loaded) {
     return (
-      <main style={centeredPageStyle}>
+      <main className="backstage-page" style={centeredPageStyle}>
         <p>Loading your bingo cards...</p>
       </main>
     );
@@ -994,9 +934,9 @@ export default function CardsPage() {
 
   if (!session || cards.length === 0) {
     return (
-      <main style={centeredPageStyle}>
+      <main className="backstage-page" style={centeredPageStyle}>
         <section style={emptyCardStyle}>
-          <p style={eyebrowStyle}>Bingo to the Beats</p>
+          <BackstagePass compact />
           <h1 style={{ margin: "8px 0 0", fontSize: "42px" }}>
             No Cards Assigned
           </h1>
@@ -1013,7 +953,7 @@ export default function CardsPage() {
 
   if (playerSessionChanged && !gameEnded) {
     return (
-      <main style={centeredPageStyle}>
+      <main className="backstage-page" style={centeredPageStyle}>
         <section
           style={{
             ...emptyCardStyle,
@@ -1066,7 +1006,7 @@ export default function CardsPage() {
 
   if (gameEnded) {
     return (
-      <main style={centeredPageStyle}>
+      <main className="backstage-page" style={centeredPageStyle}>
         <section
           style={{
             ...emptyCardStyle,
@@ -1103,6 +1043,7 @@ export default function CardsPage() {
           <p role="status" aria-live="polite" style={{ fontSize: "24px", fontWeight: 700 }}>
             {winner ? `BINGO! Card #${winner.cardNumber} • Game over` : "This game has ended."}
           </p>
+          {prize && <p className="game-prize-display"><strong>Prize:</strong> {prize.description}</p>}
           <Link href={`/game/results?gameId=${encodeURIComponent(session.game.id)}`} style={primaryLinkStyle}>
             View game results
           </Link>
@@ -1156,6 +1097,7 @@ export default function CardsPage() {
 
   return (
     <main
+      className="backstage-page"
       style={{
         minHeight: "100vh",
         padding: "28px 16px 70px",
@@ -1207,6 +1149,7 @@ export default function CardsPage() {
           margin: "0 auto",
         }}
       >
+        <RehearsalPanel key={game.id} gameId={game.id} />
         <header
           style={{
             display: "flex",
@@ -1217,7 +1160,7 @@ export default function CardsPage() {
           }}
         >
           <div>
-            <p style={eyebrowStyle}>Bingo to the Beats</p>
+            <BackstagePass compact />
             <h1
               style={{
                 margin: "7px 0 0",
@@ -1237,46 +1180,10 @@ export default function CardsPage() {
           </div>
         </header>
 
-        <div style={{ marginTop: "22px" }}>
-          <GameAccessPanel
-            joinCode={game.joinCode}
-            title="Invite Another Player"
-            compact
-          />
-        </div>
-
-        <section style={summaryPanelStyle}>
-          <div>
-            <span style={summaryLabelStyle}>Cards Purchased</span>
-            <strong style={summaryValueStyle}>{cards.length}</strong>
-          </div>
-
-          <div>
-            <span style={summaryLabelStyle}>Package Total</span>
-            <strong style={summaryValueStyle}>
-              {formatMoney(
-                pricing?.amountCents ??
-                  player.amountCents ??
-                  0
-              )}
-            </strong>
-          </div>
-
-          <div>
-            <span style={summaryLabelStyle}>Pattern</span>
-            <strong style={summaryValueStyle}>
-              {formatWinningPattern(game.bingoPattern)}
-            </strong>
-          </div>
-
-          {availability && (
-            <div>
-              <span style={summaryLabelStyle}>Cards Remaining</span>
-              <strong style={summaryValueStyle}>
-                {availability.remainingCards}
-              </strong>
-            </div>
-          )}
+        {prize && <p className="game-prize-display"><strong>Tonight’s prize:</strong> {prize.description}</p>}
+        <section className="player-play-guide" aria-label="Game instructions">
+          <div><span>Winning pattern</span><strong>{formatWinningPattern(game.bingoPattern, activeCard?.columns ?? 5)}</strong></div>
+          <p>Tap songs after the host calls them. Marking a song updates every card that contains it.</p>
         </section>
 
                 <section
@@ -1347,8 +1254,6 @@ export default function CardsPage() {
                   "1px solid #64748b",
                 borderRadius:
                   "12px",
-                outline:
-                  "none",
                 background:
                   "#020617",
                 color:
@@ -1600,7 +1505,7 @@ export default function CardsPage() {
           )}
         </section>
 
-<section
+{cards.length > 1 && <section
           style={{
             marginTop: "22px",
             padding: "18px",
@@ -1640,6 +1545,7 @@ export default function CardsPage() {
                 <button
                   key={card.id}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => setActiveCardIndex(index)}
                   style={{
                     flex: "0 0 auto",
@@ -1664,7 +1570,7 @@ export default function CardsPage() {
               );
             })}
           </div>
-        </section>
+        </section>}
 
         {activeCard && (
           <section
@@ -1692,16 +1598,7 @@ export default function CardsPage() {
                 <h2 style={{ margin: "6px 0 0" }}>
                   Card #{activeCard.cardNumber}
                 </h2>
-                <p
-                  style={{
-                    margin: "7px 0 0",
-                    color: "#94a3b8",
-                    fontSize: "12px",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  Unique ID: {activeCard.id}
-                </p>
+
               </div>
 
               <strong style={{ color: "#c4b5fd" }}>
@@ -1711,17 +1608,9 @@ export default function CardsPage() {
               </strong>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(5, minmax(0, 1fr))",
-                aspectRatio: "1 / 1",
-                marginTop: "20px",
-                border: "3px solid #a78bfa",
-                background: "#020617",
-              }}
-            >
+            {playedSongsMessage && <p role="status">{playedSongsMessage}</p>}
+            <p className="player-card-legend"><span>Waiting for song</span><span>Called — tap to mark</span><span>✓ Marked</span></p>
+            <div className="player-song-grid" style={{ gridTemplateColumns: `repeat(${activeCard.columns}, minmax(0, 1fr))` }} aria-label={`Card ${activeCard.cardNumber} songs`}>
               {activeCard.squares.map((square) => {
                 const isMarked = activeMarks.has(
                   square.squareIndex
@@ -1738,6 +1627,7 @@ export default function CardsPage() {
                       toggleSong(square)
                     }
                     aria-pressed={isMarked}
+                    aria-label={`${square.title} by ${square.artist}${isMarked ? ", marked" : isPlayed ? ", called — tap to mark" : ", waiting to be called"}`}
                     title={
                       !isMarked &&
                       !isPlayed
@@ -1750,20 +1640,9 @@ export default function CardsPage() {
                       justifyContent: "center",
                       minWidth: 0,
                       padding: "6px",
-                      border: "1px solid #475569",
-                      background: isMarked
-                        ? "linear-gradient(145deg, #84cc16, #4d7c0f)"
-                        : isPlayed
-                          ? "#020617"
-                          : "#111827",
-                      color:
-                        isMarked || isPlayed
-                          ? "white"
-                          : "#64748b",
-                      opacity:
-                        !isMarked && !isPlayed
-                          ? 0.48
-                          : 1,
+                      border: isPlayed ? "1px solid #a78bfa" : "1px solid #475569",
+                      background: isMarked ? "#bef264" : isPlayed ? "#252047" : "#172033",
+                      color: isMarked ? "#172554" : "#e2e8f0",
                       overflow: "hidden",
                       textAlign: "center",
                       cursor:
@@ -1772,23 +1651,11 @@ export default function CardsPage() {
                           : "pointer",
                     }}
                   >
-                    <strong
-                      style={{
-                        fontSize: "clamp(8px, 1.6vw, 14px)",
-                        lineHeight: 1.1,
-                      }}
-                    >
+                    <strong>
                       {square.title}
                     </strong>
 
-                    <span
-                      style={{
-                        marginTop: "5px",
-                        color: isMarked ? "#ecfccb" : "#cbd5e1",
-                        fontSize: "clamp(7px, 1.2vw, 11px)",
-                        lineHeight: 1.1,
-                      }}
-                    >
+                    <span className="player-song-artist" style={{ color: isMarked ? "#253d19" : "#cbd5e1" }}>
                       {square.artist}
                     </span>
 
@@ -1811,11 +1678,12 @@ export default function CardsPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "repeat(auto-fit, minmax(150px, 1fr))",
+                  "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
                 gap: "10px",
                 marginTop: "18px",
               }}
             >
+              {cards.length > 1 && <>
               <button
                 type="button"
                 disabled={activeCardIndex === 0}
@@ -1851,10 +1719,15 @@ export default function CardsPage() {
                 Next →
               </button>
 
+              </>}
+
               <button
                 type="button"
-                onClick={clearAllCards}
-                style={secondaryActionStyle}
+                disabled={!marksReady || marksSaving || selectedSongKeys.length === 0}
+                aria-expanded={confirmClear}
+                aria-controls="clear-marks-confirmation"
+                onClick={() => setConfirmClear(true)}
+                style={{...secondaryActionStyle, opacity: !marksReady || marksSaving || selectedSongKeys.length === 0 ? 0.45 : 1}}
               >
                 Clear All Cards
               </button>
@@ -1876,8 +1749,50 @@ export default function CardsPage() {
                 Call BINGO
               </button>
             </div>
+            {confirmClear && <div id="clear-marks-confirmation" className="player-clear-confirmation" role="group" aria-labelledby="clear-marks-title">
+              <strong id="clear-marks-title">Clear all marked songs?</strong>
+              <p>Your cards will stay assigned to you.</p>
+              <div><button type="button" style={secondaryActionStyle} onClick={() => setConfirmClear(false)}>Keep my marks</button>
+                <button type="button" style={secondaryActionStyle} disabled={!marksReady || marksSaving}
+                  onClick={() => { setConfirmClear(false); clearAllCards(); }}>Yes, clear marks</button></div>
+            </div>}
           </section>
         )}
+
+        <details className="player-details">
+          <summary>Game details &amp; invite a friend</summary>
+        <section style={summaryPanelStyle}>
+          <div>
+            <span style={summaryLabelStyle}>Your Cards</span>
+            <strong style={summaryValueStyle}>{cards.length}</strong>
+          </div>
+
+          <div>
+            <span style={summaryLabelStyle}>Your Entry</span>
+            <strong style={summaryValueStyle}>
+              {(pricing?.amountCents ?? player.amountCents ?? 0) === 0 ? "Free entry" : formatMoney(pricing?.amountCents ?? player.amountCents ?? 0)}
+            </strong>
+          </div>
+
+          <div>
+            <span style={summaryLabelStyle}>Pattern</span>
+            <strong style={summaryValueStyle}>
+              {formatWinningPattern(game.bingoPattern, activeCard?.columns ?? 5)}
+            </strong>
+          </div>
+
+          {availability && (
+            <div>
+              <span style={summaryLabelStyle}>Cards Remaining</span>
+              <strong style={summaryValueStyle}>
+                {availability.remainingCards}
+              </strong>
+            </div>
+          )}
+        </section>
+
+          <GameAccessPanel joinCode={game.joinCode} title="Invite Another Player" compact showOpenButton={false} />
+        </details>
 
         <button
           type="button"
@@ -1986,7 +1901,7 @@ const codeValueStyle = {
 const summaryPanelStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(150px, 1fr))",
+    "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
   gap: "12px",
   marginTop: "22px",
   padding: "18px",
@@ -2063,4 +1978,3 @@ const modalButtonStyle = {
   fontWeight: 900,
   cursor: "pointer",
 };
-

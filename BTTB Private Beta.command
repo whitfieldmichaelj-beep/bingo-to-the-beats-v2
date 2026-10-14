@@ -14,6 +14,7 @@ if ! command -v node >/dev/null 2>&1; then
   read -r -p "Press Return to close. " _
   exit 1
 fi
+printf "\033]0;BTTB — keep this window open\007"
 node scripts/start-private-beta.mjs "$@"
 status=$?
 if [ "$status" -ne 0 ]; then read -r -p "Press Return to close. " _; fi

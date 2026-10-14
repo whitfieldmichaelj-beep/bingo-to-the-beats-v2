@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+const layout={};
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/card-layout.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:layout});
+
 let state,eligible=true,inactive=false,competing=false,failEnd=false;
 const fixture=()=>({status:'READY',completedAt:null,verified:false,deleted:false});
 const prisma={
@@ -12,12 +15,12 @@ const prisma={
  gameTrack:{findMany:async()=>eligible?Array.from({length:25},(_,i)=>({trackId:String(i)})):[]},
  $transaction:async fn=>{const before={...state};try{return await fn({
  $queryRaw:async()=>[{id:'game'}],
- winner:{findFirst:async()=>competing?{id:'other'}:null,update:async()=>{state.verified=true}},
+ winner:{findFirst:async()=>competing?{id:'other'}:null,findUnique:async()=>({verified:state.verified}),deleteMany:async()=>{if(state.verified)return {count:0};state.deleted=true;return {count:1}},update:async()=>{state.verified=true}},
  bingoCard:{updateMany:async()=>({count:inactive?0:1})},
- game:{updateMany:async()=>{if(failEnd)throw Error('completion failed');if(state.status!=='COMPLETED'){state.status='COMPLETED';state.completedAt=new Date()}return {count:1}}},
+ game:{findFirst:async()=>({status:state.status}),updateMany:async()=>{if(failEnd)throw Error('completion failed');if(state.status!=='COMPLETED'){state.status='COMPLETED';state.completedAt=new Date()}return {count:1}}},
  })}catch(e){state=before;throw e}},
 };
-const exports={};vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/bingo-verification.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:()=>({prisma})});
+const exports={};vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/bingo-verification.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:id=>id.includes("card-layout")?layout:id.includes("expiration")?{expireGames:async()=>{},expireGameInTransaction:async()=>false}:{prisma}});
 const review=action=>exports.reviewBingoClaim('game','claim','host',action);
 state=fixture();assert.equal((await review('verify')).ok,true);assert.equal(state.status,'COMPLETED');assert.equal(state.verified,true);const end=state.completedAt;await review('verify');assert.equal(state.completedAt,end);
 state=fixture();await review('reject');assert.equal(state.status,'READY');assert.equal(state.verified,false);
@@ -25,6 +28,9 @@ state=fixture();eligible=false;assert.equal((await review('verify')).code,'NOT_E
 state=fixture();inactive=true;assert.equal((await review('verify')).code,'CARD_INACTIVE');assert.equal(state.status,'READY');inactive=false;
 state=fixture();competing=true;assert.equal((await review('verify')).code,'WINNER_EXISTS');assert.equal(state.verified,false);assert.equal(state.status,'READY');competing=false;
 state=fixture();failEnd=true;await assert.rejects(()=>review('verify'),/completion failed/);assert.equal(state.verified,false);assert.equal(state.status,'READY');
+failEnd=false;state=fixture();await review('verify');assert.equal((await review('reject')).code,'CLAIM_LOCKED');assert.equal(state.deleted,false);
+state=fixture();state.status='COMPLETED';assert.equal((await review('verify')).code,'GAME_COMPLETED');assert.equal((await review('reject')).code,'CLAIM_LOCKED');assert.equal(state.verified,false);
+state=fixture();state.status='CANCELLED';assert.equal((await review('verify')).code,'GAME_COMPLETED');
 console.log('PASS winner and game completion commit together; rejection, ineligible/inactive cards, competing winners, retries and rollback are protected');
 const panel={};let claims=[],completed=0,refIndex=0;const refs=[];
 vm.runInNewContext(ts.transpileModule(readFileSync('components/game/BingoVerificationPanel.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{

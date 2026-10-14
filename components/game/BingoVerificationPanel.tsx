@@ -14,6 +14,9 @@ import {
 type Props = {
   gameId?: string | null;
   polling?: boolean;
+  showReview?: boolean;
+  onActiveClaimChange?: (claim: BingoClaim | null) => void;
+  onConnectionErrorChange?: (error: string | null) => void;
   onWinnerVerified?: () => void;
   onNewClaim?: (
     claim: BingoClaim
@@ -70,12 +73,18 @@ export default function BingoVerificationPanel({
   gameId,
   onNewClaim,
   polling = true,
+  showReview = true,
+  onActiveClaimChange,
+  onConnectionErrorChange,
   onWinnerVerified,
 }: Props) {
   const {
     claims,
     refresh,
+    error,
   } = useBingoClaims(gameId, 1500, polling);
+
+  useEffect(() => { onConnectionErrorChange?.(error); }, [error, onConnectionErrorChange]);
 
   const [reviewing, setReviewing] =
     useState(false);
@@ -100,6 +109,10 @@ export default function BingoVerificationPanel({
   );
 
   const activeClaim = pending[0] ?? null;
+
+  useEffect(() => {
+    onActiveClaimChange?.(activeClaim);
+  }, [activeClaim, onActiveClaimChange]);
 
   useEffect(() => {
     if (
@@ -179,9 +192,14 @@ export default function BingoVerificationPanel({
     }
   }
 
-  if (!gameId || !activeClaim) {
+  if (!showReview || !gameId) {
     return null;
   }
+
+  const connectionWarning = error ? <p role="alert" style={{ padding: "12px", background: "#4a1d28", color: "#ffe1e1" }}>
+    BINGO checks interrupted — retrying automatically. Pending claims may be delayed.
+  </p> : null;
+  if (!activeClaim) return connectionWarning;
 
   return (
     <div
@@ -215,6 +233,7 @@ export default function BingoVerificationPanel({
           color: "white",
         }}
       >
+        {connectionWarning}
         <p
           style={{
             margin: 0,

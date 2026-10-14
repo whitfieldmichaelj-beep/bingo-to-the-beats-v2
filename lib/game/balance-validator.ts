@@ -1,3 +1,4 @@
+import { patternGroups } from "./card-layout";
 import type { BingoPattern } from "./types";
 
 export type GameBalanceStatus =
@@ -65,7 +66,6 @@ type PatternProfile = {
   guideline: string;
 };
 
-const MINIMUM_SONGS_PER_CARD = 25;
 const DEFAULT_CLIP_LENGTH = 30;
 const MAX_RECOMMENDED_CARDS = 5000;
 
@@ -218,10 +218,11 @@ function getStatus(
   uniqueSongCount: number,
   requestedCardCount: number,
   recommendedMaximumCards: number,
-  score: number
+  score: number,
+  songsPerCard: number
 ): GameBalanceStatus {
   if (
-    uniqueSongCount < MINIMUM_SONGS_PER_CARD ||
+    uniqueSongCount < songsPerCard ||
     recommendedMaximumCards < 1
   ) {
     return "blocked";
@@ -298,8 +299,14 @@ export function evaluateGameBalance(
     )
   );
 
-  const profile =
-    getProfile(input.bingoPattern);
+  const groups = patternGroups(input.bingoPattern, rows, columns);
+  const originalProfile = getProfile(input.bingoPattern);
+  const profile = { ...originalProfile,
+    winningPaths: groups.length,
+    minimumMarks: Math.min(...groups.map(group => group.length)),
+    recommendedSongs: Math.ceil(originalProfile.recommendedSongs * songsPerCard / 25),
+    guideline: rows === 5 ? originalProfile.guideline : `This ${rows}×${columns} pattern has ${groups.length} winning path(s) and needs ${Math.min(...groups.map(group => group.length))} marked songs. More songs and fewer cards help reduce simultaneous winners.`,
+  };
 
   const songVariation =
     Math.max(
@@ -375,7 +382,8 @@ export function evaluateGameBalance(
     uniqueSongCount,
     requestedCardCount,
     recommendedMaximumCards,
-    score
+    score,
+    songsPerCard
   );
 
   const risk = getRisk(status, score);
@@ -495,7 +503,7 @@ export function evaluateGameBalance(
       songsPerCard
     ) {
       recommendations.push(
-        "Using exactly 25 songs gives every card the same song set. Add more songs to create meaningful card variation."
+        `Using exactly ${songsPerCard} songs gives every card the same song set. Add more songs to create meaningful card variation.`
       );
     }
   }

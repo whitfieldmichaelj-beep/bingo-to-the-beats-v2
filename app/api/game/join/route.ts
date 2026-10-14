@@ -1,3 +1,5 @@
+import { EntrySettingsError } from "@/lib/game/entry";
+import { readGamePrize } from "@/lib/game/prize";
 import { PracticeQuantityError } from "@/lib/game/player-repository";
 import { HostAccessError, PlayerCapacityError, requireGameHostAccess } from "@/lib/billing/access";
 // BTTB_PLAYER_SESSION_SECURITY_V1
@@ -52,7 +54,7 @@ function normalizeCardQuantity(
 
   if (
     !Number.isInteger(quantity) ||
-    !(quantity in CARD_PRICING)
+    quantity < 1 || quantity > 10
   ) {
     return null;
   }
@@ -61,6 +63,7 @@ function normalizeCardQuantity(
 }
 
 function createGameSummary(game: {
+  playbackConfig?: unknown;
   id: string;
   joinCode: string;
   playlistName: string;
@@ -69,6 +72,7 @@ function createGameSummary(game: {
   playlistTrackCount: number;
 }) {
   return {
+    prize: readGamePrize(game.playbackConfig),
     id: game.id,
     joinCode: game.joinCode,
     playlistName: game.playlistName,
@@ -115,7 +119,7 @@ export async function POST(request: NextRequest) {
         {
           ok: false,
           message:
-            "Choose 1, 2, 3, 5, or 10 cards.",
+            "Choose between 1 and 10 cards.",
           pricing: CARD_PRICING,
         },
         { status: 400 }
@@ -226,6 +230,7 @@ export async function POST(request: NextRequest) {
         trustedPlayerSession?.playerId,
       playerName,
       quantity: cardQuantity,
+      expectedEntryMode: body.expectedEntryMode === "free" || body.expectedEntryMode === "paid" ? body.expectedEntryMode : undefined,
     });
 
     if (
@@ -360,6 +365,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
+    if (error instanceof EntrySettingsError) return NextResponse.json({ ok: false, code: "ENTRY_SETTINGS_CHANGED", message: error.message }, { status: error.status });
     if (error instanceof PracticeQuantityError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });
     if (error instanceof PlayerCapacityError) return NextResponse.json({ ok: false, code: error.code, message: error.message }, { status: error.status });
     if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });

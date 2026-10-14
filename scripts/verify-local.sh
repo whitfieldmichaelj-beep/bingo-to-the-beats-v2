@@ -81,16 +81,25 @@ npm run test:crate-import
 npm run test:dj-playback
 node scripts/test-serato-matching.mjs
 node scripts/test-winner-completion.mjs
+node --test scripts/test-game-lifecycle.mjs
 node --test scripts/test-called-track-lock.mjs scripts/test-called-track-recovery.mjs
+node scripts/test-rehearsal-instructions.mjs
 node scripts/test-player-marks.mjs
 node scripts/test-fixture-writer.mjs
 node --test scripts/test-local-statement-cleanup.mjs
 node scripts/test-console-polling.mjs
+node scripts/test-dj-mini-view.mjs
+node scripts/test-desktop-widget.mjs
+node scripts/test-widget-controller.mjs
+node scripts/test-widget-display.mjs
+node scripts/test-widget-api.mjs
+node scripts/test-bingo-connection.mjs
+node --test scripts/test-platform.mjs
 node scripts/test-caller-sync.mjs
 node scripts/test-player-results.mjs
 node scripts/test-stripe-rehearsal.mjs
 node scripts/test-dj-workspace-startup.mjs
-node --test scripts/test-beta-startup.mjs
+node --test scripts/test-beta-startup.mjs scripts/test-saved-database.mjs
 npm run test:dj-bridge
 npm run test:spotify-loading
 npm run test:spotify-oauth
@@ -98,6 +107,7 @@ echo
 
 echo "Running host resume tests..."
 npm run test:host-resume
+node scripts/test-apple-setup-navigation.mjs
 npm run test:playback-restore
 npm run test:host-billing
 npm run test:host-upgrades
@@ -112,6 +122,7 @@ echo
 echo "Running free practice join tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" BASE_URL="$BASE_URL" npm run test:practice-join
 node scripts/test-multiplayer-rehearsal.mjs
+node scripts/test-concurrent-join.mjs
 
 echo "Running refund tests..."
 run_with_pg_retry env JOIN_CODE="$JOIN_CODE" npm run test:purchase-refunds

@@ -50,3 +50,5 @@ app/generated/prisma/
 
 # Isolated no-charge private-beta launcher
 /.next-private-beta/
+/.bttb-widget/
+/.bttb-remote/

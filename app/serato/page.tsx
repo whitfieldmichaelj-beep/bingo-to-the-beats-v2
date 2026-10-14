@@ -198,6 +198,8 @@ function DjWorkspace({provider,onProviderChange}:{provider:DjProvider;onProvider
               workspace.settings.selectedPlaylist
             }
             gameDetails={workspace.settings.gameDetails}
+            cardSize={workspace.settings.cardSize}
+            onCardSizeChange={workspace.settings.onCardSizeChange}
             cardCount={workspace.settings.cardCount}
             clipLength={workspace.settings.clipLength}
             winningPattern={

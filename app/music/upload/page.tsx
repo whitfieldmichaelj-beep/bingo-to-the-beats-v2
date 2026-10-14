@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import Link from "next/link";
 import { excludedDjSong } from "@/lib/serato/song-filter";
@@ -116,14 +118,15 @@ export default function CsvUploadPage() {
     return removeDuplicates(eligible);
   }
   const [creating, setCreating] = useState(false);
+  const [cardSize, setCardSize] = useState<CardSize>(5);
   const [cardCount, setCardCount] = useState(5);
   async function createDjGame() {
     setCreating(true); setError("");
     try {
-      const response = await fetch("/api/game/create/serato-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tracks: tracks.map(({ title, artist }) => ({ title, artist })), name: fileName.replace(/\.(csv|crate|scrate)$/i, ""), cardCount, clipLength: 30 }) });
+      const response = await fetch("/api/game/create/serato-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tracks: tracks.map(({ title, artist }) => ({ title, artist })), name: fileName.replace(/\.(csv|crate|scrate)$/i, ""), cardCount, cardSize, clipLength: 30 }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not create game.");
-      window.location.assign(`/dj-console?gameId=${encodeURIComponent(data.game.id)}`);
+      window.location.assign(`/game/setup?gameId=${encodeURIComponent(data.game.id)}`);
     } catch (err) { setError(err instanceof Error ? err.message : "Could not create game."); setCreating(false); }
   }
   const [fileName, setFileName] = useState("");
@@ -435,9 +438,10 @@ export default function CsvUploadPage() {
 
               <div>
                 <p>Play music in Serato on this Mac. BTTB follows its local play history; this import contains song names only.</p>
-                <label>Game size <select value={cardCount} onChange={event => setCardCount(Number(event.target.value))} style={{ color: "#172554", backgroundColor: "#e0f2fe", colorScheme: "light", border: "2px solid #38bdf8", borderRadius: "10px", padding: "10px 12px", margin: "8px 0 8px 8px", fontWeight: 700, maxWidth: "100%", cursor: "pointer" }}><option value={5}>Free practice — 5 players</option><option value={100}>DJ plan — 100 players</option><option value={200}>DJ Pro Plus — 200 players</option></select></label>
-                <button type="button" disabled={creating || tracks.length < 25 || tracks.length > 500} onClick={() => void createDjGame()} style={{ padding: 14, marginLeft: 12, background: "#a3e635", color: "#172554", borderRadius: 16 }}>{creating ? "Creating…" : "Create DJ Game"}</button>
-                <p>Requires 25–500 unique songs. Open Serato, connect from the DJ Console, then play a new song.</p>
+                <CardSizeSelect value={cardSize} onChange={setCardSize} disabled={creating} />
+                <label>Game size <select value={cardCount} onChange={event => setCardCount(Number(event.target.value))} style={{ color: "#172554", backgroundColor: "#e0f2fe", colorScheme: "light", border: "2px solid #38bdf8", borderRadius: "10px", padding: "10px 12px", margin: "8px 0 8px 8px", fontWeight: 700, maxWidth: "100%", cursor: "pointer" }}><option value={5}>Free practice — 5 players</option><option value={100}>Beta game — 100 total cards</option></select></label>
+                <button type="button" disabled={creating || tracks.length < cardSize * cardSize || tracks.length > 500} onClick={() => void createDjGame()} style={{ padding: 14, marginLeft: 12, background: "#a3e635", color: "#172554", borderRadius: 16 }}>{creating ? "Creating…" : "Create DJ Game"}</button>
+                <p>Requires {cardSize * cardSize}–500 unique songs. Open Serato, connect from the DJ Console, then play a new song.</p>
               </div>
             </div>
 

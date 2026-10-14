@@ -1,3 +1,4 @@
+import { expireGames, expireGameInTransaction } from "@/lib/game/expiration";
 import { HostAccessError, requireGameHostAccess } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
 import {
@@ -6,6 +7,7 @@ import {
 } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { readGamePrize } from "@/lib/game/prize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +52,7 @@ export async function GET(
     const { gameId } =
       await context.params;
 
+    await expireGames({ id: gameId });
     const tracks =
       await prisma.gameTrack.findMany({
         where: {
@@ -73,12 +76,14 @@ export async function GET(
       });
 
     const game = await prisma.game.findUnique({ where: { id: gameId }, select: {
+      playbackConfig: true,
       status: true, winners: { where: { verified: true }, take: 1, select: { card: { select: { id: true, playerName: true, cardNumber: true } } } },
     } });
     const card = game?.winners[0]?.card;
     return NextResponse.json({
       ok: true,
       gameStatus: game?.status,
+      prize: readGamePrize(game?.playbackConfig),
       winner: card ? { cardId: card.id, playerName: card.playerName || "Player", cardNumber: card.cardNumber } : null,
 
       // CardSquare.gameTrackId -> GameTrack.id
@@ -222,9 +227,10 @@ export async function POST(
       // the request is awaiting its access check or another transaction.
       await tx.$queryRaw`SELECT "id" FROM "Game" WHERE "id" = ${gameId} FOR UPDATE`;
 
+      await expireGameInTransaction(tx, gameId);
       const lockedGame = await tx.game.findFirst({
         where: { id: gameId, host: { clerkId: userId } },
-        select: { id: true, status: true },
+        select: { id: true, status: true, startedAt: true },
       });
 
       if (!lockedGame) {
@@ -325,6 +331,16 @@ export async function POST(
               calledAt,
           },
         });
+
+      if (result.count > 0) {
+        // DJ auto-detection can call the first song without the manual Start button.
+        // Save that start with the song, while retaining any earlier manual start.
+        await tx.game.update({ where: { id: gameId }, data: {
+          updatedAt: calledAt,
+          ...(!lockedGame.startedAt ? { startedAt: calledAt } : {}),
+          ...(["DRAFT", "READY"].includes(lockedGame.status) ? { status: "LIVE" } : {}),
+        } });
+      }
 
       return NextResponse.json({
         ok: true,

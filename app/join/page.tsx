@@ -1,4 +1,7 @@
 "use client";
+import BackstagePass from "@/components/game/BackstagePass";
+import { parseGameEntry, type GameEntry } from "@/lib/game/entry";
+import { parseGamePrize, type GamePrize } from "@/lib/game/prize";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,7 +13,7 @@ import {
   useState,
 } from "react";
 
-type CardQuantity = 1 | 2 | 3 | 5 | 10;
+type CardQuantity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 type PlayerCard = {
   id: string;
@@ -243,34 +246,56 @@ function JoinGameForm() {
 
   const [joinCode, setJoinCode] = useState("");
   const [playerName, setPlayerName] = useState("");
-  const [joinOptions, setJoinOptions] = useState<{ code: string; isPractice: boolean } | null>(null);
+  const [cardQuantity, setCardQuantity] = useState<CardQuantity>(1);
+  const [joinOptions, setJoinOptions] = useState<{ code: string; isPractice: boolean; entry: GameEntry; prize: GamePrize | null } | null>(null);
   const [optionsError, setOptionsError] = useState("");
+  const [checkingOptions, setCheckingOptions] = useState(false);
+  const [optionsAttempt, setOptionsAttempt] = useState(0);
   const optionsReady = joinOptions?.code === normalizeCode(joinCode);
   const isPractice = optionsReady && joinOptions?.isPractice === true;
-  const availablePackages = useMemo(() => isPractice
-    ? [{ quantity: 1 as CardQuantity, priceCents: 0, label: "1 Free Practice Card", badge: "Free", savings: "One card per player" }]
-    : PACKAGES, [isPractice]);
+  const isFree = optionsReady && joinOptions?.entry.mode === "free";
+  const maxCards = optionsReady ? joinOptions.entry.maxCardsPerPlayer : 10;
+  const availablePackages = useMemo(() => isFree
+    ? Array.from({ length: maxCards }, (_, index) => ({ quantity: (index + 1) as CardQuantity, priceCents: 0, label: `${index + 1} ${index === 0 ? "Card" : "Cards"}`, badge: "Free", savings: undefined }))
+    : PACKAGES.filter(option => option.quantity <= maxCards), [isFree, maxCards]);
   useEffect(() => {
     const code = normalizeCode(joinCode);
     setJoinOptions(null);
     setOptionsError("");
+    setCheckingOptions(code.length >= 4);
     if (code.length < 4) return;
     const controller = new AbortController();
+    let deadline: ReturnType<typeof setTimeout>;
+    let cancelled = false;
     const timer = setTimeout(() => {
+      deadline = setTimeout(() => {
+        controller.abort();
+        if (!cancelled) {
+          setCheckingOptions(false);
+          setOptionsError("The game check took too long. Check your connection and try again.");
+        }
+      }, 8000);
       void fetch(`/api/game/join-options?code=${encodeURIComponent(code)}`, { signal: controller.signal, cache: "no-store" })
         .then(async response => {
           const data = await response.json();
           if (!response.ok) throw new Error(data.message || "Unable to check this game.");
           if (controller.signal.aborted) return;
-          if (data.isPractice) setCardQuantity(1);
-          setJoinOptions({ code, isPractice: data.isPractice === true });
-        }).catch(error => { if (!controller.signal.aborted) setOptionsError(error.message); });
+          const entry = parseGameEntry(data.entry);
+          if (!entry) throw new Error("Unable to confirm entry settings. Try again.");
+          setCardQuantity(current => current <= entry.maxCardsPerPlayer ? current : 1);
+          setJoinOptions({ code, isPractice: data.isPractice === true, entry, prize: parseGamePrize(data.prize) });
+        }).catch(error => {
+          if (!controller.signal.aborted) setOptionsError(error instanceof TypeError
+            ? "Unable to reach the game. Check your connection and try again."
+            : error instanceof Error ? error.message : "Unable to check this game. Please try again.");
+        }).finally(() => {
+          clearTimeout(deadline);
+          if (!cancelled) setCheckingOptions(false);
+        });
     }, 250);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [joinCode]);
+    return () => { cancelled = true; clearTimeout(timer); clearTimeout(deadline); controller.abort(); };
+  }, [joinCode, optionsAttempt]);
 
-  const [cardQuantity, setCardQuantity] =
-    useState<CardQuantity>(1);
   const [message, setMessage] = useState("");
   const [joining, setJoining] = useState(false);
   const [
@@ -373,7 +398,7 @@ function JoinGameForm() {
           !recoveredJoinCode ||
           !recoveredPlayerName ||
           !recoveredQuantity ||
-          ![1, 2, 3, 5, 10].includes(
+          ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(
             recoveredQuantity
           )
         ) {
@@ -498,6 +523,7 @@ function JoinGameForm() {
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+    if (joining) return;
     if (!optionsReady) { setMessage("Check your game code before continuing."); return; }
 
     const normalizedJoinCode = normalizeCode(joinCode);
@@ -531,10 +557,12 @@ function JoinGameForm() {
           playerName: normalizedPlayerName,
           cardQuantity,
           joinAsNewPlayer,
+          expectedEntryMode: joinOptions?.entry.mode,
         }),
       });
 
       const data = (await response.json()) as JoinResponse;
+      if (data.code === "ENTRY_SETTINGS_CHANGED") setOptionsAttempt(attempt => attempt + 1);
 
       if (
         response.status === 409 &&
@@ -597,12 +625,12 @@ function JoinGameForm() {
         data.player.amountCents;
 
       if (
-        returnedQuantity !== cardQuantity ||
+        (!data.rejoined && returnedQuantity !== cardQuantity) ||
         (
           data.player.purchaseStatus === "PAID" &&
-          returnedCardCount !== cardQuantity
+          returnedCardCount !== returnedQuantity
         ) ||
-        returnedPriceCents !== expectedPriceCents
+        (!data.rejoined && returnedPriceCents !== expectedPriceCents)
       ) {
         localStorage.removeItem(
           PLAYER_ID_KEY
@@ -696,11 +724,12 @@ function JoinGameForm() {
 
   return (
     <main
+      className="join-page backstage-page"
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "grid",
         placeItems: "center",
-        padding: "24px",
+        padding: "clamp(16px, 4vw, 32px)",
         background:
           "radial-gradient(circle at top, #312e81 0%, #111827 45%, #030712 100%)",
         color: "white",
@@ -711,13 +740,14 @@ function JoinGameForm() {
         style={{
           width: "100%",
           maxWidth: "640px",
-          padding: "32px",
+          padding: "clamp(20px, 5vw, 32px)",
           border: "1px solid rgba(167, 139, 250, 0.28)",
           borderRadius: "24px",
           background: "rgba(17, 24, 39, 0.96)",
           boxShadow: "0 28px 80px rgba(0, 0, 0, 0.42)",
         }}
       >
+        <BackstagePass />
         <header style={{ textAlign: "center" }}>
           <div
             style={{
@@ -765,65 +795,41 @@ function JoinGameForm() {
               lineHeight: 1.6,
             }}
           >
-            Enter your name, confirm the game code, and
-            choose your card package.
+            Enter the code from your host, add your name, and get ready to play.
           </p>
         </header>
 
-        <form onSubmit={handleSubmit}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "14px",
-              marginTop: "28px",
-            }}
-          >
-            <label style={fieldLabelStyle}>
-              Your name
-              <input
-                type="text"
-                value={playerName}
-                onChange={(event) =>
-                  setPlayerName(event.target.value)
-                }
-                placeholder="Enter your name"
-                autoComplete="name"
-                maxLength={50}
-                disabled={joining}
-                style={fieldInputStyle}
-              />
-            </label>
-
+        <form onSubmit={handleSubmit} aria-busy={joining}>
+          <div className="join-fields">
             <label style={fieldLabelStyle}>
               Game code
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(event) =>
-                  setJoinCode(
-                    normalizeCode(event.target.value)
-                  )
-                }
-                placeholder="ABC123"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                disabled={joining}
-                style={{
-                  ...fieldInputStyle,
-                  fontSize: "22px",
-                  fontWeight: 900,
-                  letterSpacing: "0.14em",
-                  textAlign: "center",
-                  textTransform: "uppercase",
-                }}
-              />
+              <input type="text" value={joinCode}
+                onChange={event => { setJoinCode(normalizeCode(event.target.value)); setMessage(""); }}
+                placeholder="ABC123" autoCapitalize="characters" autoCorrect="off"
+                autoComplete="off" spellCheck={false} required maxLength={12}
+                disabled={joining} aria-describedby="game-code-help"
+                aria-invalid={Boolean(optionsError)}
+                style={{...fieldInputStyle, fontWeight:900, letterSpacing:"0.12em", textTransform:"uppercase"}} />
+            </label>
+            <label style={fieldLabelStyle}>
+              Your name
+              <input type="text" value={playerName} onChange={event => setPlayerName(event.target.value)}
+                placeholder="Name shown on your card" autoComplete="name" required maxLength={50}
+                disabled={joining} style={fieldInputStyle} />
             </label>
           </div>
+          <div className={`join-code-help ${optionsError ? "is-error" : optionsReady ? "is-ready" : ""}`}>
+            <p id="game-code-help" role={optionsError ? "alert" : "status"}>
+              {checkingOptions ? "Checking your game…" : optionsError || (optionsReady
+                ? isFree ? "Game found · Free entry" : "Game found · Paid entry"
+                : "Your host’s game code is shown on the event screen or invitation.")}
+            </p>
+            {optionsError && <button type="button" className="join-retry" disabled={joining}
+              onClick={() => setOptionsAttempt(attempt => attempt + 1)}>Try again</button>}
+          </div>
 
-          <section
+          {optionsReady && joinOptions.prize && <p className="game-prize-display"><strong>Tonight’s prize:</strong> {joinOptions.prize.description}</p>}
+          {optionsReady && <section
             style={{
               marginTop: "24px",
               paddingTop: "22px",
@@ -836,7 +842,7 @@ function JoinGameForm() {
                 fontSize: "24px",
               }}
             >
-              {isPractice ? "Your Free Practice Card" : "Choose Your Cards"}
+              {isPractice ? "Choose Your Free Practice Cards" : isFree ? "Choose Your Free Cards" : "Choose Your Cards"}
             </h2>
 
             <p
@@ -845,7 +851,7 @@ function JoinGameForm() {
                 color: "#94a3b8",
               }}
             >
-              {optionsReady ? "Cards are randomly assigned and each card has its own unique ID." : optionsError || "Enter your game code to see available cards."}
+              {`Maximum ${maxCards} ${maxCards === 1 ? "card" : "cards"} per player. Returning players keep all their assigned cards.`}
             </p>
 
             <div
@@ -947,15 +953,15 @@ function JoinGameForm() {
                           : "white",
                       }}
                     >
-                      {formatMoney(option.priceCents)}
+                      {isFree ? "Free" : formatMoney(option.priceCents)}
                     </strong>
                   </button>
                 );
               })}
             </div>
-          </section>
+          </section>}
 
-          <section
+          {optionsReady && !isFree && <section
             style={{
               display: "flex",
               justifyContent: "space-between",
@@ -1001,7 +1007,7 @@ function JoinGameForm() {
               {cardQuantity}{" "}
               {cardQuantity === 1 ? "card" : "cards"}
             </span>
-          </section>
+          </section>}
 
           {identityConflict && (
             <section
@@ -1052,7 +1058,7 @@ function JoinGameForm() {
                   display: "grid",
                   gap: "10px",
                   gridTemplateColumns:
-                    "repeat(auto-fit, minmax(190px, 1fr))",
+                    "repeat(auto-fit, minmax(min(190px, 100%), 1fr))",
                 }}
               >
                 <button
@@ -1140,15 +1146,13 @@ function JoinGameForm() {
                 "0 15px 36px rgba(99, 102, 241, 0.3)",
               fontWeight: 900,
               fontSize: "17px",
-              cursor: joining
-                ? "not-allowed"
-                : "pointer",
-              opacity: joining ? 0.62 : 1,
+              cursor: joining || !optionsReady ? "not-allowed" : "pointer",
+              opacity: joining || !optionsReady ? 0.55 : 1,
             }}
           >
             {joining
               ? "Assigning Your Cards..."
-              : !optionsReady ? "Enter a valid game code" : isPractice ? "Join Free Practice" : `Continue — ${optionsReady ? formatMoney(selectedPackage.priceCents) : "—"}`}
+              : checkingOptions ? "Checking game…" : optionsError ? "Check your game code" : !optionsReady ? "Enter your game code" : isFree ? "Join Free Game" : `Continue — ${formatMoney(selectedPackage.priceCents)}`}
           </button>
 
           <p
@@ -1160,7 +1164,7 @@ function JoinGameForm() {
               textAlign: "center",
             }}
           >
-            {isPractice ? "Free practice — no payment required." : "Secure payment is processed by Stripe."}
+            {optionsReady ? isFree ? "Free entry — no payment required." : "Secure payment is processed by Stripe." : "No player account needed."}
           </p>
         </form>
 
@@ -1222,6 +1226,4 @@ const fieldInputStyle = {
   background: "#0f172a",
   color: "white",
   fontSize: "17px",
-  outline: "none",
 };
-

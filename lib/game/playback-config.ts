@@ -1,3 +1,5 @@
+import { readSavedGameEntry, type GameEntry } from "./entry";
+import { readGamePrize, type GamePrize } from "./prize";
 export type GameMusicSource = "apple" | "spotify" | "serato" | "rekordbox" | "virtualdj" | "local";
 export type PlaybackTrackConfig = {
   id: string;
@@ -6,6 +8,8 @@ export type PlaybackTrackConfig = {
   audioUrl?: string;
 };
 export type GamePlaybackConfig = {
+  prize?: GamePrize;
+  entry?: GameEntry;
   version: 1;
   source: GameMusicSource;
   clipLength: number;
@@ -18,6 +22,7 @@ export function makePlaybackConfig(
   source: GameMusicSource,
   clipLength: unknown,
   input: unknown,
+  metadata?: unknown,
 ): GamePlaybackConfig {
   const tracks: PlaybackTrackConfig[] = [];
   for (const item of Array.isArray(input) ? input : []) {
@@ -37,6 +42,8 @@ export function makePlaybackConfig(
     tracks.push(track);
   }
   return {
+    ...(readGamePrize(metadata) ? { prize: readGamePrize(metadata)! } : {}),
+    ...(readSavedGameEntry(metadata) ? { entry: readSavedGameEntry(metadata)! } : {}),
     version: 1,
     source,
     clipLength: typeof clipLength === "number" && [15, 20, 30, 45, 60].includes(clipLength) ? clipLength : 30,
@@ -52,7 +59,7 @@ export function restorePlaybackConfig(
   if (saved && typeof saved === "object") {
     const value = saved as Record<string, unknown>;
     if (value.version === 1 && ["apple", "spotify", "serato", "rekordbox", "virtualdj", "local"].includes(String(value.source))) {
-      return makePlaybackConfig(value.source as GameMusicSource, value.clipLength, value.tracks);
+      return makePlaybackConfig(value.source as GameMusicSource, value.clipLength, value.tracks, value);
     }
   }
   // Older Apple games saved their original library/catalog identifiers but lost
@@ -62,10 +69,10 @@ export function restorePlaybackConfig(
     return makePlaybackConfig("apple", 30, tracks.map(track => ({
       id: track.id,
       ...(track.id.startsWith("i.") ? { appleLibraryId: track.id } : {}),
-    })));
+    })), saved);
   }
   if (tracks.length > 0 && tracks.every(track => track.filePath.trim())) {
-    return makePlaybackConfig("serato", 30, tracks);
+    return makePlaybackConfig("serato", 30, tracks, saved);
   }
   // Do not guess a local audio source for unidentified streaming games.
   return null;

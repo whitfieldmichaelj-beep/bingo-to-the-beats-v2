@@ -1,3 +1,4 @@
+import { expireGames } from "@/lib/game/expiration";
 // BTTB_PLAYER_SESSION_SECURITY_V1
 import { NextRequest, NextResponse } from "next/server";
 
@@ -70,6 +71,7 @@ export async function POST(
      * eligibility. This prevents a heartbeat from reconnecting
      * the player after a concurrent Stripe refund disconnects it.
      */
+    await expireGames({ id: gameId });
     const heartbeat =
       await prisma.$transaction(async (tx) => {
         const lockedSessions =

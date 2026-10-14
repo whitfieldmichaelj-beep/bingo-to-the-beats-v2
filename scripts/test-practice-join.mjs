@@ -14,7 +14,7 @@ const insert=(table,row)=>insertRows(table,[row]);
 try{
 const source=(await query('SELECT * FROM "Game" WHERE "joinCode"=$1',[process.env.JOIN_CODE||'NU3C9E'])).rows[0];assert.ok(source);
 await insert('User',{id:host,clerkId:host,updatedAt:new Date()});
-await insert('Game',{...source,id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',winningRule:'single-line',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:1});
+await insert('Game',{...source,createdAt:new Date(),updatedAt:new Date(),id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',winningRule:'single-line',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:1});
 await insert('HostBilling',{clerkId:host,activeGameId:gameId,updatedAt:new Date()});
 for(const track of (await query('SELECT * FROM "GameTrack" WHERE "gameId"=$1',[source.id])).rows)await insert('GameTrack',{...track,id:randomUUID(),gameId});
 const original=(await query('SELECT * FROM "BingoCard" WHERE "gameId"=$1 LIMIT 1',[source.id])).rows[0];assert.ok(original);
@@ -22,7 +22,7 @@ const cardId=randomUUID();await insert('BingoCard',{...original,id:cardId,gameId
 for(const square of (await query('SELECT * FROM "CardSquare" WHERE "cardId"=$1',[original.id])).rows)await insert('CardSquare',{...square,id:randomUUID(),cardId,marked:false,markedAt:null});
 let result=await fetch(`${base}/api/game/join-options?code=${code}`);assert.equal(result.status,200);assert.equal((await result.json()).isPractice,true);
 const join=quantity=>fetch(`${base}/api/game/join`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({joinCode:code,playerName:'Practice tester',cardQuantity:quantity})});
-result=await join(2);assert.equal(result.status,400,await result.text());
+result=await join(11);assert.equal(result.status,400,await result.text());
 result=await join(1);const body=await result.json();assert.equal(result.status,200,JSON.stringify(body));assert.equal(body.player.purchaseStatus,'PAID');assert.equal(body.player.amountCents,0);assert.equal(body.cards.length,1);
 const cookie=result.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie);
 result=await fetch(`${base}/api/game/join`,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({joinCode:code,playerName:'Practice tester',cardQuantity:1})});

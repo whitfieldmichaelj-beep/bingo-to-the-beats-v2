@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import {
   useMemo,
@@ -43,7 +45,6 @@ type CreateGameResponse =
       error: string;
     };
 
-const MINIMUM_TRACKS = 25;
 const IDEAL_TRACKS = 75;
 const REQUESTED_TRACKS = 80;
 const DEFAULT_CARD_COUNT = 25;
@@ -54,7 +55,8 @@ const CREATED_GAME_KEY =
   "bttb-v2-created-game";
 
 function createAdvisor(
-  playlist: LocalMusicPlaylist | null
+  playlist: LocalMusicPlaylist | null,
+  minimumTracks: number
 ): LocalMusicGameAdvisor | null {
   if (!playlist) {
     return null;
@@ -103,17 +105,17 @@ function createAdvisor(
 
   if (
     playableTracks.length <
-    MINIMUM_TRACKS
+    minimumTracks
   ) {
     readiness = "blocked";
 
     issues.push(
-      `Only ${playableTracks.length} playable songs are available. At least ${MINIMUM_TRACKS} are required.`
+      `Only ${playableTracks.length} playable songs are available. At least ${minimumTracks} are required.`
     );
 
     recommendations.push(
       `Add at least ${
-        MINIMUM_TRACKS -
+        minimumTracks -
         playableTracks.length
       } more playable songs.`
     );
@@ -208,7 +210,7 @@ function createAdvisor(
         playableTracks.length
       ),
     minimumTrackCount:
-      MINIMUM_TRACKS,
+      minimumTracks,
     idealTrackCount:
       IDEAL_TRACKS,
     recommendedTrackCount:
@@ -240,6 +242,8 @@ function getPlayableTracks(
 }
 
 export default function LocalMusicPage() {
+  const [cardSize, setCardSize] = useState<CardSize>(5);
+  const minimumTracks = cardSize * cardSize;
   const router = useRouter();
   const [
     library,
@@ -277,9 +281,9 @@ export default function LocalMusicPage() {
   const advisor = useMemo(
     () =>
       createAdvisor(
-        selectedPlaylist
+        selectedPlaylist, minimumTracks
       ),
-    [selectedPlaylist]
+    [selectedPlaylist, minimumTracks]
   );
 
   const playableTracks =
@@ -337,6 +341,7 @@ export default function LocalMusicPage() {
               "application/json",
           },
           body: JSON.stringify({
+            cardSize,
             libraryId:
               library?.libraryId,
             gameName:
@@ -349,7 +354,7 @@ export default function LocalMusicPage() {
                 playableTracks.length
               ),
             minimumTrackCount:
-              MINIMUM_TRACKS,
+              minimumTracks,
             idealTrackCount:
               IDEAL_TRACKS,
             includeDuplicates:
@@ -474,7 +479,7 @@ export default function LocalMusicPage() {
       );
 
       router.push(
-        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
+        `/game/setup?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (createError) {
       setError(
@@ -596,6 +601,7 @@ export default function LocalMusicPage() {
                   </p>
                 </div>
 
+                <CardSizeSelect value={cardSize} onChange={setCardSize} disabled={isCreatingGame} />
                 <button
                   className={styles.primaryButton}
                   type="button"

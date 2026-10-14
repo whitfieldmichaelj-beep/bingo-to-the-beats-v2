@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { access, readdir, stat } from "node:fs/promises";
 import { constants } from "node:fs";
+import { mountedMusicVolumes } from "@/lib/serato/locations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,7 +81,7 @@ async function inspectLibrary(
 async function scanLocalLibrary() {
   const homePath = os.homedir();
   return inspectLibrary(
-    "Macintosh HD",
+    "This computer",
     homePath,
     path.join(homePath, "Music", "_Serato_"),
     false
@@ -88,21 +89,11 @@ async function scanLocalLibrary() {
 }
 
 async function scanExternalLibraries() {
-  const volumesRoot = "/Volumes";
-  if (!(await isDirectory(volumesRoot))) return [];
-
-  let entries;
-  try {
-    entries = await readdir(volumesRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
+  const entries = await mountedMusicVolumes();
   const libraries = await Promise.all(
     entries
-      .filter((entry) => entry.isDirectory())
       .map((entry) => {
-        const volumePath = path.join(volumesRoot, entry.name);
+        const volumePath = entry.path;
         return inspectLibrary(
           entry.name,
           volumePath,
@@ -136,7 +127,7 @@ export async function GET() {
         ok: true,
         scannedAt: new Date().toISOString(),
         platform: process.platform,
-        volumesRoot: "/Volumes",
+        volumesRoot: process.platform === "win32" ? "Windows drives" : "/Volumes",
         libraryCount: libraries.length,
         externalLibraryCount: externalLibraries.length,
         libraries,

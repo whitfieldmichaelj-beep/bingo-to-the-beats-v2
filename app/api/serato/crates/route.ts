@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import os from "node:os";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { allowedSeratoPath, windowsDriveRoots } from "@/lib/serato/locations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,30 +112,12 @@ function extractTrackPaths(buffer: Buffer) {
 function allowedLibraryRoots() {
   return [
     path.join(os.homedir(), "Music", "_Serato_"),
-    "/Volumes",
+    ...(process.platform === "win32" ? windowsDriveRoots().map(root => path.join(root, "_Serato_")) : ["/Volumes"]),
   ];
 }
 
 function isAllowedSeratoPath(candidatePath: string) {
-  const resolved = path.resolve(candidatePath);
-
-  const localRoot = path.resolve(
-    path.join(os.homedir(), "Music", "_Serato_")
-  );
-
-  if (
-    resolved === localRoot ||
-    resolved.startsWith(`${localRoot}${path.sep}`)
-  ) {
-    return true;
-  }
-
-  const volumesRoot = path.resolve("/Volumes");
-
-  return (
-    resolved.startsWith(`${volumesRoot}${path.sep}`) &&
-    resolved.split(path.sep).includes("_Serato_")
-  );
+  return allowedSeratoPath(candidatePath);
 }
 
 async function readCrate(cratePath: string): Promise<SeratoCrate> {
@@ -248,4 +231,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

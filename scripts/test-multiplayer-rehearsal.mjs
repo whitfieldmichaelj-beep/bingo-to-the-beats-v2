@@ -14,7 +14,7 @@ const insert=(table,row)=>insertRows(table,[row]);
 try{
 const source=(await query('SELECT * FROM "Game" WHERE "joinCode"=$1',[process.env.JOIN_CODE||'NU3C9E'])).rows[0];assert.ok(source);
 await insert('User',{id:host,clerkId:host,updatedAt:new Date()});
-await insert('Game',{...source,id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',winningRule:'single-line',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:5});
+await insert('Game',{...source,createdAt:new Date(),updatedAt:new Date(),id:gameId,hostId:host,joinCode:code,title:'Isolated free practice test',winningRule:'single-line',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:true,hostBillingRequired:true,requestedCardCount:5});
 await insert('HostBilling',{clerkId:host,activeGameId:gameId,updatedAt:new Date()});
 for(const track of (await query('SELECT * FROM "GameTrack" WHERE "gameId"=$1',[source.id])).rows)await insert('GameTrack',{...track,id:randomUUID(),gameId});
 const original=(await query('SELECT * FROM "BingoCard" WHERE "gameId"=$1 LIMIT 1',[source.id])).rows[0];assert.ok(original);

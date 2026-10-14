@@ -21,7 +21,7 @@ export function chooseAddress(interfaces, { requested, configured, preferredInte
     (rows || []).filter(row => !row.internal && (row.family === 'IPv4' || row.family === 4) && privateIPv4(row.address))
       .map(row => ({ name, address: row.address })));
   if (requested) {
-    if (!entries.some(row => row.address === requested)) throw new Error('The chosen phone address is not a current private-network address on this Mac.');
+    if (!entries.some(row => row.address === requested)) throw new Error('The chosen phone address is not a current private-network address on this computer.');
     return requested;
   }
   const preferred = entries.filter(row => row.name === preferredInterface && !/^(utun|tun|tap|bridge|docker|vbox|vmnet)/i.test(row.name));
@@ -32,7 +32,7 @@ export function chooseAddress(interfaces, { requested, configured, preferredInte
   const physical = entries.filter(row => /^(en\d+|eth\d+|wlan\d+|wi-fi|ethernet)$/i.test(row.name));
   const addresses = [...new Set((physical.length ? physical : entries).map(row => row.address))];
   if (addresses.length === 1) return addresses[0];
-  throw new Error(addresses.length ? 'More than one private network is active. Choose the network the players will use before starting.' : 'No private Wi-Fi/Ethernet address was found. Connect the Mac and phones to the same trusted network.');
+  throw new Error(addresses.length ? 'More than one private network is active. Choose the network the players will use before starting.' : 'No private Wi-Fi/Ethernet address was found. Connect the computer and phones to the same trusted network.');
 }
 
 export function parseOptions(args) {
@@ -55,7 +55,8 @@ export function parseOptions(args) {
 }
 
 export function validateConfiguration(env, nodeVersion) {
-  if (Number(nodeVersion.split('.')[0]) < 22) throw new Error('This beta launcher needs the existing Node.js 22 or newer installation. No software was installed.');
+  const [major, minor] = nodeVersion.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 12)) throw new Error('This beta launcher needs Node.js 22.12 or newer. No software was installed.');
   let db;
   try { db = new URL(env.DATABASE_URL); } catch { throw new Error('Local DATABASE_URL is missing or invalid. No database settings were changed.'); }
   if (!['postgres:', 'postgresql:'].includes(db.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(db.hostname)) throw new Error('This no-charge beta launcher only uses a local PostgreSQL database. Hosted database settings were left untouched.');

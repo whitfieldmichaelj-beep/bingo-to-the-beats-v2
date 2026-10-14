@@ -111,7 +111,7 @@ export default function HostAccessPage() {
                 display: "inline-flex",
                 justifyContent: "center",
                 alignItems: "center",
-                minWidth: "260px",
+                width: "min(100%, 320px)",
                 padding: "16px 24px",
                 borderRadius: "999px",
                 background:
@@ -133,7 +133,7 @@ export default function HostAccessPage() {
               marginTop: "38px",
               display: "grid",
               gridTemplateColumns:
-                "repeat(auto-fit, minmax(250px, 1fr))",
+                "repeat(auto-fit, minmax(min(250px, 100%), 1fr))",
               gap: "18px",
             }}
           >

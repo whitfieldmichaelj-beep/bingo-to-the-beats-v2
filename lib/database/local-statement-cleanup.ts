@@ -10,6 +10,34 @@ const POOL_MARK = Symbol.for("bttb.local-statement-cleanup.pool.v1");
 const CLIENT_MARK = Symbol.for("bttb.local-statement-cleanup.client.v1");
 export const STATEMENT_CLOSE_TIMEOUT_MS = 5_000;
 
+const READY_POOL_MARK = Symbol.for("bttb.local-ready-boundary.pool.v1");
+const READY_MARK = Symbol.for("bttb.local-ready-boundary.v1");
+
+/** The saved local Prisma bridge can emit two ReadyForQuery messages after a
+ * SQL error. pg would use the second to finish the NEXT queued query, delivering
+ * its rows to the wrong caller. Only forward a ready boundary after a terminal
+ * response (including CloseComplete for our cleanup query). This is per local
+ * connection, not a pg prototype patch, and does not change transaction state.
+ */
+export function installLocalReadyBoundary(connection: Connection): void {
+  const wire = connection as Connection & { [READY_MARK]?: boolean };
+  if (wire[READY_MARK]) return;
+  const emit = wire.emit;
+  let terminalResponse = false;
+  wire.emit = function (event: string | symbol, ...args: unknown[]): boolean {
+    if (event === "commandComplete" || event === "emptyQuery" ||
+        event === "errorMessage" || event === "closeComplete") {
+      terminalResponse = true;
+    } else if (event === "readyForQuery") {
+      if (!terminalResponse) return false;
+      // Clear before pg handles the event and starts the next queued query.
+      terminalResponse = false;
+    }
+    return emit.call(this, event, ...args);
+  };
+  wire[READY_MARK] = true;
+}
+
 type Callback = (error: Error | null, result?: unknown) => void;
 type DriverQuery = (config: unknown, values?: unknown, callback?: Callback) => unknown;
 type WireConnection = Connection & { parsedStatements: Record<string, string> };
@@ -123,7 +151,18 @@ function instrumentClient(client: PoolClient) {
  * Re-importing this module cannot wrap a client or register hooks twice.
  */
 export function installLocalStatementCleanup(pool: Pool): void {
-  const managed = pool as Pool & { [POOL_MARK]?: boolean };
+  const managed = pool as Pool & { [POOL_MARK]?: boolean; [READY_POOL_MARK]?: boolean };
+  // Install independently of statement cleanup so hot reload also protects a
+  // pool created by the older module. No live database restart is required.
+  if (!managed[READY_POOL_MARK]) {
+    const guard = (client: PoolClient) => installLocalReadyBoundary(
+      (client as unknown as { connection: Connection }).connection
+    );
+    // connect/acquire run after authentication; startup Ready has reached pg.
+    pool.on("connect", guard);
+    pool.on("acquire", guard);
+    managed[READY_POOL_MARK] = true;
+  }
   if (managed[POOL_MARK]) return;
   pool.on("connect", instrumentClient);
   pool.on("acquire", instrumentClient);

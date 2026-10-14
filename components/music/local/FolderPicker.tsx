@@ -182,7 +182,7 @@ export default function FolderPicker({
                 event.target.value
               )
             }
-            placeholder="/Users/your-name/Music"
+            placeholder="Path to your music folder"
             autoComplete="off"
             spellCheck={false}
             disabled={
@@ -201,10 +201,8 @@ export default function FolderPicker({
         </div>
 
         <p>
-          Example:{" "}
-          <code>
-            /Users/djmikedoelo/Music
-          </code>
+          Mac: <code>/Users/your-name/Music</code>{" · "}
+          Windows: <code>{"C:\\Users\\your-name\\Music"}</code>
         </p>
 
         <fieldset

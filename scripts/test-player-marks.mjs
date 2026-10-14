@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+const layout={};
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/card-layout.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:layout});
+
 let authenticated = true, status = 'ACTIVE', payment = 'PAID', disputed = false, fail = false;
 const squares = [{id:'one',cardId:'mine',position:0,trackId:'played',marked:false}, {id:'two',cardId:'mine',position:1,trackId:'unplayed',marked:false}, {id:'other',cardId:'theirs',position:0,trackId:'played',marked:true}];
-let winner = null;
+let winner = null, cardSize = 5;
 const patterns = {};
-vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/bingo-verification.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:patterns,require:()=>({prisma:{}})});
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/game/bingo-verification.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:patterns,require:id=>id.includes("card-layout")?layout:({prisma:{}})});
 const tx = {
  $queryRaw: async () => [{id:'game'}],
  game: {findUnique: async () => ({status,winningRule:'single-line'}), update: async ({data}) => {status=data.status}} ,
  purchase: {findUnique: async ({where}) => {assert.equal(where.gameId_playerKey.playerKey,'player');return {id:'purchase',status:payment,disputes:[]}}},
- bingoCard: {findMany: async ({where}) => {assert.equal(where.playerKey,'player');assert.equal(where.purchaseId,'purchase');assert.equal(where.status.not,'VOID');return [{id:'mine',cardNumber:1,playerName:'Mike',squares:squares.filter(s=>s.cardId==='mine')}]},update:async()=>{}},
+ bingoCard: {findMany: async ({where}) => {assert.equal(where.playerKey,'player');assert.equal(where.purchaseId,'purchase');assert.equal(where.status.not,'VOID');return [{id:'mine',cardNumber:1,playerName:'Mike',rows:cardSize,columns:cardSize,squares:squares.filter(s=>s.cardId==='mine')}]},update:async()=>{}},
  winner:{findFirst:async()=>winner,upsert:async({create})=>{assert.equal(create.verified,true);winner={card:{id:'mine',playerName:'Mike',cardNumber:1}}}},
  gameTrack: {findMany: async () => [{trackId:'played'}]},
  cardSquare: {
@@ -22,7 +25,7 @@ const tx = {
 const prisma={$transaction:async fn=>fn(tx)};
 const api={};
 vm.runInNewContext(ts.transpileModule(readFileSync('app/api/game/player/marks/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
- exports:api,require:id=>id==='next/server'?{NextResponse:{json:(data,options)=>({data,status:options.status})}}:id.includes('player-session')?{readPlayerSession:async()=>authenticated?{playerId:'player'}:null}:id.includes('disputes')?{hasUnavailableDispute:()=>disputed}:id.includes('bingo-verification')?patterns:{prisma},
+ exports:api,require:id=>id.includes('expiration')?{expireGameInTransaction:async()=>false}:id==='next/server'?{NextResponse:{json:(data,options)=>({data,status:options.status})}}:id.includes('player-session')?{readPlayerSession:async()=>authenticated?{playerId:'player'}:null}:id.includes('disputes')?{hasUnavailableDispute:()=>disputed}:id.includes('bingo-verification')?patterns:{prisma},
 });
 const request=marks=>({nextUrl:new URL('http://localhost/api/game/player/marks?gameId=game'),json:async()=>({gameId:'game',marks})});
 const save=marks=>api.PUT(request(marks));
@@ -56,3 +59,12 @@ assert.equal(won.data.marks.length,5);
 assert.equal((await save([])).status,409,'winner marks locked');
 assert.equal((await api.GET(request())).data.winner.playerName,'Mike','winner survives reload');
 console.log('PASS automatic last-square win, server winner identity, completion, and final marks');
+
+// A 3×3 card completes after a three-song row, without needing a five-song row.
+status='ACTIVE'; winner=null; cardSize=3;
+squares.splice(0,squares.length,...Array.from({length:9},(_,position)=>({id:`small-${position}`,cardId:'mine',position,trackId:'played',marked:false})));
+const smallRow=[6,7,8].map(position=>({cardId:'mine',position}));
+assert.equal((await save(smallRow.slice(0,2))).data.gameStatus,'ACTIVE');
+assert.equal((await save(smallRow)).data.gameStatus,'COMPLETED');
+assert.equal((await api.GET(request())).data.marks.length,3);
+console.log('PASS 3×3 automatic win on final row, incomplete-row rejection, and saved marks.');

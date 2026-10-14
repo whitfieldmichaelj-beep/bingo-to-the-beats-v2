@@ -19,7 +19,7 @@ const denied={status:403};
 for(const path of paths){const route=load(`${path}/route.ts`,{'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied}});for(const method of ['GET','HEAD','POST'])if(route[method])assert.equal(await route[method]({}),denied,`${path} ${method} must deny before filesystem/database access`);}
 let game={isPractice:true,status:'DRAFT'};
 let reads=0;
-const route=load('app/api/game/join-options/route.ts',{'next/server':next,'@/lib/prisma':{prisma:{game:{findUnique:async()=>{reads++;return game;}}}}});
+const route=load('app/api/game/join-options/route.ts',{'next/server':next,'@/lib/game/entry':load('lib/game/entry.ts',{}),'@/lib/game/prize':load('lib/game/prize.ts',{}),'@/lib/game/expiration':{expireGames:async()=>{}},'@/lib/prisma':{prisma:{game:{findUnique:async()=>{reads++;return game;}}}}});
 const request=code=>({nextUrl:new URL(`http://localhost/api/game/join-options?code=${code}`)});
 assert.equal((await route.GET(request('x'))).status,400);assert.equal(reads,0);
 assert.equal((await route.GET(request('ABCD12'))).body.isPractice,true);

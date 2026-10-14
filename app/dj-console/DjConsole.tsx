@@ -1,11 +1,16 @@
 "use client";
 
+import RehearsalPanel from "@/components/game/RehearsalPanel";
 import Link from "next/link";
+import FloatingMiniView from "@/components/dj-console/FloatingMiniView";
+import type { BingoClaim } from "@/hooks/useBingoClaims";
 import { visibleDjActivity, restoredDjActivity } from "@/lib/dj/activity";
 import { DjDetectionGate, readDjConnection, djConnectionKey } from "@/lib/dj/detection";
 import { DJ_PROVIDERS, djProvider, isDjProvider } from "@/lib/dj/providers";
 import { findSeratoTrackIndex } from "@/lib/serato/track-matching";
 import GameEndedDialog from "@/components/game/GameEndedDialog";
+import type { GameEntry } from "@/lib/game/entry";
+import type { GamePrize } from "@/lib/game/prize";
 import SpotifyDevicePicker from "@/components/spotify/SpotifyDevicePicker";
 import Script from "next/script";
 import "./dj-console.css";
@@ -60,6 +65,7 @@ type SeratoResponse = {
 };
 
 type GameSession = {
+  prize?: GamePrize | null;
   version: 2;
   sessionId: string;
   source: MusicSource;
@@ -183,14 +189,6 @@ function formatElapsed(totalSeconds: number) {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Math.max(0, cents) / 100);
 }
 
 function createPlaybackTracks(
@@ -622,8 +620,12 @@ async function seekApplePlayer(
   );
 }
 
-export default function DjConsole({ gameId }: { gameId: string }) {
+export default function DjConsole({ gameId, entry }: { gameId: string; entry: GameEntry }) {
   const [compact, setCompact] = useState(false);
+  const [miniView, setMiniView] = useState(false);
+  const [miniMode, setMiniMode] = useState<"compact" | "standard">("standard");
+  const [miniClaim, setMiniClaim] = useState<BingoClaim | null>(null);
+  const [miniClaimError, setMiniClaimError] = useState<string | null>(null);
   const [session, setSession] = useState<GameSession | null>(null);
   const [callerState, setCallerState] = useState<CallerState | null>(null);
   const provider = djProvider(session?.source);
@@ -632,7 +634,6 @@ export default function DjConsole({ gameId }: { gameId: string }) {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionEnabled, setConnectionEnabled] = useState(false);
   const [appleConnected, setAppleConnected] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
   const [autoDetect, setAutoDetect] = useState(true);
   const [autoReveal, setAutoReveal] = useState(true);
   const [autoNext, setAutoNext] = useState(true);
@@ -693,6 +694,15 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     showEndGameConfirm,
     setShowEndGameConfirm,
   ] = useState(false);
+
+  useEffect(() => {
+    if (!session || roster.game?.id !== session.sessionId || roster.game.status !== "completed" || session.status === "complete") return;
+    gameEndedRef.current = true;
+    playback.stop();
+    if (session.source === "apple") void stopAppleMusic();
+    saveSession({ ...session, status: "complete" });
+    setMessage("This game has ended and cannot be resumed. Create a new game to play.");
+  }, [roster.game?.id, roster.game?.status, session?.sessionId, session?.status]);
 
   const previousTrackId = useRef<string | null>(null);
   const pollInProgress = useRef(false);
@@ -1315,6 +1325,7 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
         const restoredSession:
           GameSession = {
+            prize: config.prize ?? null,
             version: 2,
             sessionId:
               game.id,
@@ -1451,7 +1462,6 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const controller = new AbortController();
     seratoPollController.current = controller;
     pollInProgress.current = true;
-    setIsPolling(true);
     let timedOut = false;
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 8000);
 
@@ -1491,7 +1501,6 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     } finally {
       window.clearTimeout(timeout);
       pollInProgress.current = false;
-      setIsPolling(false);
     }
   }
 
@@ -1516,7 +1525,6 @@ const [elapsedSeconds, setElapsedSeconds] = useState(0);
     persistDjConnection(false);
     setConnectionEnabled(false);
     setIsConnected(false);
-    setIsPolling(false);
     setLastUpdate("Disconnected");
     setMessage(`${providerLabels.name} disconnected.`);
   }
@@ -2526,6 +2534,22 @@ function runAppleTransportAction(
       return;
     }
 
+    // Save lifecycle transitions before changing playback so refresh can restore them.
+    if (status === "playing" || status === "paused") {
+      try {
+        const response = await fetch(`/api/game/${encodeURIComponent(session.sessionId)}/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: status === "playing" ? "active" : "paused" }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.message || "Unable to save game status.");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Unable to save game status. Please try again.");
+        return;
+      }
+    }
+
     if (
       status === "playing"
     ) {
@@ -2832,7 +2856,20 @@ function runAppleTransportAction(
     : 0;
 
   return (
-    <main className={`dj-shell ${compact ? "dj-compact" : ""}`}>
+    <main className={`dj-shell ${compact ? "dj-compact" : ""} ${miniView ? "dj-mini-shell" : ""}`}>
+      {miniView && <FloatingMiniView
+        gameId={session?.sessionId ?? ""}
+        mode={miniMode} onModeChange={setMiniMode}
+        onOpenConsole={() => { setMiniView(false); setCompact(false); }}
+        gameCode={session?.joinCode ?? ""} gameStatus={statusLabel}
+        connection={rosterData.error || miniClaimError ? "error" : !session || rosterData.loading ? "loading" : "connected"}
+        providerName={isDjProvider(session?.source) ? providerLabels.name : session?.source ?? "DJ software"}
+        providerConnected={isDjProvider(session?.source) ? isConnected : session?.source === "apple" ? appleConnected : isPlaying}
+        track={currentTrack} progress={progress} secondsRemaining={secondsRemaining}
+        songStatus={session?.status === "complete" ? "Game complete" : isPlaying ? "Bingo countdown" : isRevealed ? "Song revealed" : "Waiting / paused"}
+        calledCount={session?.playedTrackIds.length ?? 0} totalSongs={session?.tracks.length ?? 0}
+        players={roster.players} claim={miniClaim} claimConnectionLost={!!miniClaimError}
+      />}
       {session?.status === "complete" && !endSummaryDismissed && (
         <GameEndedDialog onClose={() => setEndSummaryDismissed(true)} />
       )}
@@ -2849,6 +2886,9 @@ function runAppleTransportAction(
         />
       )}
       <BingoVerificationPanel
+        showReview={!miniView && session?.status !== "complete"}
+        onActiveClaimChange={setMiniClaim}
+        onConnectionErrorChange={setMiniClaimError}
         polling={session?.status !== "complete"}
         gameId={session?.sessionId}
         onWinnerVerified={() => {
@@ -3023,8 +3063,10 @@ function runAppleTransportAction(
         </div>
 
         <nav className="dj-nav">
+          <button type="button" onClick={() => setMiniView(true)}>DJ Mini View</button>
           <button type="button" onClick={() => setCompact(!compact)}>{compact ? "Full Console" : "Compact View"}</button>
           <Link href="/dashboard">Dashboard</Link>
+          <Link href={`/game/setup?gameId=${encodeURIComponent(gameId)}`}>Entry &amp; Prize Setup</Link>
           <Link href="/game/control">Game Control</Link>
           <button type="button" onClick={openCallerScreen}>
             Open Caller Screen
@@ -3032,6 +3074,11 @@ function runAppleTransportAction(
         </nav>
       </header>
 
+      {session && !miniView && <section className="dj-game-terms" aria-label="Game terms">
+        <span><strong>{entry.mode === "free" ? "Free entry" : "Paid entry"}</strong> · Maximum {entry.maxCardsPerPlayer} {entry.maxCardsPerPlayer === 1 ? "card" : "cards"} per player</span>
+        <span><strong>Prize:</strong> {session.prize?.description ?? "Host to announce"}</span>
+        {session.status !== "complete" && <Link href={`/game/setup?gameId=${encodeURIComponent(session.sessionId)}`}>{session.status === "ready" ? "Entry & Prize Setup" : "View terms"}</Link>}
+      </section>}
 
       <section
         className="dj-game-status-bar"
@@ -3049,13 +3096,13 @@ function runAppleTransportAction(
 
         <div className="dj-game-status-item">
           <span className="dj-game-status-icon" aria-hidden="true">♙</span>
-          <span>Paid Players: <strong>{roster.totals.totalPlayers}</strong></span>
+          <span>Players: <strong>{roster.totals.totalPlayers}</strong></span>
         </div>
 
         <div className="dj-game-status-item">
           <span className="dj-game-status-icon" aria-hidden="true">▣</span>
           <span>
-            Cards Sold:{" "}
+            Cards in Play:{" "}
             <strong>
               {roster.totals.totalCards}
             </strong>
@@ -3073,14 +3120,6 @@ function runAppleTransportAction(
               {" / "}
               {session?.tracks.length ?? 0}
             </strong>
-          </span>
-        </div>
-
-        <div className="dj-game-status-item">
-          <span className="dj-game-status-icon" aria-hidden="true">🏆</span>
-          <span>
-            Prize:{" "}
-            <strong>{formatMoney(roster.payout.winnerPayoutCents)}</strong>
           </span>
         </div>
 
@@ -3132,12 +3171,14 @@ function runAppleTransportAction(
               {isRestoringGame && <p role="status">Loading your saved game...</p>}
             </section>
 
-            <GameAccessPanel
+            {session?.status !== "complete" && <GameAccessPanel
               joinCode={session?.joinCode}
               title="Players Join"
               compact
               showOpenButton
-            />
+            />}
+
+            {session && <RehearsalPanel key={session.sessionId} gameId={session.sessionId} host />}
 
             <LivePlayerRoster
               data={rosterData}
@@ -3177,9 +3218,7 @@ function runAppleTransportAction(
                 >
                   ●{" "}
                   {isConnected
-                    ? isPolling
-                      ? "Checking"
-                      : "Connected"
+                    ? "Connected"
                     : connectionEnabled ? "Reconnecting" : "Not Connected"}
                 </span>
               </div>
@@ -3359,7 +3398,10 @@ function runAppleTransportAction(
 
             <section className="dj-panel dj-controls-panel">
               <span className="dj-eyebrow">Game Controls</span>
-
+              {session?.status === "complete" ? <div>
+                <p>This game is closed. Its history is saved, and players cannot join.</p>
+                <Link href={`/dashboard/games/${encodeURIComponent(session.sessionId)}`}>View saved game &amp; winner →</Link>
+              </div> :
               <div className="dj-control-grid">
                 <button
                   className="purple"
@@ -3445,7 +3487,7 @@ function runAppleTransportAction(
                   <b>■</b>
                   End Game
                 </button>
-              </div>
+              </div>}
             </section>
 
             <p className="dj-message">{playback.playbackError || message}</p>

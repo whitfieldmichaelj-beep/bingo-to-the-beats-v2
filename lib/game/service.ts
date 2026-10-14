@@ -1,3 +1,5 @@
+import { parseCardSize } from "./card-layout";
+import { BETA_GAME_CARD_LIMIT } from "./beta-limits";
 import {
   randomInt,
   randomUUID,
@@ -22,12 +24,10 @@ const JOIN_CODE_LENGTH = 6;
 const JOIN_CODE_CHARACTERS =
   "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-const CARD_ROWS = 5;
-const CARD_COLUMNS = 5;
-const SONGS_PER_CARD = CARD_ROWS * CARD_COLUMNS;
+
 
 const DEFAULT_CARD_COUNT = 25;
-const MAX_CARD_COUNT = 5000;
+const MAX_CARD_COUNT = BETA_GAME_CARD_LIMIT;
 
 function createJoinCode(): string {
   let joinCode = "";
@@ -226,16 +226,17 @@ function formatLargeNumber(
 }
 
 function createCardCapacity(
-  playlistTrackCount: number
+  playlistTrackCount: number,
+  songsPerCard: number
 ): CardCapacity {
   const canGenerateCards =
-    playlistTrackCount >= SONGS_PER_CARD;
+    playlistTrackCount >= songsPerCard;
 
   const uniqueSongSelections =
     canGenerateCards
       ? calculateCombination(
           playlistTrackCount,
-          SONGS_PER_CARD
+          songsPerCard
         )
       : BigInt(0);
 
@@ -243,13 +244,13 @@ function createCardCapacity(
     canGenerateCards
       ? calculatePermutation(
           playlistTrackCount,
-          SONGS_PER_CARD
+          songsPerCard
         )
       : BigInt(0);
 
   return {
     playlistTrackCount,
-    songsPerCard: SONGS_PER_CARD,
+    songsPerCard: songsPerCard,
     canGenerateCards,
     uniqueSongSelections:
       uniqueSongSelections.toString(),
@@ -259,7 +260,7 @@ function createCardCapacity(
       ? formatLargeNumber(
           uniqueCardLayouts
         )
-      : `At least ${SONGS_PER_CARD} unique songs are required.`,
+      : `At least ${songsPerCard} unique songs are required.`,
   };
 }
 
@@ -299,14 +300,15 @@ function createCardSignature(
 }
 
 function createCardSquares(
-  tracks: GameTrack[]
+  tracks: GameTrack[],
+  cardSize: number
 ): BingoCardSquare[] {
   return tracks.map((track, index) => ({
     squareIndex: index,
     row: Math.floor(
-      index / CARD_COLUMNS
+      index / cardSize
     ),
-    column: index % CARD_COLUMNS,
+    column: index % cardSize,
 
     trackId: track.id,
     gameTrackId: track.gameTrackId,
@@ -326,11 +328,13 @@ function generateBingoCards(
   gameId: string,
   tracks: GameTrack[],
   requestedCardCount: number,
-  createdAt: string
+  createdAt: string,
+  cardSize: number
 ): BingoCard[] {
-  if (tracks.length < SONGS_PER_CARD) {
+  const songsPerCard = cardSize * cardSize;
+  if (tracks.length < songsPerCard) {
     throw new Error(
-      `At least ${SONGS_PER_CARD} unique songs are required to generate a 5 × 5 bingo card. This playlist contains ${tracks.length}.`
+      `At least ${songsPerCard} unique songs are required to generate a ${cardSize} × ${cardSize} bingo card. This playlist contains ${tracks.length}.`
     );
   }
 
@@ -372,7 +376,7 @@ function generateBingoCards(
 
     const selectedTracks = shuffleTracks(
       tracks
-    ).slice(0, SONGS_PER_CARD);
+    ).slice(0, songsPerCard);
 
     const signature =
       createCardSignature(selectedTracks);
@@ -388,15 +392,16 @@ function generateBingoCards(
       cardNumber: cards.length + 1,
       gameId,
 
-      rows: CARD_ROWS,
-      columns: CARD_COLUMNS,
-      squareCount: SONGS_PER_CARD,
+      rows: cardSize,
+      columns: cardSize,
+      squareCount: songsPerCard,
 
       signature,
 
       squares:
         createCardSquares(
-          selectedTracks
+          selectedTracks,
+          cardSize
         ),
 
       createdAt,
@@ -423,8 +428,11 @@ export function createGameFromPlaylist(
   bingoPattern: BingoPattern =
     "single-line",
   requestedCardCount: number =
-    DEFAULT_CARD_COUNT
+    DEFAULT_CARD_COUNT,
+  requestedCardSize: unknown = 5
 ): ActiveGame {
+  const cardSize = parseCardSize(requestedCardSize);
+  const songsPerCard = cardSize * cardSize;
   const uniquePlaylistTracks =
     removeDuplicateTracks(
       playlist.tracks
@@ -440,10 +448,10 @@ export function createGameFromPlaylist(
 
   if (
     uniquePlaylistTracks.length <
-    SONGS_PER_CARD
+    songsPerCard
   ) {
     throw new Error(
-      `Playlist "${playlist.name}" contains only ${uniquePlaylistTracks.length} unique songs. At least ${SONGS_PER_CARD} unique songs are required.`
+      `Playlist "${playlist.name}" contains only ${uniquePlaylistTracks.length} unique songs. At least ${songsPerCard} unique songs are required.`
     );
   }
 
@@ -458,7 +466,8 @@ export function createGameFromPlaylist(
 
   const cardCapacity =
     createCardCapacity(
-      gameTracks.length
+      gameTracks.length,
+      songsPerCard
     );
 
   const cards =
@@ -466,7 +475,8 @@ export function createGameFromPlaylist(
       gameId,
       gameTracks,
       requestedCardCount,
-      createdAt
+      createdAt,
+      cardSize
     );
 
   return {
@@ -492,7 +502,7 @@ export function createGameFromPlaylist(
     completedAt: null,
 
     requestedCardCount,
-    songsPerCard: SONGS_PER_CARD,
+    songsPerCard: songsPerCard,
     cards,
     cardCapacity,
   };

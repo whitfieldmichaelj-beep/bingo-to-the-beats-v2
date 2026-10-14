@@ -1,3 +1,6 @@
+import { patternGroups } from "./card-layout";
+export { patternGroups } from "./card-layout";
+import { expireGames, expireGameInTransaction } from "./expiration";
 import { prisma } from "@/lib/prisma";
 
 export type BingoClaimStatus =
@@ -42,56 +45,6 @@ function normalizePattern(value: string) {
   return supported.has(value)
     ? value
     : "single-line";
-}
-
-export function patternGroups(pattern: string): number[][] {
-  const rows = Array.from({ length: 5 }, (_, row) =>
-    Array.from({ length: 5 }, (_, column) => row * 5 + column)
-  );
-
-  const columns = Array.from({ length: 5 }, (_, column) =>
-    Array.from({ length: 5 }, (_, row) => row * 5 + column)
-  );
-
-  const diagonals = [
-    [0, 6, 12, 18, 24],
-    [4, 8, 12, 16, 20],
-  ];
-
-  switch (normalizePattern(pattern)) {
-    case "four-corners":
-      return [[0, 4, 20, 24]];
-
-    case "x-pattern":
-      return [
-        Array.from(
-          new Set([
-            ...diagonals[0],
-            ...diagonals[1],
-          ])
-        ),
-      ];
-
-    case "full-card":
-    case "blackout":
-      return [
-        Array.from({ length: 25 }, (_, index) => index),
-      ];
-
-    case "across":
-      return rows;
-
-    case "down":
-      return columns;
-
-    case "diagonal":
-      return diagonals;
-
-    case "single-line":
-    case "any-line":
-    default:
-      return [...rows, ...columns, ...diagonals];
-  }
 }
 
 export async function verifyCard(
@@ -146,7 +99,7 @@ export async function verifyCard(
   );
 
   const groups = patternGroups(
-    card.game.winningRule
+    card.game.winningRule, card.rows, card.columns
   );
 
   const winningGroup =
@@ -265,6 +218,7 @@ export async function submitBingoClaim(
   cardId: string,
   playerId: string
 ) {
+  await expireGames({ id: gameId });
   const card = await prisma.bingoCard.findFirst({
     where: {
       id: cardId,
@@ -354,7 +308,11 @@ export async function submitBingoClaim(
     };
   }
 
-  const winner = await prisma.winner.upsert({
+  const winner = await prisma.$transaction(async tx => {
+    await expireGameInTransaction(tx, gameId);
+    const current = await tx.game.findUnique({ where: { id: gameId }, select: { status: true } });
+    if (!current || ["COMPLETED", "CANCELLED"].includes(current.status)) return null;
+    return tx.winner.upsert({
     where: {
       cardId,
     },
@@ -368,6 +326,8 @@ export async function submitBingoClaim(
       winningType: verification.pattern,
     },
   });
+  });
+  if (!winner) return { ok: false as const, code: "GAME_COMPLETED", message: "This game has ended. BINGO claims are closed." };
 
   return {
     ok: true as const,
@@ -512,16 +472,16 @@ export async function reviewBingoClaim(
   }
 
   if (action === "reject") {
-    await prisma.winner.delete({
-      where: {
-        id: claimId,
-      },
+    const rejected = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Game" WHERE id = ${gameId} FOR UPDATE`;
+      await expireGameInTransaction(tx, gameId);
+      const currentGame = await tx.game.findFirst({ where: { id: gameId, host: { clerkId: hostClerkId } }, select: { status: true } });
+      if (!currentGame || currentGame.status === "COMPLETED" || currentGame.status === "CANCELLED") return false;
+      const result = await tx.winner.deleteMany({ where: { id: claimId, gameId, verified: false } });
+      return result.count === 1;
     });
-
-    return {
-      ok: true as const,
-      rejected: true as const,
-    };
+    if (!rejected) return { ok: false as const, code: "CLAIM_LOCKED", message: "Completed games and verified winners cannot be changed." };
+    return { ok: true as const, rejected: true as const };
   }
 
   /*
@@ -584,6 +544,14 @@ export async function reviewBingoClaim(
     await prisma.$transaction(async (tx) => {
       // Serialize winner confirmations for this game before changing either record.
       await tx.$queryRaw`SELECT id FROM "Game" WHERE id = ${gameId} FOR UPDATE`;
+      await expireGameInTransaction(tx, gameId);
+      const currentGame = await tx.game.findFirst({ where: { id: gameId, host: { clerkId: hostClerkId } }, select: { status: true } });
+      if (!currentGame) return "game-ended" as const;
+      const currentClaim = await tx.winner.findUnique({ where: { id: claimId }, select: { verified: true } });
+      if (!currentClaim) return "game-ended" as const;
+      // A retry must not change the saved verification timestamp or winner card.
+      if (currentClaim.verified) return true;
+      if (currentGame.status === "COMPLETED" || currentGame.status === "CANCELLED") return "game-ended" as const;
       const competingWinner = await tx.winner.findFirst({
         where: { gameId, verified: true, id: { not: claimId } },
         select: { id: true },
@@ -643,6 +611,10 @@ export async function reviewBingoClaim(
       });
       return true;
     });
+
+  if (verified === "game-ended") {
+    return { ok: false as const, code: "GAME_COMPLETED", message: "This game has ended. Winner review is locked." };
+  }
 
   if (verified === "winner-exists") {
     return { ok: false as const, code: "WINNER_EXISTS", message: "This game already has a verified winner." };

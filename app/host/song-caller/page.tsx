@@ -45,6 +45,7 @@ type GameSession = {
   tracks: ConsoleTrack[];
   playedTrackIds: string[];
   joinCode: string;
+  cardSize?: number;
   winningPattern: WinningPattern;
   gameName: string;
   venueName: string;
@@ -374,7 +375,7 @@ function SongCallerWorkspace({
 
             <GameDetail
               label="Pattern"
-              value={formatWinningPattern(session.winningPattern)}
+              value={formatWinningPattern(session.winningPattern, session.cardSize ?? 5)}
             />
 
             <GameDetail
@@ -810,10 +811,10 @@ function getStoredSessionStatus(
   return "ready";
 }
 
-function formatWinningPattern(pattern: WinningPattern) {
+function formatWinningPattern(pattern: WinningPattern, size = 5) {
   switch (pattern) {
     case "any-line":
-      return "Any 5 in a Row";
+      return `Any ${size} in a Row`;
     case "across":
       return "Across Only";
     case "down":

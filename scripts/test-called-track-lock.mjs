@@ -15,7 +15,7 @@ const compiled = ts.transpileModule(source, {
 assert.equal((compiled.diagnostics ?? []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0);
 
 function harness(options = {}) {
-  let game = { id: "game-a", hostId: "owner", status: options.status ?? "LIVE", winner: null };
+  let game = { id: "game-a", hostId: "owner", status: options.status ?? "LIVE", startedAt: options.startedAt ?? null, winner: null };
   const tracks = [
     { id: "a", gameId: "game-a", trackId: "db-a", track: { providerTrackId: "song-a" }, called: false, calledAt: null },
     { id: "b", gameId: "game-a", trackId: "db-b", track: { providerTrackId: "song-b" }, called: false, calledAt: null },
@@ -45,9 +45,10 @@ function harness(options = {}) {
       async findFirst({ where }) {
         queries++;
         if (options.missing || where.id !== game.id || where.host.clerkId !== game.hostId) return null;
-        return { id: game.id, status: game.status };
+        return { id: game.id, status: game.status, startedAt: game.startedAt };
       },
       async findUnique() { return { status: game.status, winners: [] }; },
+      async update({data}) { Object.assign(game, data); return game; },
     };
   }
   function trackDelegate(transactional) {
@@ -105,6 +106,8 @@ function harness(options = {}) {
     },
   };
   const modules = {
+    "@/lib/game/prize": { readGamePrize: () => null },
+    "@/lib/game/expiration": { expireGames: async () => {}, expireGameInTransaction: async () => false },
     "next/server": { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } },
     "@clerk/nextjs/server": { auth: async () => ({ isAuthenticated: options.authenticated !== false, userId: options.userId ?? "owner" }) },
     "@/lib/prisma": { prisma },
@@ -270,4 +273,35 @@ test("the public read response remains compatible after a valid save", async () 
   assert.equal(response.body.gameStatus, "LIVE");
   assert.deepEqual(Array.from(response.body.calledGameTrackIds), ["a"]);
   assert.deepEqual(Array.from(response.body.calledTrackIds), ["song-a"]);
+});
+
+test("the first automatic song call starts a ready game atomically", async () => {
+  const h = harness({ status: "READY" });
+  assert.equal((await h.post()).status, 200);
+  assert.equal(h.game().status, "LIVE");
+  const start = h.game().startedAt;
+  assert.ok(start);
+  assert.equal(start, h.tracks[0].calledAt);
+  await h.post();
+  await h.post({ gameTrackIds: ["b"] });
+  assert.equal(h.game().startedAt, start, "retries and later songs retain the first start");
+});
+
+test("a song call preserves the manual start and paused state", async () => {
+  const start = new Date("2026-10-01T12:00:00Z");
+  const h = harness({ status: "PAUSED", startedAt: start });
+  await h.post();
+  assert.equal(h.game().startedAt, start);
+  assert.equal(h.game().status, "PAUSED");
+});
+
+test("unmatched songs and failed saves do not start the game", async () => {
+  const unknown = harness({ status: "READY" });
+  await unknown.post({ gameTrackIds: ["missing"] });
+  assert.equal(unknown.game().startedAt, null);
+  assert.equal(unknown.game().status, "READY");
+  const failed = harness({ status: "READY", failUpdate: true });
+  assert.equal((await failed.post()).status, 500);
+  assert.equal(failed.game().startedAt, null);
+  assert.equal(failed.game().status, "READY");
 });

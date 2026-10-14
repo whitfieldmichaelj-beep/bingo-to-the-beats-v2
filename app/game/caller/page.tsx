@@ -1,4 +1,5 @@
 "use client";
+import { parseGamePrize, type GamePrize } from "@/lib/game/prize";
 
 import QRCode from "react-qr-code";
 import {
@@ -105,6 +106,7 @@ export default function CallerPage() {
     setHeaderHeight,
   ] = useState(0);
   const [winner, setWinner] = useState<{ gameId: string; playerName: string; cardNumber: number } | null>(null);
+  const [prizeInfo, setPrizeInfo] = useState<{gameId: string; prize: GamePrize | null} | null>(null);
 
   /*
    * BTTB_CALLER_PLAYER_ROSTER_V1
@@ -257,6 +259,7 @@ export default function CallerPage() {
       try {
         const response = await fetch(`/api/game/${encodeURIComponent(gameId!)}/called-tracks`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
         const data = await response.json();
+        if (!cancelled && response.ok && data.ok) setPrizeInfo({gameId:gameId!,prize:parseGamePrize(data.prize)});
         if (!cancelled && response.ok && data.ok && data.winner) {
           setWinner({ ...data.winner, gameId: gameId! });
         }
@@ -929,6 +932,7 @@ export default function CallerPage() {
               "0 clamp(4px, 1vw, 14px)",
           }}
         >
+          {prizeInfo?.gameId === state.sessionId && prizeInfo.prize && <p className="game-prize-display" style={{fontSize:"clamp(14px, 2vw, 24px)",textAlign:"center",maxWidth:"100%"}}><strong>Prize:</strong> {prizeInfo.prize.description}</p>}
           {state.status === "complete" || confirmedWinner ? (
             <div role="status" style={{ textAlign: "center" }}>
               <h1 style={{ fontSize: "clamp(36px, 6vh, 64px)", margin: "0 0 16px" }}>{confirmedWinner ? `${confirmedWinner.playerName} wins!` : "Game complete"}</h1>

@@ -1,0 +1,56 @@
+BTTB DESKTOP COMPATIBILITY REQUIREMENT
+Updated 2 October 2026
+
+The entire Bingo to the Beats application must support Windows PCs and Macs.
+This includes installation/startup, host authentication and saved-game recovery,
+the DJ Console and Mini View, local music and DJ integrations, player/card flows,
+BINGO review/results, and safe shutdown. A Mac-only implementation is not an
+acceptable final product. Player phones continue to use the web experience.
+
+Current implementation
+- Shared Next.js/React application and existing database schema.
+- Borderless Electron widget uses the same DjMiniView component as the console.
+  It mirrors display state from one authenticated console; it cannot call songs,
+  mark cards, approve claims, change winners, or reset games.
+- Windows: BTTB Private Beta.cmd. Mac: BTTB Private Beta.command.
+  Both use scripts/start-private-beta.mjs, with platform-specific browser opening,
+  service shutdown, saved-database paths and runtime files.
+- Startup requires an already-configured project, Node.js 22.12+ (24 preferred),
+  Git, dependencies installed on that OS, and an existing local database.
+  It deliberately does not initialize a replacement database if one is missing.
+- Run npm ci on each target platform; never copy Mac node_modules to Windows.
+  npm run widget:build builds the local display; normal beta startup also checks
+  and rebuilds it when needed. No Electron application is downloaded on a widget click.
+- VirtualDJ adapters already have modern/legacy Windows and Mac locations.
+- Serato external-drive discovery and library access checks now support Windows
+  drive letters as well as Mac volumes. Local cache paths are platform-aware.
+- No remote-access service, public tunnel, OS security exception, or game/database
+  migration is introduced by the widget.
+
+Verification completed on this Mac
+- User confirmed the borderless widget looks right above DJ software.
+- Live local snapshot/heartbeat confirmed the selected game, current track and
+  connection state; the window reported always-on-top.
+- Desktop window construction/control tests cover Mac and Windows branches.
+- Platform tests cover Windows/Mac service paths, safe browser launching, and
+  Serato library boundaries. These are simulations on Mac, not Windows runtime tests.
+- Production webpack build, TypeScript, targeted lint, and game regression tests.
+
+Required before claiming full Windows readiness
+- On a Windows PC, clean dependency installation, authentication, existing database
+  start/reuse/shutdown and duplicate-launch handling.
+- Real VirtualDJ, Serato and Rekordbox library discovery, detection and reconnect.
+  Their installed native dependencies must load on the target Windows architecture.
+- Music playback and drive paths (including spaces, external drives and UNC paths).
+- Widget positioning, dragging, sizing, close/reopen, full-console return and BINGO
+  takeover over the actual DJ software, including its full-screen setting.
+- A 370-second background display check passed on this Mac in the Codex in-app
+  browser (186 samples, none above the eight-second stale threshold). A longer
+  real-song/claim rehearsal is still required. Other browsers may throttle updates.
+  The widget warns on stale data and on failed BINGO polling.
+- Repeat the already-approved two-device player/card flow using a separate test game.
+  Do not reset completed HE294R or reassign the already-validated Kiesha Card #2.
+- Windows installer/distribution packaging and code signing are not implemented.
+  This is the configured-project launcher, not an installer for a brand-new PC.
+- Cloud CI was not added because automatic approval review rejected external execution
+  of this private project. All checks in this change were run locally.

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { mountedMusicVolumes } from "./locations";
 
 const FILESYSTEM_TIMEOUT_MS = 3000;
 
@@ -103,43 +104,9 @@ function shouldScanMountedVolumes(): boolean {
 async function findMountedVolumeLibraries(
   locations: Set<string>
 ): Promise<void> {
-  const volumesPath = "/Volumes";
-
-  if (!(await isDirectory(volumesPath))) {
-    return;
-  }
-
-  let volumeNames: string[];
-
-  try {
-    volumeNames = await withTimeout(
-      fs.readdir(volumesPath)
-    );
-  } catch (error) {
-    console.warn(
-      "Unable to read mounted macOS volumes:",
-      error
-    );
-
-    return;
-  }
-
-  for (const volumeName of volumeNames) {
-    if (
-      !volumeName ||
-      volumeName.startsWith(".")
-    ) {
-      continue;
-    }
-
-    const volumePath = path.join(
-      volumesPath,
-      volumeName
-    );
-
-    if (!(await isDirectory(volumePath))) {
-      continue;
-    }
+  const volumes = await mountedMusicVolumes();
+  for (const volume of volumes) {
+    const volumePath = volume.path;
 
     await addSeratoLibrary(
       locations,

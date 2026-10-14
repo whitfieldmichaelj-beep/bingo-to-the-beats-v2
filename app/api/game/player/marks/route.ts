@@ -1,3 +1,4 @@
+import { expireGameInTransaction } from "@/lib/game/expiration";
 import { NextRequest, NextResponse } from "next/server";
 import { readPlayerSession } from "@/lib/auth/player-session";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,7 @@ async function handle(request: NextRequest, writing: boolean) {
     const result = await prisma.$transaction(async (tx) => {
       // Serialize saves with winner confirmation so no selection can change after completion.
       await tx.$queryRaw`SELECT "id" FROM "Game" WHERE "id" = ${gameId} FOR UPDATE`;
+      await expireGameInTransaction(tx, gameId);
       const game = await tx.game.findUnique({ where: { id: gameId }, select: { status: true, winningRule: true } });
       const purchase = await tx.purchase.findUnique({
         where: { gameId_playerKey: { gameId, playerKey: session.playerId } },
@@ -54,7 +56,7 @@ async function handle(request: NextRequest, writing: boolean) {
         await tx.cardSquare.updateMany({ where: { cardId: { in: cardIds }, marked: true, id: { notIn: [...selected] } }, data: { marked: false, markedAt: null } });
         await tx.cardSquare.updateMany({ where: { cardId: { in: cardIds }, marked: false, id: { in: [...selected] } }, data: { marked: true, markedAt: new Date() } });
         // The game row lock makes the first valid saved pattern the only winner.
-        const winningCard = cards.find((card) => patternGroups(game.winningRule).some((group) =>
+        const winningCard = cards.find((card) => patternGroups(game.winningRule, card.rows, card.columns).some((group) =>
           group.every((position) => card.squares.some((square) => square.position === position && selected.has(square.id)))
         ));
         if (winningCard) {

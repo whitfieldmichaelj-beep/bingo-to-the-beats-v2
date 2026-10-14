@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 
 import { SignJWT } from "jose";
 import pg from "pg";
+import { fixtureWriter } from "./lib/fixture-writer.mjs";
 
 const require = createRequire(import.meta.url);
 const { loadEnvConfig } = require("@next/env");
@@ -45,6 +46,7 @@ const pool = new Pool({
   max: 1,
 });
 
+const {query} = fixtureWriter(pool);
 const testPlayerIds = [];
 
 function pass(message) {
@@ -137,7 +139,7 @@ async function verifyDatabase({
   purchaseId,
   expectedCards,
 }) {
-  const purchaseResult = await pool.query(
+  const purchaseResult = await query(
     `
       SELECT COUNT(*)::int AS count
       FROM "Purchase"
@@ -152,7 +154,7 @@ async function verifyDatabase({
     `expected exactly 1 Purchase row, found ${purchaseResult.rows[0].count}`
   );
 
-  const cardResult = await pool.query(
+  const cardResult = await query(
     `
       SELECT COUNT(*)::int AS count
       FROM "BingoCard"
@@ -166,7 +168,7 @@ async function verifyDatabase({
     `expected ${expectedCards} assigned card(s), found ${cardResult.rows[0].count}`
   );
 
-  const sessionResult = await pool.query(
+  const sessionResult = await query(
     `
       SELECT COUNT(*)::int AS count
       FROM "GameSession"
@@ -190,9 +192,10 @@ async function cleanup() {
   const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    const {query: clientQuery} = fixtureWriter(client);
+    await clientQuery("BEGIN");
 
-    await client.query(
+    await clientQuery(
       `
         UPDATE "BingoCard"
         SET
@@ -206,7 +209,7 @@ async function cleanup() {
       [testPlayerIds]
     );
 
-    await client.query(
+    await clientQuery(
       `
         DELETE FROM "GameSession"
         WHERE "sessionKey" = ANY($1::text[])
@@ -214,7 +217,7 @@ async function cleanup() {
       [testPlayerIds]
     );
 
-    await client.query(
+    await clientQuery(
       `
         DELETE FROM "Purchase"
         WHERE "playerKey" = ANY($1::text[])
@@ -222,7 +225,7 @@ async function cleanup() {
       [testPlayerIds]
     );
 
-    await client.query("COMMIT");
+    await clientQuery("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -239,7 +242,7 @@ async function main() {
   console.log(`Game code: ${JOIN_CODE}`);
   console.log();
 
-  await pool.query("SELECT 1");
+  await query("SELECT 1");
   pass("database connection");
 
   const joinPage = await fetch(`${BASE_URL}/join`);
@@ -280,8 +283,8 @@ async function main() {
   );
 
   assert(
-    first.player.amountCents === 500,
-    "one-card package should be $5.00"
+    first.player.amountCents === Number(process.env.EXPECTED_AMOUNT_CENTS ?? 500),
+    "one-card amount should match the fixture entry terms"
   );
 
   pass("new player join");

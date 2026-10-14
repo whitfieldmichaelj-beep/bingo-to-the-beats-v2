@@ -1,4 +1,6 @@
-import { reservePlayerSeat } from "@/lib/billing/access";
+import { readGameEntry, EntrySettingsError } from "./entry";
+import { expireGames, expireGameInTransaction } from "./expiration";
+import { PlayerCapacityError, reservePlayerSeat } from "@/lib/billing/access";
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
@@ -17,7 +19,7 @@ export class PracticeQuantityError extends Error {
   status = 400;
 }
 
-export type CardQuantity = keyof typeof CARD_PRICING;
+export type CardQuantity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export type JoinPlayerInput = {
   gameId: string;
@@ -25,6 +27,7 @@ export type JoinPlayerInput = {
   playerId?: string;
   playerName: string;
   quantity: CardQuantity;
+  expectedEntryMode?: "free" | "paid";
 };
 
 export type PlayerAssignment = {
@@ -41,6 +44,7 @@ export type PlayerAssignment = {
 };
 
 export type PlayerRosterItem = {
+  cardNumbers: number[];
   playerId: string;
   playerName: string;
   connected: boolean;
@@ -221,6 +225,9 @@ async function buildExistingAssignment(
    */
   const currentState =
     await prisma.$transaction(async (tx) => {
+      await expireGameInTransaction(tx, input.gameId);
+      const game = await tx.game.findUnique({ where: { id: input.gameId }, select: { status: true } });
+      if (!game || ["COMPLETED", "CANCELLED"].includes(game.status)) return { ended: true as const };
       const lockedPurchases =
         await tx.$queryRaw<Array<{ id: string }>>`
           SELECT "id"
@@ -315,11 +322,18 @@ async function buildExistingAssignment(
         refunded: false as const,
         purchase: currentPurchase,
       };
+    }, {
+      // Reconnect bursts share the local connection queue with new joins.
+      // Give them the same bounded wait instead of Prisma's shorter default.
+      maxWait: 10_000,
+      timeout: 10_000,
     });
 
   if (!currentState) {
     return null;
   }
+
+  if ("ended" in currentState) throw new PlayerCapacityError("This game has ended and cannot be rejoined.");
 
   if (currentState.refunded) {
     return {
@@ -481,6 +495,7 @@ async function claimCards(
 }
 
 export async function joinPlayer(input: JoinPlayerInput) {
+  await expireGames({ id: input.gameId });
   // BTTB_ATOMIC_PLAYER_ENROLLMENT_V1
   //
   // Purchase creation, card assignment, and GameSession creation are
@@ -503,10 +518,6 @@ export async function joinPlayer(input: JoinPlayerInput) {
     return existingAssignment;
   }
 
-  const enrollmentGame = await prisma.game.findUnique({ where: { id: input.gameId }, select: { isPractice: true } });
-  const isPractice = enrollmentGame?.isPractice === true;
-  if (isPractice && input.quantity !== 1) throw new PracticeQuantityError("Practice games allow one free card per player.");
-  const amountCents = isPractice ? 0 : CARD_PRICING[input.quantity];
 
   class SoldOutEnrollmentError extends Error {
     availableCardCount: number;
@@ -529,6 +540,15 @@ export async function joinPlayer(input: JoinPlayerInput) {
       const transactionResult = await prisma.$transaction(
         async (tx) => {
           await reservePlayerSeat(tx, input.gameId, playerId);
+          const game = await tx.game.findUniqueOrThrow({ where: { id: input.gameId }, select: { isPractice: true, playbackConfig: true } });
+          const entry = readGameEntry(game.playbackConfig, game.isPractice);
+          if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 10) throw new PracticeQuantityError("Choose between 1 and 10 cards.");
+          if (input.quantity > entry.maxCardsPerPlayer) throw new EntrySettingsError(`This game allows a maximum of ${entry.maxCardsPerPlayer} ${entry.maxCardsPerPlayer === 1 ? "card" : "cards"} per player.`);
+          if (input.expectedEntryMode && input.expectedEntryMode !== entry.mode) throw new EntrySettingsError("The host changed entry settings. Check the game code again before joining.", 409);
+          const isFree = entry.mode === "free";
+          const paidAmount = CARD_PRICING[input.quantity as keyof typeof CARD_PRICING];
+          if (!isFree && paidAmount === undefined) throw new EntrySettingsError("Paid games offer 1, 2, 3, 5, or 10 cards.");
+          const amountCents = isFree ? 0 : paidAmount;
           await tx.purchase.create({
             data: {
               id: purchaseId,
@@ -538,7 +558,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
               quantity: input.quantity,
               amount: amountCents / 100,
               currency: "USD",
-              status: isPractice ? "PAID" : "PENDING",
+              status: isFree ? "PAID" : "PENDING",
             },
           });
 
@@ -596,7 +616,7 @@ export async function joinPlayer(input: JoinPlayerInput) {
                   playerKey: playerId,
                   playerName: input.playerName,
                   purchaseId,
-                  status: isPractice ? "ACTIVE" : "ASSIGNED",
+                  status: isFree ? "ACTIVE" : "ASSIGNED",
                 },
               });
 
@@ -647,6 +667,8 @@ export async function joinPlayer(input: JoinPlayerInput) {
           }
 
           return {
+            amountCents,
+            isFree,
             joinedAt: session.joinedAt,
             cards: cards.map((card) =>
               mapCard(
@@ -672,8 +694,8 @@ export async function joinPlayer(input: JoinPlayerInput) {
           (card) => card.id
         ),
         cardQuantity: input.quantity,
-        amountCents,
-        purchaseStatus: isPractice ? "PAID" : "PENDING",
+        amountCents: transactionResult.amountCents,
+        purchaseStatus: transactionResult.isFree ? "PAID" : "PENDING",
         joinedAt:
           transactionResult.joinedAt.toISOString(),
       };
@@ -826,6 +848,7 @@ in: ["PENDING", "PAID", "REFUNDED"],
           },
           select: {
             id: true,
+            cardNumber: true,
           },
         },
         disputes: {
@@ -865,6 +888,7 @@ in: ["PENDING", "PAID", "REFUNDED"],
       quantity: number;
       amountCents: number;
       cardIds: string[];
+      cardNumbers: number[];
       playerName: string;
     paymentStatus: "PENDING" | "PAID";
 }
@@ -892,6 +916,7 @@ in: ["PENDING", "PAID", "REFUNDED"],
           toAmountCents(purchase.refundedAmount)
       );
       current.cardIds.push(...purchase.cards.map((card) => card.id));
+      current.cardNumbers.push(...purchase.cards.map((card) => card.cardNumber));
 
 if (purchase.status === "PAID") {
 current.paymentStatus = "PAID";
@@ -907,6 +932,7 @@ current.paymentStatus = "PAID";
           toAmountCents(purchase.refundedAmount)
       ),
       cardIds: purchase.cards.map((card) => card.id),
+      cardNumbers: purchase.cards.map((card) => card.cardNumber),
       playerName: purchase.playerName ?? "Player",
 paymentStatus:
 purchase.status === "PAID" ? "PAID" : "PENDING",
@@ -935,6 +961,7 @@ purchase.status === "PAID" ? "PAID" : "PENDING",
       lastSeenAt: session.lastSeenAt.toISOString(),
       cardQuantity: purchase?.quantity ?? 0,
       cardIds: purchase?.cardIds ?? [],
+      cardNumbers: purchase?.cardNumbers ?? [],
       amountCents: purchase?.amountCents ?? 0,
 paymentStatus: purchase?.paymentStatus ?? "NONE",
       };

@@ -1,3 +1,4 @@
+import { parseCardSize } from "@/lib/game/card-layout";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
 import {
@@ -43,6 +44,7 @@ type StreamingTrackInput = {
 };
 
 type StreamingGameBody = {
+  cardSize?: number;
   clipLength?: unknown;
   source?: unknown;
   playlistId?: unknown;
@@ -220,6 +222,11 @@ export async function POST(
       (await request.json()) as
         StreamingGameBody;
 
+    let cardSize;
+    try { cardSize = parseCardSize(body.cardSize); }
+    catch { return NextResponse.json({ ok: false, error: "Choose a 3×3 or 5×5 card size.", message: "Choose a 3×3 or 5×5 card size." }, { status: 400 }); }
+    const songsPerCard = cardSize * cardSize;
+
     const source =
       normalizeSource(
         body.source
@@ -278,7 +285,7 @@ export async function POST(
     }
 
     if (
-      tracks.length < 25
+      tracks.length < songsPerCard
     ) {
       return NextResponse.json(
         {
@@ -288,7 +295,7 @@ export async function POST(
               tracks.length === 1
                 ? ""
                 : "s"
-            }. At least 25 unique songs are required to create bingo cards.`,
+            }. At least ${songsPerCard} unique songs are required to create bingo cards.`,
         },
         {
           status: 400,
@@ -317,7 +324,8 @@ export async function POST(
       createGameFromPlaylist(
         playlist,
         bingoPattern,
-        cardCount
+        cardCount,
+        cardSize
       );
 
     game.playbackConfig = makePlaybackConfig(source, body.clipLength, body.tracks);

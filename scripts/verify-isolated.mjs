@@ -12,7 +12,7 @@ const insert=(table,row)=>insertRows(table,[row]);
 try{
 const source=(await query('SELECT g.* FROM "Game" g WHERE (SELECT count(*) FROM "BingoCard" b WHERE b."gameId"=g.id)>=25 ORDER BY g."createdAt" LIMIT 1')).rows[0];assert.ok(source,'A saved game with at least 25 cards is needed as fixture metadata');
 await insert('User',{id:host,clerkId:host,updatedAt:new Date()});
-await insert('Game',{...source,id,hostId:host,joinCode:code,title:'Temporary verification game',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:false,hostBillingRequired:false});
+await insert('Game',{...source,createdAt:new Date(),updatedAt:new Date(),id,hostId:host,joinCode:code,title:'Temporary verification game',status:'READY',currentTrackId:null,startedAt:null,completedAt:null,isPractice:false,hostBillingRequired:false});
 const sourceTracks=(await query('SELECT * FROM "GameTrack" WHERE "gameId"=$1',[source.id])).rows;
 await insertRows('GameTrack',sourceTracks.map(track=>({...track,id:randomUUID(),gameId:id,called:false,calledAt:null,playedAt:null})));
 const originals=(await query('SELECT * FROM "BingoCard" WHERE "gameId"=$1 ORDER BY "cardNumber" LIMIT 100',[source.id])).rows;

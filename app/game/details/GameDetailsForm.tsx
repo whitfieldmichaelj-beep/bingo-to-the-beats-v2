@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -42,6 +44,7 @@ export default function GameDetailsForm() {
     searchParams.get("pattern")
   );
 
+  const [cardSize, setCardSize] = useState<CardSize>(searchParams.get("cardSize") === "3" ? 3 : 5);
   const [gameName, setGameName] = useState("");
   const [venueName, setVenueName] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -66,6 +69,7 @@ export default function GameDetailsForm() {
     }
 
     const gameDetails = {
+      cardSize,
       players: Number(players),
       billing,
       winningPattern,
@@ -88,6 +92,7 @@ export default function GameDetailsForm() {
     );
 
     const nextParams = new URLSearchParams({
+      cardSize: String(cardSize),
       players,
       billing,
       pattern: winningPattern,
@@ -189,6 +194,7 @@ export default function GameDetailsForm() {
             border: "1px solid #334155",
           }}
         >
+          <CardSizeSelect value={cardSize} onChange={setCardSize} />
           <div
             style={{
               display: "grid",
@@ -362,7 +368,7 @@ export default function GameDetailsForm() {
                   Winning pattern
                 </span>
                 <strong style={summaryValueStyle}>
-                  {formatPattern(winningPattern)}
+                  {formatPattern(winningPattern, cardSize)}
                 </strong>
               </div>
             </div>
@@ -407,7 +413,7 @@ export default function GameDetailsForm() {
   );
 }
 
-function formatPattern(pattern: WinningPattern) {
+function formatPattern(pattern: WinningPattern, size = 5) {
   switch (pattern) {
     case "across":
       return "Across Only";
@@ -420,7 +426,7 @@ function formatPattern(pattern: WinningPattern) {
     case "blackout":
       return "Blackout";
     default:
-      return "Any 5 in a Row";
+      return `Any ${size} in a Row`;
   }
 }
 

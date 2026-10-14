@@ -17,7 +17,7 @@ for(const provider of Object.keys(providers.DJ_PROVIDERS)) {
  const {DjDetectionGate}=load('lib/dj/detection.ts');const gate=new DjDetectionGate();
  assert.equal(gate.accept('old'),false);assert.equal(gate.accept('old'),false);assert.equal(gate.accept(null),false);assert.equal(gate.accept('new'),true);assert.equal(gate.accept('new'),false);assert.equal(gate.accept('next'),true);
  const empty=new DjDetectionGate();assert.equal(empty.accept(null),false);assert.equal(empty.accept('first'),true);
- const restore=load('lib/game/playback-config.ts');const config=restore.makePlaybackConfig(provider,45,[{id:t.id}]);
+ const restore=load('lib/game/playback-config.ts',{'./entry':load('lib/game/entry.ts'),'./prize':load('lib/game/prize.ts')});const config=restore.makePlaybackConfig(provider,45,[{id:t.id}]);
  assert.equal(restore.restorePlaybackConfig(JSON.parse(JSON.stringify(config)),'playlist',[]).source,provider);
 }
 const virtual=load('lib/dj/virtualdj.ts',{'./normalize':normalization});
@@ -52,7 +52,7 @@ const gameRoute=load('app/api/game/create/route.ts',{
  '@/lib/dj/bridge':{getDjAdapter:async provider=>{chosen=provider;return {loadPlaylist:async()=>({id:'playlist',name:'Party',tracks:Array.from({length:30},(_,i)=>({id:String(i),title:`Song ${i}`,artist:'Artist',filePath:`/music/${i}.mp3`,fileName:`${i}.mp3`,bpm:120}))})}}},
  '@/lib/serato/song-filter':{excludedDjSong:()=>false},
  '@/lib/billing/access':{HostAccessError:class extends Error{}},
- '@/lib/game/playback-config':load('lib/game/playback-config.ts'),
+ '@/lib/game/playback-config':load('lib/game/playback-config.ts',{'./entry':load('lib/game/entry.ts'),'./prize':load('lib/game/prize.ts')}),
  '@/lib/game/balance-validator':{evaluateGameBalance:()=>({status:'healthy',recommendations:[]})},
  '@/lib/game/service':{getUniquePlaylistTrackCount:t=>t.length,createGameFromPlaylist:playlist=>({id:'game',playlist,tracks:playlist.tracks})},
  '@/lib/game/repository':{createGame:async (game,owner,options)=>{saved=game;savedOptions=options;return game}},

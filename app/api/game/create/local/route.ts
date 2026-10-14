@@ -1,6 +1,8 @@
+import { parseCardSize } from "@/lib/game/card-layout";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
+import { BETA_GAME_CARD_LIMIT, betaCardLimitMessage } from "@/lib/game/beta-limits";
 import {
   auth,
 } from "@clerk/nextjs/server";
@@ -79,7 +81,7 @@ function normalizeCardCount(
   return Math.max(
     1,
     Math.min(
-      5000,
+      BETA_GAME_CARD_LIMIT,
       Math.floor(value)
     )
   );
@@ -115,11 +117,19 @@ export async function POST(
     const body =
       await request.json();
 
+    let cardSize;
+    try { cardSize = parseCardSize(body.cardSize); }
+    catch { return NextResponse.json({ ok: false, error: "Choose a 3×3 or 5×5 card size.", message: "Choose a 3×3 or 5×5 card size." }, { status: 400 }); }
+
     const folderPath =
       typeof body.folderPath ===
       "string"
         ? body.folderPath.trim()
         : "";
+
+    if (typeof body.cardCount === "number" && Number.isFinite(body.cardCount) && body.cardCount > BETA_GAME_CARD_LIMIT) {
+      return NextResponse.json({ ok: false, message: betaCardLimitMessage() }, { status: 400 });
+    }
 
     const cardCount =
       normalizeCardCount(
@@ -139,6 +149,7 @@ export async function POST(
 
     const advisor =
       evaluateGameBalance({
+        rows: cardSize, columns: cardSize,
         uniqueSongCount:
           scan.tracks.length,
         requestedCardCount:
@@ -206,7 +217,8 @@ export async function POST(
       createGameFromPlaylist(
         compatiblePlaylist,
         bingoPattern,
-        cardCount
+        cardCount,
+        cardSize
       );
 
     game.playbackConfig = makePlaybackConfig("local", body.clipLength, game.tracks);

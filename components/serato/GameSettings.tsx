@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import { DJ_PROVIDERS, type DjProvider } from "@/lib/dj/providers";
 import type { CSSProperties } from "react";
@@ -33,6 +35,8 @@ type GameSettingsProps = {
   selectedPlaylist: SelectedSeratoPlaylist | null;
   gameDetails: SeratoGameDetails | null;
 
+  cardSize: CardSize;
+  onCardSizeChange: (size: CardSize) => void;
   cardCount: number;
   clipLength: number;
   winningPattern: WinningPattern;
@@ -98,6 +102,8 @@ export default function GameSettings({
   selectedPlaylist,
   gameDetails,
   cardCount,
+  cardSize,
+  onCardSizeChange,
   clipLength,
   winningPattern,
   shuffle,
@@ -162,6 +168,7 @@ export default function GameSettings({
         </div>
       )}
 
+      <CardSizeSelect value={cardSize} onChange={onCardSizeChange} disabled={loading || creating} />
       <div style={formGridStyle}>
         <label style={labelStyle}>
           Bingo cards
@@ -169,14 +176,14 @@ export default function GameSettings({
           <input
             type="number"
             min={1}
-            max={500}
+            max={100}
             value={cardCount}
             disabled={loading || creating}
             onChange={(event) => {
               const nextCardCount = Math.max(
                 1,
                 Math.min(
-                  500,
+                  100,
                   Number(event.target.value) || 1
                 )
               );
@@ -192,8 +199,8 @@ export default function GameSettings({
 
         <p style={summaryNoteStyle}>
           {cardCount === 5
-            ? "Free practice: up to 5 players, one free card each. No checkout."
-            : "For free practice, choose 5 cards. Other card counts use the regular game setup."}
+            ? "Free practice: up to 5 players, 1–10 free cards each (50 cards generated). No checkout."
+            : "Beta games are capped at 100 total cards. Choose the per-player card limit separately before sharing the code."}
         </p>
 
         <label style={labelStyle}>
@@ -242,7 +249,7 @@ export default function GameSettings({
               key={pattern.value}
               value={pattern.value}
             >
-              {pattern.label}
+              {pattern.value === "any-line" ? `Any ${cardSize} in a Row` : pattern.label}
             </option>
           ))}
         </select>

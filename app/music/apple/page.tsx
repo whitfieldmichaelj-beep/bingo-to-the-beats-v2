@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 // BTTB_APPLE_DIRECT_CREATE_NO_HOST_PAGE_V2
 
@@ -69,6 +71,7 @@ type WinningPattern =
 type StoredGameDetails = {
   players?: number;
   billing?: string;
+  cardSize?: CardSize;
   winningPattern?: WinningPattern;
   gameName?: string;
   venueName?: string;
@@ -80,6 +83,7 @@ type StoredGameDetails = {
 };
 
 type AppleGameSettings = {
+  cardSize?: CardSize;
   cardCount: number;
   clipLength: number;
   shuffle: boolean;
@@ -157,6 +161,7 @@ export default function AppleMusicPage() {
     useState(30);
   const [shuffle, setShuffle] =
     useState(true);
+  const [cardSize, setCardSize] = useState<CardSize>(5);
   const [winningPattern, setWinningPattern] =
     useState<WinningPattern>(
       "any-line"
@@ -315,7 +320,7 @@ export default function AppleMusicPage() {
   );
 
   const gameAdvisor = useMemo(() => {
-    const minimumTrackCount = 25;
+    const minimumTrackCount = cardSize * cardSize;
     const idealTrackCount = 75;
     const requestedTrackCount = 80;
 
@@ -403,6 +408,7 @@ export default function AppleMusicPage() {
     };
   }, [
     advisorTrackCount,
+    cardSize,
   ]);
 
   const filteredPlaylists = useMemo(() => {
@@ -484,6 +490,7 @@ export default function AppleMusicPage() {
           );
         }
 
+        if (parsed.cardSize === 3 || parsed.cardSize === 5) setCardSize(parsed.cardSize);
         if (
           isWinningPattern(
             parsed.winningPattern
@@ -546,6 +553,7 @@ export default function AppleMusicPage() {
           );
         }
 
+        if (parsed.cardSize === 3 || parsed.cardSize === 5) setCardSize(parsed.cardSize);
         if (
           isWinningPattern(
             parsed.winningPattern
@@ -569,6 +577,7 @@ export default function AppleMusicPage() {
           clipLength,
           shuffle,
           winningPattern,
+          cardSize,
         };
 
       sessionStorage.setItem(
@@ -590,6 +599,7 @@ export default function AppleMusicPage() {
           players:
             cardCount,
           winningPattern,
+          cardSize,
         })
       );
     } catch {
@@ -600,6 +610,7 @@ export default function AppleMusicPage() {
     clipLength,
     shuffle,
     winningPattern,
+    cardSize,
     gameDetails,
   ]);
 
@@ -1174,6 +1185,7 @@ useEffect(() => {
                 </label>
               </div>
 
+              <CardSizeSelect value={cardSize} onChange={setCardSize} />
               <label className="mt-[18px] block text-[13px] font-extrabold text-slate-200">
                 Winning pattern
 
@@ -1197,7 +1209,7 @@ useEffect(() => {
                           pattern.value
                         }
                       >
-                        {pattern.label}
+                        {pattern.value === "any-line" ? `Any ${cardSize} in a Row` : pattern.label}
                       </option>
                     )
                   )}
@@ -1463,6 +1475,7 @@ useEffect(() => {
                       clipLength={
                         clipLength
                       }
+                      cardSize={cardSize}
                       winningPattern={
                         winningPattern
                       }

@@ -6,6 +6,7 @@ import {
 } from "react";
 
 export type LivePlayer = {
+  cardNumbers?: number[];
   playerId: string;
   playerName: string;
   connected: boolean;
@@ -27,6 +28,7 @@ export type LivePlayerActivity = {
 };
 
 export type GameRoster = {
+  game?: { id: string; status: string };
   capacity?: { used: number; limit: number; remaining: number } | null;
   players: LivePlayer[];
   activities: LivePlayerActivity[];
@@ -48,6 +50,7 @@ export type GameRoster = {
 };
 
 type GameRosterApiResponse = {
+  game?: GameRoster["game"];
   ok?: boolean;
   message?: string;
   players?: LivePlayer[];
@@ -156,7 +159,7 @@ export function useGameRoster(
       if (
         cancelled ||
         requestInProgress ||
-        document.hidden ||
+        (document.hidden && !(window as Window & { bttbDesktopWidgetActive?: boolean }).bttbDesktopWidgetActive) ||
         !navigator.onLine
       ) {
         scheduleNextPoll();
@@ -203,6 +206,7 @@ export function useGameRoster(
         if (!cancelled) {
           loaded = true;
           setRoster({
+            game: data.game,
             players:
               data.players ?? [],
             activities:
@@ -219,18 +223,15 @@ export function useGameRoster(
           setError(null);
         }
       } catch (loadError) {
-        if (
-          cancelled ||
-          loadError instanceof DOMException &&
-            loadError.name ===
-              "AbortError"
-        ) {
+        if (cancelled) {
           return;
         }
 
         if (!cancelled) {
           setError(
-            loadError instanceof Error
+            loadError instanceof DOMException && loadError.name === "AbortError"
+              ? "Player connection timed out. Retrying…"
+              : loadError instanceof Error
               ? loadError.message
               : "Unable to load players."
           );
@@ -248,7 +249,7 @@ export function useGameRoster(
 
     function refreshWhenActive() {
       if (
-        document.hidden ||
+        (document.hidden && !(window as Window & { bttbDesktopWidgetActive?: boolean }).bttbDesktopWidgetActive) ||
         !navigator.onLine ||
         (!polling && loaded)
       ) {

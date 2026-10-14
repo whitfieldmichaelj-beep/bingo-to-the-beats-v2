@@ -1,3 +1,4 @@
+import { expireGames } from "@/lib/game/expiration";
 import { HostAccessError, requireGameHostAccess } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
 import {
@@ -46,6 +47,7 @@ export async function GET(
       return NextResponse.json({ ok: false, message: "Game ID is required." }, { status: 400 });
     }
 
+    await expireGames({ id: gameId, host: { clerkId: userId } });
     const ownedGame =
       await prisma.game.findFirst({
         where: {
@@ -57,6 +59,7 @@ export async function GET(
         },
         select: {
           id: true,
+          status: true,
         },
       });
 
@@ -73,7 +76,10 @@ export async function GET(
       );
     }
 
-    await requireGameHostAccess(ownedGame.id);
+    // Both completed and cancelled history remain readable, never playable.
+    if (!["COMPLETED", "CANCELLED"].includes(ownedGame.status)) {
+      await requireGameHostAccess(ownedGame.id);
+    }
 
     const game =
       await findGameById(
@@ -96,6 +102,7 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       game,
+      readOnly: game.status === "completed",
     });
   } catch (error) {
     if (error instanceof HostAccessError) return NextResponse.json({ ok: false, message: error.message }, { status: error.status });

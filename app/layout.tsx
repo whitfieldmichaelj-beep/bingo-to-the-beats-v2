@@ -35,9 +35,10 @@ export default function RootLayout({
     >
       <body>
         <ClerkProvider>
+          <a className="bttb-skip-link" href="#main-content">Skip to content</a>
           <Header />
 
-          <div className="bttb-page-content">{children}</div>
+          <div id="main-content" tabIndex={-1} className="bttb-page-content">{children}</div>
 
           <Footer />
         </ClerkProvider>

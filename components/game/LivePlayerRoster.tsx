@@ -38,7 +38,7 @@ export default function LivePlayerRoster({
         </div>
 
         <span style={countBadgeStyle}>
-          {roster.totals.totalPlayers} Paid
+          {roster.totals.totalPlayers} Ready
         </span>
       </div>
 
@@ -105,7 +105,7 @@ export default function LivePlayerRoster({
                     }}
                   >
                     {player.paymentStatus === "PAID"
-                      ? "PAID"
+                      ? player.amountCents === 0 ? "FREE ENTRY" : "PAID"
                       : player.paymentStatus === "PENDING"
                         ? "PAYMENT PENDING"
                         : "NO PAYMENT"}
@@ -132,7 +132,7 @@ export default function LivePlayerRoster({
             {roster.totals.totalPlayers}
           </strong>
           <span style={totalLabelStyle}>
-            Paid Players
+            Ready Players
           </span>
         </div>
 
@@ -141,7 +141,7 @@ export default function LivePlayerRoster({
             {roster.totals.totalCards}
           </strong>
           <span style={totalLabelStyle}>
-            Cards Sold
+            Cards in Play
           </span>
         </div>
 
@@ -166,7 +166,7 @@ export default function LivePlayerRoster({
             )}
           </strong>
           <span style={totalLabelStyle}>
-            Paid Pot
+            Entry Revenue
           </span>
         </div>
 

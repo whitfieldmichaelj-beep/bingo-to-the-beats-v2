@@ -76,7 +76,7 @@ export function useBingoClaims(
       return pending;
     }
     function checkWhenActive() {
-      if (!document.hidden && navigator.onLine && (polling || !loaded)) void load();
+      if ((!document.hidden || !!(window as Window & { bttbDesktopWidgetActive?: boolean }).bttbDesktopWidgetActive) && navigator.onLine && (polling || !loaded)) void load();
     }
     refreshRef.current = load;
     checkWhenActive();

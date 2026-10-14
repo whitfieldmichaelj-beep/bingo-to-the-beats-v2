@@ -1,3 +1,4 @@
+import { cancelPreviousHostGames, expireGames } from "./expiration";
 import { reserveHostGame, subscriptionsEnabled } from "@/lib/billing/access";
 import type {
   CardStatus,
@@ -79,6 +80,7 @@ function providerTrackId(
 async function loadGameById(
   gameId: string
 ): Promise<ActiveGame | null> {
+  await expireGames({ id: gameId });
   const game = await prisma.game.findUnique({
     where: {
       id: gameId,
@@ -111,6 +113,8 @@ export async function createGame(
           clerkId: hostClerkId,
         },
       });
+
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${host.id} FOR UPDATE`;
 
       const hostAccess = subscriptionsEnabled() || options.practice === true
         ? await reserveHostGame(tx, hostClerkId, game.id, game.requestedCardCount ?? cards.length, game.playbackConfig?.source ?? "local", options.practice === true)
@@ -215,6 +219,8 @@ export async function createGame(
             ),
         },
       });
+
+      await cancelPreviousHostGames(tx, host.id, game.id);
 
       await tx.gameTrack.createMany({
         data: game.tracks.map(
@@ -360,6 +366,7 @@ export async function findGameById(
 export async function findGameByJoinCode(
   joinCode: string
 ): Promise<ActiveGame | null> {
+  await expireGames({ joinCode: normalizeJoinCode(joinCode) });
   const game =
     await prisma.game.findUnique({
       where: {

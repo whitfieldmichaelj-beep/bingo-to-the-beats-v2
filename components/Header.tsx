@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type MusicKitInstance = {
   unauthorize?: () => Promise<void>;
@@ -18,6 +18,8 @@ export default function Header() {
   const pathname = usePathname();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
 
   /*
    * BTTB_PLAYER_GAME_CHROME_LOCK_V1
@@ -129,7 +131,12 @@ export default function Header() {
   }
 
   return (
-    <header className="bttb-header">
+    <header className="bttb-header" onKeyDown={event => {
+      if (event.key === "Escape" && menuOpen) {
+        setMenuOpen(false);
+        menuButton.current?.focus();
+      }
+    }}>
       <Link href="/" className="bttb-brand">
         <Image
           src="/logo.png"
@@ -151,12 +158,17 @@ export default function Header() {
         </div>
       </Link>
 
-      <nav className="bttb-nav" aria-label="Main navigation">
-        <Link href="/">Home</Link>
-        <Link href="/dashboard">Dashboard</Link>
-        <Link href="/pricing">Pricing</Link>
-        <Link href="/music">Music</Link>
-        <Link href="/join">Join a Game</Link>
+      <button ref={menuButton} type="button" className="bttb-menu-toggle"
+        aria-expanded={menuOpen} aria-controls="site-navigation"
+        onClick={() => setMenuOpen(open => !open)}>{menuOpen ? "Close" : "Menu"}</button>
+
+      <nav id="site-navigation" className={`bttb-nav${menuOpen ? " is-open" : ""}`} aria-label="Main navigation"
+        onClick={event => { if ((event.target as HTMLElement).closest("a")) setMenuOpen(false); }}>
+        <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>Home</Link>
+        <Link href="/dashboard" aria-current={(pathname === "/dashboard" || pathname.startsWith("/dashboard/")) ? "page" : undefined}>Dashboard</Link>
+        <Link href="/pricing" aria-current={(pathname === "/pricing" || pathname.startsWith("/pricing/")) ? "page" : undefined}>Pricing</Link>
+        <Link href="/music" aria-current={(pathname === "/music" || pathname.startsWith("/music/")) ? "page" : undefined}>Music</Link>
+        <Link href="/join" aria-current={(pathname === "/join" || pathname.startsWith("/join/")) ? "page" : undefined}>Join a Game</Link>
 
         {isLoaded && isSignedIn ? (
           <button

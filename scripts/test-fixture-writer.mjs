@@ -7,6 +7,7 @@ await writer.insertRows('CardSquare',rows);
 assert.equal(calls.length,10,'2500 squares use ten bounded inserts');
 assert.equal(calls.reduce((n,c)=>n+c.values.length,0),10000);
 assert.equal(new Set(calls.map(c=>c.name)).size,calls.length);
+assert.ok(calls.every(c=>c.portal===c.name),'Each fixture query uses its own portal across connections');
 assert.ok(calls.every(c=>!c.text.includes("Song's")),'Values are always bound, not interpolated');
 assert.deepEqual(calls[0].values.slice(0,4),Object.values(rows[0]));
 assert.equal(calls.at(-1).values.at(-4),'square-2499');

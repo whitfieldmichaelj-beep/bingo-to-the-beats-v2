@@ -1,3 +1,4 @@
+import { parseCardSize } from "@/lib/game/card-layout";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { HostAccessError } from "@/lib/billing/access";
 import { auth } from "@clerk/nextjs/server";
@@ -52,6 +53,7 @@ const VALID_PATTERNS =
 
 type CreateLocalGameRequest =
   BuildLocalMusicGameOptions & {
+    cardSize?: number;
     libraryId?: string;
     rootFolderPath?: string;
     cardCount?: number;
@@ -168,6 +170,11 @@ export async function POST(
       );
     }
 
+    let cardSize;
+    try { cardSize = parseCardSize(body.cardSize); }
+    catch { return NextResponse.json({ ok: false, error: "Choose a 3×3 or 5×5 card size.", message: "Choose a 3×3 or 5×5 card size." }, { status: 400 }); }
+    const songsPerCard = cardSize * cardSize;
+
     let library =
       getLocalMusicLibrary();
 
@@ -213,7 +220,7 @@ export async function POST(
         requestedTrackCount:
           body.requestedTrackCount,
         minimumTrackCount:
-          body.minimumTrackCount,
+          songsPerCard,
         idealTrackCount:
           body.idealTrackCount,
         maximumTrackCount:
@@ -267,7 +274,8 @@ export async function POST(
       createGameFromPlaylist(
         playlist,
         bingoPattern,
-        cardCount
+        cardCount,
+        cardSize
       );
 
     const savedGame =

@@ -10,7 +10,7 @@ function load(file,mocks={}) {
 }
 const rates=load('app/lib/ratePlans.ts');
 const plans=load('lib/billing/plans.ts',{'../../app/lib/ratePlans':rates});
-const {reservePlayerSeat,requireMusicAccess,HostAccessError,PlayerCapacityError,reserveHostGame}=load('lib/billing/access.ts',{'@/lib/prisma':{prisma:{}},'./plans':plans});
+const {reservePlayerSeat,requireMusicAccess,HostAccessError,PlayerCapacityError,reserveHostGame}=load('lib/billing/access.ts',{'@/lib/prisma':{prisma:{}},'./plans':plans,'@/lib/game/expiration':{expireGames:async()=>{},expireGameInTransaction:async()=>false}});
 assert.equal(rates.ratePlans.length,3);
 assert.deepEqual(Array.from(rates.ratePlans,p=>[p.name,p.weeklyPrice,p.monthlyPrice,p.maximumPlayers]),[['Social',9.99,29.99,25],['Venue',39.99,119.99,100],['Event Plus',69.99,199.99,200]]);
 assert.deepEqual(Array.from(plans.djPlans,p=>[p.id,p.amountCents,p.interval,p.maxPlayers]),[['serato-weekly',1995,'week',25],['serato-pro',4995,'month',75],['serato-pro-plus',6995,'month',150]]);
@@ -29,7 +29,7 @@ let billing={...active('social-monthly'),activeGameId:null};
 let occupied=true;
 const txMock={ $queryRaw:async()=>[],hostBilling:{upsert:async()=>billing,findUniqueOrThrow:async()=>billing,update:async({data})=>Object.assign(billing,data)},game:{findUnique:async()=>({status:occupied?'LIVE':'COMPLETED'})}};
 assert.equal((await reserveHostGame(txMock,'host','game',250,'apple')).maxPlayers,25,'250 cards must not require 250 player spots');
-await assert.rejects(()=>reserveHostGame(txMock,'host','second',25,'apple'),HostAccessError);
+assert.equal((await reserveHostGame(txMock,'host','second',25,'apple')).maxPlayers,25,'Replacement may reserve access in the creation transaction');
 occupied=false;assert.equal((await reserveHostGame(txMock,'host','second',25,'apple')).maxPlayers,25);
 await assert.rejects(()=>reserveHostGame(txMock,'host','third',25,'serato'),HostAccessError);
 const practiceAccess=await reserveHostGame(txMock,'host','practice',5,'serato',true);
@@ -37,6 +37,14 @@ assert.equal(practiceAccess.isPractice,true);assert.equal(practiceAccess.maxPlay
 await assert.rejects(()=>reserveHostGame(txMock,'host','oversized-practice',100,'serato',true),HostAccessError);
 console.log('PASS explicit practice remains free with a paid plan and enforces five-player size');
 console.log('PASS plan prices, paid-period limits, provider authorization, cards versus players, and one active game');
+let betaCount = 9, betaExisting = false;
+const betaTx = { $queryRaw: async () => [], game: { findUniqueOrThrow: async () => ({ status: 'READY', hostBillingRequired: false, maxPlayers: 10 }) }, purchase: { findUnique: async () => betaExisting ? { id: 'existing' } : null, count: async () => betaCount } };
+await reservePlayerSeat(betaTx, 'beta', 'tenth');
+betaCount = 10;
+await assert.rejects(() => reservePlayerSeat(betaTx, 'beta', 'eleventh'), PlayerCapacityError);
+betaExisting = true;
+await reservePlayerSeat(betaTx, 'beta', 'existing');
+console.log('PASS private beta ten-player limit and existing-player reconnect at capacity');
 if(!process.argv.includes('--database'))process.exit(0);
 require('@next/env').loadEnvConfig(process.cwd(),true,{info(){},error(){}});
 const url=new URL(process.env.DATABASE_URL);

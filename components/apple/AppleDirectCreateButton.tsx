@@ -55,6 +55,7 @@ type Props = {
   playlistName: string;
   cardCount: number;
   clipLength: number;
+  cardSize: 3 | 5;
   winningPattern: string;
   shuffle: boolean;
   gameName?: string;
@@ -243,6 +244,7 @@ export default function AppleDirectCreateButton({
   cardCount,
   clipLength,
   winningPattern,
+  cardSize,
   shuffle,
   gameName,
   venueName,
@@ -273,11 +275,11 @@ export default function AppleDirectCreateButton({
           playlistId
         );
 
-      if (tracks.length < 25) {
+      if (tracks.length < cardSize * cardSize) {
         throw new Error(
           `This playlist has ${tracks.length} usable song${
             tracks.length === 1 ? "" : "s"
-          }. At least 25 unique songs are required.`
+          }. At least ${cardSize * cardSize} unique songs are required.`
         );
       }
 
@@ -315,6 +317,7 @@ export default function AppleDirectCreateButton({
                 "application/json",
             },
             body: JSON.stringify({
+              cardSize,
               clipLength: safeClipLength,
               source: "apple",
               playlistId,
@@ -462,6 +465,7 @@ export default function AppleDirectCreateButton({
           primaryColor ||
           "#00519a",
         winningPattern,
+        cardSize,
       };
 
       const callerState = {
@@ -505,11 +509,11 @@ export default function AppleDirectCreateButton({
       );
 
       onMessage(
-        `Game created. Join code: ${createdGame.joinCode}`
+        "Game created. Next: choose player entry, card limits, and the prize."
       );
 
       router.push(
-        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
+        `/game/setup?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (error) {
       console.error(
@@ -538,7 +542,7 @@ export default function AppleDirectCreateButton({
     >
       {creating
         ? "Creating Game..."
-        : "Create Game & Open DJ Console"}
+        : "Create Game & Set Entry / Prize"}
     </button>
   );
 }

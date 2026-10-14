@@ -1,9 +1,11 @@
+import { parseCardSize } from "@/lib/game/card-layout";
 import { getDjAdapter } from "@/lib/dj/bridge";
 import { isDjProvider } from "@/lib/dj/providers";
 import { excludedDjSong } from "@/lib/serato/song-filter";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
+import { BETA_GAME_CARD_LIMIT, betaCardLimitMessage } from "@/lib/game/beta-limits";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -36,7 +38,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_CARD_COUNT = 25;
-const MAX_CARD_COUNT = 5000;
+const MAX_CARD_COUNT = BETA_GAME_CARD_LIMIT;
 
 const VALID_PATTERNS =
   new Set<BingoPattern>([
@@ -218,16 +220,28 @@ export async function POST(
     const body =
       await request.json();
 
+    let cardSize;
+    try { cardSize = parseCardSize(body.cardSize); }
+    catch { return NextResponse.json({ ok: false, error: "Choose a 3×3 or 5×5 card size.", message: "Choose a 3×3 or 5×5 card size." }, { status: 400 }); }
+    const songsPerCard = cardSize * cardSize;
+
     const playlistId =
       typeof body.playlistId ===
       "string"
         ? body.playlistId.trim()
         : "";
 
+    if (typeof body.cardCount === "number" && Number.isFinite(body.cardCount) && body.cardCount > BETA_GAME_CARD_LIMIT) {
+      return NextResponse.json({ ok: false, message: betaCardLimitMessage() }, { status: 400 });
+    }
+
     const cardCount =
       normalizeCardCount(
         body.cardCount
       );
+
+    const practice = cardCount === 5;
+    const generatedCardCount = practice ? 50 : cardCount;
 
     const bingoPattern =
       normalizeBingoPattern(
@@ -262,13 +276,13 @@ export async function POST(
     );
 
     if (
-      playablePlaylist.tracks.length < 25
+      playablePlaylist.tracks.length < songsPerCard
     ) {
       return NextResponse.json(
         {
           ok: false,
           message:
-            `This playlist has ${playablePlaylist.tracks.length} usable songs after removing ${excludedCount} excluded edits and ${duplicateCount} duplicate versions. Bingo requires 25 different songs. Add at least ${25 - playablePlaylist.tracks.length} more different songs, then refresh the playlist.`,
+            `This playlist has ${playablePlaylist.tracks.length} usable songs after removing ${excludedCount} excluded edits and ${duplicateCount} duplicate versions. Bingo requires ${songsPerCard} different songs. Add at least ${songsPerCard - playablePlaylist.tracks.length} more different songs, then refresh the playlist.`,
           playableTrackCount:
             playablePlaylist.tracks.length,
           excludedCount,
@@ -287,9 +301,10 @@ export async function POST(
 
     const advisor =
       evaluateGameBalance({
+        rows: cardSize, columns: cardSize,
         uniqueSongCount,
         requestedCardCount:
-          cardCount,
+          generatedCardCount,
         bingoPattern,
       });
 
@@ -311,7 +326,8 @@ export async function POST(
       createGameFromPlaylist(
         playablePlaylist,
         bingoPattern,
-        cardCount
+        generatedCardCount,
+        cardSize
       );
 
     game.playbackConfig = makePlaybackConfig(provider, body.clipLength, game.tracks);
@@ -320,7 +336,7 @@ export async function POST(
       await persistGame(
         game,
         userId,
-        { practice: cardCount === 5 }
+        { practice }
       );
 
     return NextResponse.json({

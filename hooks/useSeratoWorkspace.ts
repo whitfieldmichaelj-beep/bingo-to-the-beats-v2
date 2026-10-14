@@ -1,4 +1,5 @@
 "use client";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import { DJ_PROVIDERS, type DjProvider } from "../lib/dj/providers";
 import { useRouter } from "next/navigation";
@@ -85,6 +86,7 @@ type ConsoleTrack = {
 };
 
 type GameSession = {
+  cardSize: CardSize;
   version: 2;
   sessionId: string;
   source: DjProvider;
@@ -107,6 +109,7 @@ type GameSession = {
 export type StoredGameDetails = {
   players?: number;
   billing?: string;
+  cardSize?: CardSize;
   winningPattern?: WinningPattern;
   gameName?: string;
   venueName?: string;
@@ -269,6 +272,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [search, setSearch] = useState("");
   const [clipLength, setClipLength] = useState(30);
+  const [cardSize, setCardSize] = useState<CardSize>(5);
   const [cardCount, setCardCount] = useState(25);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("practice") === "1") setCardCount(5);
@@ -307,6 +311,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
     () =>
       selectedPlaylist
         ? evaluateGameBalance({
+            rows: cardSize, columns: cardSize,
             uniqueSongCount:
               selectedPlaylist.trackCount,
             requestedCardCount: cardCount,
@@ -317,6 +322,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
         : null,
     [
       cardCount,
+      cardSize,
       clipLength,
       selectedPlaylist,
       winningPattern,
@@ -398,6 +404,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       ) {
         setCardCount(storedDetails.players);
       }
+      if (storedDetails.cardSize === 3 || storedDetails.cardSize === 5) setCardSize(storedDetails.cardSize);
       if (storedDetails.winningPattern) {
         setWinningPattern(storedDetails.winningPattern);
       }
@@ -450,6 +457,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
           provider,
           clipLength,
           cardCount,
+          cardSize,
           winningPattern,
         }),
       });
@@ -465,7 +473,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       const createdGame = data.game;
       if (
         !Array.isArray(createdGame.tracks) ||
-        createdGame.tracks.length < 25
+        createdGame.tracks.length < cardSize * cardSize
       ) {
         throw new Error(
           "The selected crate did not return enough tracks to create bingo cards."
@@ -495,6 +503,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
         playlistName: createdGame.playlistName,
         clipLength,
         cardCount,
+        cardSize,
         createdAt: new Date().toISOString(),
         currentIndex: 0,
         status: "ready",
@@ -527,6 +536,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
     provider,
     labels,
     cardCount,
+    cardSize,
     clipLength,
     gameDetails,
     router,
@@ -588,6 +598,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       gameDetails,
       clipLength,
       cardCount,
+      cardSize,
       shuffle,
       winningPattern,
       winningPatterns: WINNING_PATTERNS,
@@ -598,6 +609,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       error,
       onClipLengthChange: setClipLength,
       onCardCountChange: updateCardCount,
+      onCardSizeChange: setCardSize,
       onShuffleChange: setShuffle,
       onWinningPatternChange: setWinningPattern,
       onOptimizeGame: optimizeGame,

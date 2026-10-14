@@ -19,14 +19,14 @@ const name=i=>`bttb_test_${i.toString(36)}_1234567890abcdef`;
 const sql='SELECT $1::int AS number';
 function harness({queryFailure=false,closeFailure=false,duplicateCallback=false}={}) {
  const pool=new EventEmitter(),events=[],prepared=new Set();let skip=false;
- const wire={parsedStatements:{},stream:{cork(){},uncork(){}},
+ const wire=Object.assign(new EventEmitter(),{parsedStatements:{},stream:{cork(){},uncork(){}},
   parse({name,text}){events.push(['parse',name]);prepared.add(name);wire.parsedStatements[name]=text},
   bind(request){events.push(['bind',request.portal,request.statement])},
   describe(){events.push(['describe'])},
   execute(){events.push(['execute']);if(queryFailure)skip=true},
   close({type,name}){if(closeFailure)throw new Error('close failed');events.push([skip?'close-skipped':'close',type,name]);if(!skip)prepared.delete(name)},
   sync(){events.push(['sync']);skip=false}
- };
+ });
  let ended=0;
  const client={connection:wire,end:async()=>{ended++},query(config,values,callback){
   if(config instanceof pg.Query){
@@ -100,7 +100,7 @@ test('stream/submittable queries are not transformed',()=>{
 test('repeated imports/connect/acquire events never double-wrap clients',async()=>{
  const h=harness();const first=h.client.query;
  for(let i=0;i<10;i++){cleanup.installLocalStatementCleanup(h.pool);h.pool.emit('connect',h.client);h.pool.emit('acquire',h.client)}
- assert.equal(h.client.query,first);assert.equal(h.pool.listenerCount('connect'),1);assert.equal(h.pool.listenerCount('acquire'),1);
+ assert.equal(h.client.query,first);assert.equal(h.pool.listenerCount('connect'),2);assert.equal(h.pool.listenerCount('acquire'),2);
  await h.client.query({name:name(9),text:sql});assert.equal(h.events.filter(e=>e[0]==='close').length,1);
 });
 test('multiple outstanding unique calls each close their own resource',async()=>{
@@ -121,4 +121,34 @@ for(const url of ['postgres://localhost:51214/postgres','postgres://127.0.0.1:51
  assert.equal(hooks,local?1:0);assert.equal(pools.length,1);
  const generate=exports.prisma.options.adapter.options.statementNameGenerator;
  const one=generate(),two=generate();assert.notEqual(one,two);assert.match(one,/^bttb_[a-z0-9]+_[a-z0-9]+_[a-f0-9]{16}$/);
+});
+
+for (const terminal of ['commandComplete', 'emptyQuery', 'errorMessage', 'closeComplete']) {
+ test(`local bridge duplicate Ready does not finish a later query after ${terminal}`, () => {
+  const wire = new EventEmitter();
+  const received = [];
+  wire.on('readyForQuery', message => received.push(message.status));
+  cleanup.installLocalReadyBoundary(wire);
+  const installed = wire.emit;
+  cleanup.installLocalReadyBoundary(wire);
+  assert.equal(wire.emit, installed);
+  wire.emit(terminal, {});
+  wire.emit('readyForQuery', {status:'E'});
+  // The next query has started but has not produced a terminal response.
+  wire.emit('parseComplete', {});
+  wire.emit('readyForQuery', {status:'E'});
+  assert.deepEqual(received, ['E']);
+  wire.emit('commandComplete', {});
+  wire.emit('closeComplete', {});
+  wire.emit('readyForQuery', {status:'I'});
+  assert.deepEqual(received, ['E','I']);
+ });
+}
+
+test('hot reload adds the ready guard to a pool with earlier cleanup installed', () => {
+ const pool=new EventEmitter();pool[Symbol.for('bttb.local-statement-cleanup.pool.v1')]=true;
+ const wire=new EventEmitter();let received=0;wire.on('readyForQuery',()=>received++);
+ cleanup.installLocalStatementCleanup(pool);pool.emit('acquire',{connection:wire});
+ wire.emit('errorMessage',{});wire.emit('readyForQuery',{});wire.emit('readyForQuery',{});
+ assert.equal(received,1);assert.equal(pool.listenerCount('acquire'),1);
 });

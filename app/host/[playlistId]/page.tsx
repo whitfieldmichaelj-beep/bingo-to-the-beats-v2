@@ -1,4 +1,6 @@
 "use client";
+import CardSizeSelect from "@/components/game/CardSizeSelect";
+import type { CardSize } from "@/lib/game/card-layout";
 
 import Link from "next/link";
 import Script from "next/script";
@@ -26,6 +28,7 @@ type DisplayTrack = {
 };
 
 type GameDetails = {
+  cardSize?: CardSize;
   gameName?: string;
   venue?: string;
   venueName?: string;
@@ -37,6 +40,7 @@ type GameDetails = {
 };
 
 type GameSession = {
+  cardSize?: CardSize;
   version: 2;
   sessionId: string;
   joinCode: string;
@@ -300,6 +304,7 @@ export default function HostPlaylistPage() {
       ? "apple"
       : "spotify";
 
+  const [cardSize, setCardSize] = useState<CardSize>(searchParams.get("cardSize") === "3" ? 3 : 5);
   const [appleScriptReady, setAppleScriptReady] =
     useState(source !== "apple");
 
@@ -704,6 +709,7 @@ const [tracks, setTracks] = useState<
             },
             body:
               JSON.stringify({
+                cardSize,
                 clipLength: safeClipLength,
                 source,
                 playlistId,
@@ -865,6 +871,7 @@ const [tracks, setTracks] = useState<
           savedDetails.primaryColor ||
           "#00519a",
 
+        cardSize,
         winningPattern:
           savedWinningPattern,
       };
@@ -913,7 +920,7 @@ const [tracks, setTracks] = useState<
       );
 
       router.push(
-        `/dj-console?gameId=${encodeURIComponent(createdGame.id)}`
+        `/game/setup?gameId=${encodeURIComponent(createdGame.id)}`
       );
     } catch (error) {
       console.error(
@@ -1038,6 +1045,7 @@ const [tracks, setTracks] = useState<
             Game Settings
           </h2>
 
+          <CardSizeSelect value={cardSize} onChange={setCardSize} disabled={creatingGame} />
           <label
             htmlFor="clipLength"
             style={{
@@ -1147,7 +1155,7 @@ const [tracks, setTracks] = useState<
           >
             {creatingGame
               ? "Creating Game..."
-              : "Create Game and Open DJ Console"}
+              : "Create Game & Set Entry / Prize"}
           </button>
 
           <p
@@ -1158,10 +1166,9 @@ const [tracks, setTracks] = useState<
               lineHeight: 1.5,
             }}
           >
-            This creates a new game
-            session, shuffles the playlist,
-            initializes the caller, and
-            opens the DJ Console.
+            Create your cards, then choose free or paid entry,
+            a card limit per player, and the prize. Open the DJ Console
+            after saving those choices.
           </p>
         </section>
 
