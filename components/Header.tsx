@@ -119,7 +119,7 @@ export default function Header() {
       clearBrowserSessions();
 
       await signOut({
-        redirectUrl: "/sign-in",
+        redirectUrl: "/sign-in?library=disconnected",
       });
     } catch (error) {
       console.error("Clerk logout failed:", error);

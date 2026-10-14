@@ -28,6 +28,16 @@ export async function prepareUniversalLogout(): Promise<void> {
     return;
   }
 
+  try {
+    await fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.warn("Companion disconnect request failed during logout:", error);
+  }
+
   for (const key of ACTIVE_GAME_KEYS) {
     window.localStorage.removeItem(key);
     window.sessionStorage.removeItem(key);

@@ -94,37 +94,37 @@ function getEnvironmentLibraryPaths(): string[] {
 }
 
 function shouldScanMountedVolumes(): boolean {
-  return (
+  const configured =
     process.env.SERATO_SCAN_VOLUMES
       ?.trim()
-      .toLowerCase() === "true"
-  );
+      .toLowerCase();
+
+  // DJs commonly keep Serato libraries and music on removable drives.
+  // Discover mounted volumes by default; allow an explicit opt-out for
+  // unusual environments where volume probing is undesirable.
+  return configured !== "false";
 }
 
 async function findMountedVolumeLibraries(
   locations: Set<string>
 ): Promise<void> {
   const volumes = await mountedMusicVolumes();
-  for (const volume of volumes) {
-    const volumePath = volume.path;
+  const candidates = volumes.flatMap((volume) => [
+    path.join(volume.path, "_Serato_"),
+    path.join(volume.path, "Music", "_Serato_"),
+  ]);
 
-    await addSeratoLibrary(
-      locations,
-      path.join(
-        volumePath,
-        "_Serato_"
+  // Probe drives concurrently. Each probe is already bounded by
+  // FILESYSTEM_TIMEOUT_MS, so a sleeping/disconnected volume cannot make
+  // startup wait serially across every mounted drive or Windows drive letter.
+  await Promise.all(
+    candidates.map((candidatePath) =>
+      addSeratoLibrary(
+        locations,
+        candidatePath
       )
-    );
-
-    await addSeratoLibrary(
-      locations,
-      path.join(
-        volumePath,
-        "Music",
-        "_Serato_"
-      )
-    );
-  }
+    )
+  );
 }
 
 export async function findSeratoLibraries(): Promise<
@@ -151,18 +151,13 @@ export async function findSeratoLibraries(): Promise<
   }
 
   /*
-   * Mounted drives are not scanned automatically because
-   * sleeping, disconnected, network, or cloud volumes can
-   * cause filesystem requests to hang.
+   * Mounted drives are scanned automatically because many DJs keep Serato
+   * libraries and music on removable storage. Filesystem probes are bounded
+   * by a timeout and run concurrently so a sleeping or disconnected drive
+   * cannot block startup for each volume in sequence.
    *
-   * To enable automatic volume scanning, add this to
-   * .env.local:
-   *
-   * SERATO_SCAN_VOLUMES=true
-   *
-   * The safer option is to specify the exact path:
-   *
-   * SERATO_LIBRARY_PATHS=/Volumes/My Drive/_Serato_
+   * Set SERATO_SCAN_VOLUMES=false to opt out in unusual environments.
+   * SERATO_LIBRARY_PATHS can still pin one or more exact library paths.
    */
   if (shouldScanMountedVolumes()) {
     await findMountedVolumeLibraries(

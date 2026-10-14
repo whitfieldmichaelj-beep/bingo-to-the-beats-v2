@@ -29,7 +29,7 @@ export default function LogoutButton() {
        */
       await signOut();
 
-      window.location.replace("/sign-in");
+      window.location.replace("/sign-in?library=disconnected");
     } catch (error) {
       console.error("Universal logout failed:", error);
 
@@ -40,7 +40,7 @@ export default function LogoutButton() {
       try {
         await signOut();
       } finally {
-        window.location.replace("/sign-in");
+        window.location.replace("/sign-in?library=disconnected");
       }
     }
   }

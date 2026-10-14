@@ -378,6 +378,25 @@ model HostBilling {
   updatedAt DateTime @updatedAt
 }
 
+// A local DJ companion is paired to one signed-in Clerk account at a time.
+// The raw pairing token never enters the database; only its SHA-256 hash is stored.
+model CompanionSession {
+  id              String   @id @default(cuid())
+  clerkId         String
+  deviceId        String
+  deviceName      String?
+  tokenHash       String   @unique
+  isActive        Boolean  @default(true)
+  lastHeartbeatAt DateTime @default(now())
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([clerkId, deviceId])
+  @@index([clerkId, isActive])
+  @@index([lastHeartbeatAt])
+}
+
 // A player retains the same spot when disconnecting, reconnecting or changing cards.
 model GamePlayerSeat {
   gameId String

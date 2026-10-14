@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { SignIn } from "@clerk/nextjs";
+import LogoutLibraryNotice from "@/components/LogoutLibraryNotice";
 
 export default function SignInPage() {
   return (
@@ -47,6 +48,8 @@ export default function SignInPage() {
         >
           Welcome Back
         </h1>
+
+        <LogoutLibraryNotice />
 
         <div
           style={{
