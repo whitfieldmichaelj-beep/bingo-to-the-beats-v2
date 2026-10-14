@@ -24,7 +24,14 @@ export default async function GameHistory({ params }: { params: Promise<{ gameId
     },
   });
   if (!game) notFound();
-  if (!["COMPLETED", "CANCELLED"].includes(game.status)) redirect(`/dj-console?gameId=${encodeURIComponent(game.id)}`);
+  if (!["COMPLETED", "CANCELLED"].includes(game.status)) {
+    const source = game.playbackConfig && typeof game.playbackConfig === "object" && !Array.isArray(game.playbackConfig)
+      ? String((game.playbackConfig as { source?: unknown }).source ?? "")
+      : "";
+    redirect(source === "apple"
+      ? `/game/control?gameId=${encodeURIComponent(game.id)}`
+      : `/dj-console?gameId=${encodeURIComponent(game.id)}`);
+  }
   const called = game.tracks.filter(track => track.called);
   const prize = readGamePrize(game.playbackConfig);
   const entry = readSavedGameEntry(game.playbackConfig);

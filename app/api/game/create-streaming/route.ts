@@ -1,6 +1,7 @@
 import { parseCardSize } from "@/lib/game/card-layout";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
+import { BETA_GAME_CARD_LIMIT, betaCardLimitMessage } from "@/lib/game/beta-limits";
 import {
   auth,
 } from "@clerk/nextjs/server";
@@ -115,7 +116,7 @@ function normalizeCardCount(
   }
 
   return Math.min(
-    500,
+    BETA_GAME_CARD_LIMIT,
     Math.max(
       1,
       Math.floor(parsed)
@@ -241,6 +242,10 @@ export async function POST(
       normalizeString(
         body.playlistName
       );
+
+    if (typeof body.cardCount === "number" && Number.isFinite(body.cardCount) && body.cardCount > BETA_GAME_CARD_LIMIT) {
+      return NextResponse.json({ ok: false, message: betaCardLimitMessage() }, { status: 400 });
+    }
 
     const cardCount =
       normalizeCardCount(

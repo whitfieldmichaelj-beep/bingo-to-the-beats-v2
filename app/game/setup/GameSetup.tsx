@@ -6,8 +6,9 @@ import GameEntryPanel from "@/components/game/GameEntryPanel";
 import GamePrizePanel from "@/components/game/GamePrizePanel";
 import type { GamePrize } from "@/lib/game/prize";
 
-export default function GameSetup({ gameId, initialPrize, editable, playerCount }: {
+export default function GameSetup({ gameId, initialPrize, editable, playerCount, controlHref, controlLabel }: {
   gameId: string; initialPrize: GamePrize | null; editable: boolean; playerCount: number;
+  controlHref: string; controlLabel: string;
 }) {
   const router = useRouter();
   const [prize, setPrize] = useState(initialPrize);
@@ -22,11 +23,11 @@ export default function GameSetup({ gameId, initialPrize, editable, playerCount 
         <section className="game-prize-panel"><h2>What will the winner receive?</h2><p className="game-prize-saved">{prize?.description ?? "Host to announce"}</p><p>The prize is locked once the game starts.</p></section>}
     </div>
     <div className="game-setup-continue">
-      <p role="status">{unsaved ? "Save the changes above before opening the DJ Console." : "The songs and the winning bingo pattern determine the winner."}</p>
+      <p role="status">{unsaved ? `Save the changes above before opening ${controlLabel}.` : "The songs and the winning bingo pattern determine the winner."}</p>
       <button className="dashboard-primary" type="button" disabled={unsaved || leaving} onClick={() => {
         if (unsaved || leaving) return;
-        setLeaving(true); router.push(`/dj-console?gameId=${encodeURIComponent(gameId)}`); router.refresh();
-      }}>{leaving ? "Opening console…" : "Continue to DJ Console →"}</button>
+        setLeaving(true); router.push(controlHref); router.refresh();
+      }}>{leaving ? "Opening controls…" : `Continue to ${controlLabel} →`}</button>
     </div>
   </>;
 }

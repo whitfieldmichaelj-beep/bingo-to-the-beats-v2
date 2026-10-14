@@ -14,10 +14,15 @@ type SavedGame = {
   cardCount: number;
   winners: { name: string; cardNumber: number }[];
   prize?: string | null;
+  source?: string | null;
 };
 const ended = (game: SavedGame) => ["COMPLETED", "CANCELLED"].includes(game.status);
 const needsSetup = (game: SavedGame) => ["DRAFT", "READY"].includes(game.status);
 const actionLabel = (game: SavedGame) => ended(game) ? "View Game" : needsSetup(game) ? "Entry & Prize Setup" : "Resume Game";
+const gameControlHref = (game: SavedGame) =>
+  game.source === "apple"
+    ? `/game/control?gameId=${encodeURIComponent(game.id)}`
+    : `/dj-console?gameId=${encodeURIComponent(game.id)}`;
 const statusLabels: Record<string, string> = {
   DRAFT: "Draft", READY: "Ready to start", LIVE: "Live", PAUSED: "Paused",
   COMPLETED: "Completed", CANCELLED: "Cancelled",
@@ -73,7 +78,7 @@ export default function SavedGames({ games }: { games: SavedGame[] }) {
         {game.prize && <p className="dashboard-game-meta">Prize: {game.prize}</p>}
         <div className="dashboard-game-bottom">
           <div className="dashboard-code"><span>{ended(game) ? "Game code" : "Player join code"}</span><strong>{game.joinCode}</strong></div>
-          <Link href={ended(game) ? `/dashboard/games/${encodeURIComponent(game.id)}` : needsSetup(game) ? `/game/setup?gameId=${encodeURIComponent(game.id)}` : `/dj-console?gameId=${encodeURIComponent(game.id)}`} prefetch={false}
+          <Link href={ended(game) ? `/dashboard/games/${encodeURIComponent(game.id)}` : needsSetup(game) ? `/game/setup?gameId=${encodeURIComponent(game.id)}` : gameControlHref(game)} prefetch={false}
             className={ended(game) ? "dashboard-secondary" : "dashboard-primary"}
             aria-label={`${actionLabel(game)}: ${game.title || game.playlistName} (${game.joinCode})`}>
             {actionLabel(game)}<span aria-hidden="true"> →</span>

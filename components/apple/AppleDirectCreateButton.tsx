@@ -285,7 +285,7 @@ export default function AppleDirectCreateButton({
 
       const safeCardCount =
         Math.min(
-          500,
+          100,
           Math.max(
             1,
             Math.floor(
@@ -307,6 +307,10 @@ export default function AppleDirectCreateButton({
         }...`
       );
 
+      const creationTracks = shuffle
+        ? shuffleTracks(tracks)
+        : tracks;
+
       const response =
         await fetch(
           "/api/game/create-streaming",
@@ -326,7 +330,7 @@ export default function AppleDirectCreateButton({
                 safeCardCount,
               bingoPattern:
                 winningPattern,
-              tracks,
+              tracks: creationTracks,
             }),
           }
         );
@@ -421,12 +425,9 @@ export default function AppleDirectCreateButton({
           }
         );
 
-      const gameTracks =
-        shuffle
-          ? shuffleTracks(
-              persistedTracks
-            )
-          : persistedTracks;
+      // The creation request already sends the final game order so Railway/Postgres
+      // can restore the same order on another browser or device.
+      const gameTracks = persistedTracks;
 
       const session = {
         version: 2 as const,

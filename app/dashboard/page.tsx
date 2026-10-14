@@ -50,6 +50,7 @@ export default async function DashboardPage() {
           <Link href="/music/upload">Import Serato CSV</Link><Link href="/billing">Billing & Subscription</Link>
         </nav>
         <SavedGames games={games.map(({playbackConfig, _count, winners, ...game}) => ({...game, createdAt:game.createdAt.toISOString(), cardCount:_count.cards, prize: readGamePrize(playbackConfig)?.description ?? null,
+          source: playbackConfig && typeof playbackConfig === "object" && !Array.isArray(playbackConfig) ? String((playbackConfig as { source?: unknown }).source ?? "") : "",
           winners: winners.map(winner => ({name: winner.card.playerName || "Player", cardNumber: winner.card.cardNumber}))}))} />
       </div>
     </main>

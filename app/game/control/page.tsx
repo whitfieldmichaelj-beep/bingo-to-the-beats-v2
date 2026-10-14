@@ -8,6 +8,7 @@ type MusicSource = "spotify" | "apple";
 
 type Track = {
   id: string;
+  gameTrackId?: string;
   name: string;
   artist: string;
   album: string;
@@ -46,6 +47,88 @@ type CallerState = {
   status: GameSession["status"];
 };
 
+type RestoredHostedGame = {
+  id: string;
+  playlistId: string;
+  playlistName: string;
+  createdAt: string;
+  status: "waiting" | "active" | "paused" | "completed";
+  requestedCardCount?: number;
+  tracks: Array<{
+    id: string;
+    gameTrackId: string;
+    title: string;
+    artist: string;
+    album?: string;
+    called: boolean;
+  }>;
+  playbackConfig?: {
+    source?: string;
+    clipLength?: number;
+    tracks?: Array<{
+      id: string;
+      appleCatalogId?: string;
+      appleLibraryId?: string;
+    }>;
+  } | null;
+};
+
+function browserSessionFromHostedGame(game: RestoredHostedGame): GameSession | null {
+  const config = game.playbackConfig;
+  if (config?.source !== "apple") return null;
+
+  const playbackById = new Map(
+    (config.tracks ?? []).map((track) => [track.id, track])
+  );
+
+  const tracks: Track[] = game.tracks.map((track) => {
+    const playback = playbackById.get(track.id);
+    return {
+      id: track.id,
+      gameTrackId: track.gameTrackId,
+      name: track.title,
+      artist: track.artist,
+      album: track.album ?? "",
+      image: null,
+      appleCatalogId: playback?.appleCatalogId,
+      appleLibraryId: playback?.appleLibraryId,
+    };
+  });
+
+  if (!tracks.length) return null;
+
+  const calledIndexes = game.tracks
+    .map((track, index) => (track.called ? index : -1))
+    .filter((index) => index >= 0);
+
+  const currentIndex = calledIndexes.length
+    ? calledIndexes[calledIndexes.length - 1]
+    : 0;
+
+  return {
+    version: 2,
+    sessionId: game.id,
+    source: "apple",
+    playlistId: game.playlistId,
+    playlistName: game.playlistName,
+    clipLength:
+      typeof config.clipLength === "number" && [15, 20, 30, 45, 60].includes(config.clipLength)
+        ? config.clipLength
+        : 30,
+    cardCount: Math.min(100, Math.max(1, game.requestedCardCount ?? 25)),
+    createdAt: game.createdAt,
+    currentIndex,
+    status:
+      game.status === "completed"
+        ? "complete"
+        : game.status === "waiting"
+          ? "ready"
+          : "paused",
+    tracks,
+    playedTrackIds: game.tracks.filter((track) => track.called).map((track) => track.id),
+  };
+}
+
 const GAME_SESSION_KEY = "bttb-v2-game-session";
 const CALLER_STATE_KEY = "bttb-v2-caller-state";
 const CHANNEL_NAME = "bttb-v2-game-sync";
@@ -76,6 +159,46 @@ function sleep(milliseconds: number) {
 
 function clampVolume(value: number) {
   return Math.min(1, Math.max(0, value));
+}
+
+async function updateHostedGameStatus(
+  gameId: string,
+  status: "active" | "paused" | "completed"
+) {
+  const response = await fetch(
+    `/api/game/${encodeURIComponent(gameId)}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(data.message || "Unable to update the hosted game status.");
+  }
+}
+
+async function recordHostedCalledTrack(
+  gameId: string,
+  track: Track | null | undefined
+) {
+  if (!track?.gameTrackId) return;
+
+  const response = await fetch(
+    `/api/game/${encodeURIComponent(gameId)}/called-tracks`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameTrackIds: [track.gameTrackId] }),
+    }
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(data.message || "Unable to save the called song to the hosted game.");
+  }
 }
 
 export default function GameControlPage() {
@@ -150,43 +273,111 @@ export default function GameControlPage() {
   }
 
   useEffect(() => {
-    const savedSession = readSession();
+    let cancelled = false;
 
-    if (!savedSession || savedSession.tracks.length === 0) {
-      setMessage(
-        "No game session was found. Choose a playlist and create the game again."
+    async function loadBrowserSession() {
+      const requestedGameId =
+        new URLSearchParams(window.location.search).get("gameId")?.trim() ?? "";
+
+      let nextSession = readSession();
+
+      if (
+        !nextSession ||
+        nextSession.tracks.length === 0 ||
+        (requestedGameId && nextSession.sessionId !== requestedGameId)
+      ) {
+        nextSession = null;
+
+        if (requestedGameId) {
+          try {
+            const response = await fetch(
+              `/api/game/restore?gameId=${encodeURIComponent(requestedGameId)}`,
+              { cache: "no-store" }
+            );
+            const data = (await response.json()) as {
+              ok?: boolean;
+              message?: string;
+              game?: RestoredHostedGame;
+            };
+
+            if (!response.ok || !data.ok || !data.game) {
+              throw new Error(data.message || "Unable to restore this hosted game.");
+            }
+
+            nextSession = browserSessionFromHostedGame(data.game);
+
+            if (!nextSession) {
+              throw new Error(
+                "This game is not configured for Apple Music browser hosting."
+              );
+            }
+
+            localStorage.setItem(
+              GAME_SESSION_KEY,
+              JSON.stringify(nextSession)
+            );
+          } catch (error) {
+            if (!cancelled) {
+              setMessage(
+                error instanceof Error
+                  ? error.message
+                  : "Unable to restore this hosted game."
+              );
+            }
+            return;
+          }
+        }
+      }
+
+      if (!nextSession) {
+        if (!cancelled) {
+          setMessage(
+            "No game session was found. Choose an Apple Music playlist and create the game again."
+          );
+        }
+        return;
+      }
+
+      if (cancelled) return;
+
+      sessionRef.current = nextSession;
+      setSession(nextSession);
+      setSecondsRemaining(nextSession.clipLength);
+
+      const savedCrossfade = Number(
+        localStorage.getItem("bttb-v2-crossfade-seconds")
       );
-      return;
+      const savedReveal = Number(
+        localStorage.getItem("bttb-v2-reveal-seconds")
+      );
+      const savedVolume = Number(
+        localStorage.getItem("bttb-v2-master-volume")
+      );
+
+      if (Number.isFinite(savedCrossfade)) {
+        setCrossfadeSeconds(Math.min(10, Math.max(0, savedCrossfade)));
+      }
+
+      if (Number.isFinite(savedReveal) && savedReveal > 0) {
+        setRevealSeconds(Math.min(15, Math.max(1, savedReveal)));
+      }
+
+      if (Number.isFinite(savedVolume) && savedVolume >= 0) {
+        setMasterVolume(clampVolume(savedVolume));
+      }
+
+      setMessage(
+        nextSession.status === "paused"
+          ? `${nextSession.tracks.length} songs restored from the hosted game. Press Resume when ready.`
+          : `${nextSession.tracks.length} randomized songs are ready.`
+      );
     }
 
-    sessionRef.current = savedSession;
-    setSession(savedSession);
-    setSecondsRemaining(savedSession.clipLength);
+    void loadBrowserSession();
 
-    const savedCrossfade = Number(
-      localStorage.getItem("bttb-v2-crossfade-seconds")
-    );
-    const savedReveal = Number(
-      localStorage.getItem("bttb-v2-reveal-seconds")
-    );
-    const savedVolume = Number(
-      localStorage.getItem("bttb-v2-master-volume")
-    );
-
-    if (Number.isFinite(savedCrossfade)) {
-      setCrossfadeSeconds(Math.min(10, Math.max(0, savedCrossfade)));
-    }
-
-    if (Number.isFinite(savedReveal) && savedReveal > 0) {
-      setRevealSeconds(Math.min(15, Math.max(1, savedReveal)));
-    }
-
-    if (Number.isFinite(savedVolume) && savedVolume >= 0) {
-      setMasterVolume(clampVolume(savedVolume));
-    }
-    setMessage(
-      `${savedSession.tracks.length} randomized songs are ready.`
-    );
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -200,6 +391,60 @@ export default function GameControlPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, isPlaying, secondsRemaining, isRevealed]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const hostedStatus =
+      session.status === "playing"
+        ? "active"
+        : session.status === "paused"
+          ? "paused"
+          : session.status === "complete"
+            ? "completed"
+            : null;
+
+    if (!hostedStatus) return;
+
+    let cancelled = false;
+
+    void updateHostedGameStatus(session.sessionId, hostedStatus).catch((error) => {
+      if (!cancelled) {
+        setMessage(
+          error instanceof Error
+            ? `Cloud sync issue: ${error.message}`
+            : "Cloud game status could not be updated."
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.sessionId, session?.status]);
+
+  useEffect(() => {
+    if (!session || session.status !== "playing") return;
+
+    const track = session.tracks[session.currentIndex];
+    if (!track) return;
+
+    let cancelled = false;
+
+    void recordHostedCalledTrack(session.sessionId, track).catch((error) => {
+      if (!cancelled) {
+        setMessage(
+          error instanceof Error
+            ? `Cloud song sync issue: ${error.message}`
+            : "The current song could not be saved to the hosted game."
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.sessionId, session?.status, session?.currentIndex]);
 
   useEffect(() => {
     if (!appleScriptReady || session?.source !== "apple") {
@@ -802,7 +1047,11 @@ export default function GameControlPage() {
   }
 
   async function startGameAndOpenCaller() {
-    openCallerScreen();
+    // On phones/tablets, keep the host in one browser view instead of relying
+    // on a popup window. Desktop hosts can still open the dedicated caller view.
+    if (window.matchMedia("(min-width: 900px)").matches) {
+      openCallerScreen();
+    }
     await startContinuousGame();
   }
 
