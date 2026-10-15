@@ -412,8 +412,13 @@ async function readLibrarySnapshot() {
       .catch(() => null),
   ]);
 
-  const safePlaylists =
-    playlists.map(safePlaylist);
+  // Share crate names and counts only; all songs stay on this Mac.
+  const safePlaylists = playlists.map(playlist => ({
+    id: stablePlaylistId(playlist.id),
+    name: playlist.name,
+    trackCount: playlist.tracks.length,
+    tracks: [],
+  }));
 
   const labels = Array.from(
     new Set(
@@ -483,6 +488,41 @@ async function sendSync(
         `Companion sync failed with status ${reply.status}.`
     );
   }
+}
+
+async function fulfillSelectedCrateRequest(baseUrl: string, credential: string) {
+  const pending = await requestJson<{ ok?: boolean; playlistId?: string | null; error?: string }>(
+    `${baseUrl}/api/companion/selected-crate`,
+    { headers: { Authorization: `Bearer ${credential}` } }
+  );
+  if (pending.status === 401) throw new PairingRevokedError("Companion pairing was revoked.");
+  if (pending.status !== 200 || !pending.data.ok) {
+    throw new Error(pending.data.error || "Unable to check for a selected crate.");
+  }
+  const requestedId = pending.data.playlistId;
+  if (!requestedId) return;
+
+  const localPlaylists = await seratoAdapter.listPlaylists();
+  const selected = localPlaylists.find(item => stablePlaylistId(item.id) === requestedId);
+  if (!selected) {
+    console.warn("Selected Serato crate was not found on this computer.");
+    return;
+  }
+
+  // On demand: transmit only the host-selected crate, never the full library.
+  const result = await requestJson<SyncReply>(
+    `${baseUrl}/api/companion/selected-crate`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${credential}` },
+      body: JSON.stringify({ playlist: safePlaylist(selected) }),
+    }
+  );
+  if (result.status === 401) throw new PairingRevokedError("Companion pairing was revoked.");
+  if (result.status !== 200 || !result.data.ok) {
+    throw new Error(result.data.error || "Selected crate transfer failed.");
+  }
+  console.log(`Selected crate ready: ${selected.name} (${selected.tracks.length} songs).`);
 }
 
 async function heartbeat(
@@ -594,10 +634,16 @@ async function runCompanion(
   let lastLibraryFingerprint = "";
   let lastTrackFingerprint = "";
   let lastHeartbeat = 0;
+  let lastSelectedCratePoll = 0;
 
   while (true) {
     try {
       const now = Date.now();
+
+      if (now - lastSelectedCratePoll >= TRACK_SYNC_MS) {
+        await fulfillSelectedCrateRequest(baseUrl, credential);
+        lastSelectedCratePoll = now;
+      }
 
       if (
         now - lastLibraryScan >=

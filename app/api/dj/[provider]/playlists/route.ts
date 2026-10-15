@@ -43,7 +43,7 @@ export async function GET(
       const playlists = synced.map((playlist) => ({
         ...playlist,
         tracks: [],
-        trackCount: getUniquePlaylistTrackCount(playlist.tracks),
+        trackCount: playlist.trackCount,
       }));
 
       return NextResponse.json(

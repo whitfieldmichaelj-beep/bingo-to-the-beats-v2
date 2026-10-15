@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
       deviceId: pair.deviceId,
       deviceName: pair.deviceName,
       message:
-        "BTTB Companion is connected to this account. Serato crate and now-playing metadata can now sync from this DJ computer.",
+        "BTTB Companion is connected to this account. Serato crate names and now-playing metadata can now sync; selected game songs are transferred only on demand.",
     },
     {
       headers: {

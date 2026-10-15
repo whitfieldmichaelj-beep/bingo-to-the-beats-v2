@@ -3,7 +3,9 @@ import { getDjAdapter } from "@/lib/dj/bridge";
 import { isDjProvider } from "@/lib/dj/providers";
 import { excludedDjSong } from "@/lib/serato/song-filter";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
-import { companionPlaylists } from "@/lib/companion/library";
+import { companionSelectedPlaylist, SELECTED_CRATE_TTL_MS } from "@/lib/companion/library";
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/app/generated/prisma/client";
 import {
   COMPANION_NOT_CONNECTED_MESSAGE,
   hostedCompanionRequired,
@@ -274,11 +276,44 @@ export async function POST(
     }
 
     let loadedPlaylist = null;
+    let selectedCompanionDeviceId: string | null = null;
     if (provider === "serato") {
-      const synced = await companionPlaylists(userId);
-      loadedPlaylist =
-        synced?.find((playlist) => playlist.id === playlistId) ??
-        null;
+      const selected = await companionSelectedPlaylist(userId, playlistId);
+      if (selected.connected && selected.missing) {
+        return NextResponse.json(
+          { ok: false, message: "That crate is no longer available. Refresh your crates." },
+          { status: 404 }
+        );
+      }
+      if (selected.connected && selected.snapshot) {
+        if (selected.playlist?.tracks.length) {
+          loadedPlaylist = selected.playlist;
+          selectedCompanionDeviceId = selected.snapshot.deviceId;
+        } else {
+          // The host still presses Create Game once. The Companion responds
+          // automatically; the browser quietly retries while it transfers.
+          const snapshot = selected.snapshot;
+          if (
+            snapshot.requestedPlaylistId !== playlistId ||
+            !snapshot.requestedPlaylistAt ||
+            Date.now() - snapshot.requestedPlaylistAt.getTime() >= SELECTED_CRATE_TTL_MS
+          ) {
+            await prisma.companionLibrarySnapshot.update({
+              where: { id: snapshot.id },
+              data: {
+                requestedPlaylistId: playlistId,
+                requestedPlaylistAt: new Date(),
+                selectedPlaylist: Prisma.JsonNull,
+                selectedPlaylistAt: null,
+              },
+            });
+          }
+          return NextResponse.json(
+            { ok: false, pendingCrate: true, message: "Loading selected Serato crate from your Companion…" },
+            { status: 202, headers: { "Cache-Control": "no-store" } }
+          );
+        }
+      }
     }
 
     if (
@@ -389,6 +424,25 @@ export async function POST(
         userId,
         { practice }
       );
+
+    // Game cards already contain the necessary song titles. Immediately purge
+    // the temporary selected-crate transfer; never retain other crate tracks.
+    if (selectedCompanionDeviceId) {
+      await prisma.companionLibrarySnapshot.updateMany({
+        where: {
+          clerkId: userId,
+          deviceId: selectedCompanionDeviceId,
+          provider: "serato",
+          requestedPlaylistId: playlistId,
+        },
+        data: {
+          requestedPlaylistId: null,
+          requestedPlaylistAt: null,
+          selectedPlaylist: Prisma.JsonNull,
+          selectedPlaylistAt: null,
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: true,

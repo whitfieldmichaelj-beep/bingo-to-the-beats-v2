@@ -406,6 +406,10 @@ model CompanionLibrarySnapshot {
   libraryLabels     Json?
   playlists         Json
   currentTrack      Json?
+  requestedPlaylistId String?
+  requestedPlaylistAt DateTime?
+  selectedPlaylist    Json?
+  selectedPlaylistAt  DateTime?
   lastLibrarySyncAt DateTime @default(now())
   lastTrackSyncAt   DateTime @default(now())
   createdAt         DateTime @default(now())

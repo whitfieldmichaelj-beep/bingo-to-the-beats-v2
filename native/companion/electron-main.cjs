@@ -17,7 +17,7 @@ function html() {
   #status{margin-top:7px;font-size:17px;font-weight:700;white-space:pre-wrap;overflow-wrap:anywhere}.note{font-size:13px;color:#94a3b8}
   button{width:100%;padding:13px 16px;border:0;border-radius:11px;font-weight:800;cursor:pointer;background:#ede9fe;color:#312e81}button.secondary{margin-top:10px;background:#1e293b;color:#e2e8f0;border:1px solid #475569}
   </style></head><body><main><section class="card"><div class="brand">Bingo to the Beats</div><h1>BTTB Companion</h1>
-  <p>This app connects Serato on this DJ computer to the hosted Bingo to the Beats site. It sends crate/song/now-playing metadata only. Audio files and full local file paths are not uploaded.</p>
+  <p>This app connects Serato on this DJ computer to the hosted Bingo to the Beats site. It shares crate names and song counts only. When you create a game, only the selected crate's song metadata is transferred temporarily. Audio files and local file paths are never uploaded.</p>
   <div class="status"><div class="label">Connection status</div><div id="status">Starting BTTB Companion…</div></div>
   <p class="note">Keep this app open while using Serato with Bingo to the Beats. Logging out of BTTB disconnects the account pairing.</p>
   <button id="open">Open Bingo to the Beats</button><button class="secondary" id="quit">Quit Companion</button></section></main>

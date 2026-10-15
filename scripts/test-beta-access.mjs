@@ -26,7 +26,7 @@ const createMocks=hosted=>({
   '@/lib/dj/providers':{isDjProvider:()=>true},
   '@/lib/serato/song-filter':{excludedDjSong:()=>false},
   '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},
-  '@/lib/companion/library':{companionPlaylists:async()=>null},
+  '@/lib/companion/library':{companionSelectedPlaylist:async()=>({connected:false,playlist:null,snapshot:null})},
   '@/lib/companion/hosted':{
     hostedCompanionRequired:()=>hosted,
     COMPANION_NOT_CONNECTED_MESSAGE:'Companion required',

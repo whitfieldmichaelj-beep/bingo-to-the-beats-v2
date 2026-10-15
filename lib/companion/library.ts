@@ -45,7 +45,11 @@ export function sanitizeCompanionPlaylist(value: unknown): DjPlaylist | null {
   const tracks = Array.isArray(row.tracks)
     ? row.tracks.map(sanitizeCompanionTrack).filter((track): track is DjTrack => Boolean(track))
     : [];
-  return { id, name, filePath: "", trackCount: tracks.length, tracks };
+  const count = numberOrNull(row.trackCount);
+  const trackCount = count !== null && Number.isInteger(count) && count >= 0
+    ? Math.min(count, 100_000)
+    : tracks.length;
+  return { id, name, filePath: "", trackCount, tracks };
 }
 
 export function sanitizeCompanionDetection(value: unknown): DjDetection | null {
@@ -82,6 +86,31 @@ export async function activeCompanionSnapshot(clerkId: string, provider = "serat
   return prisma.companionLibrarySnapshot.findUnique({
     where: { clerkId_deviceId_provider: { clerkId, deviceId: session.deviceId, provider } },
   });
+}
+
+// Selected-crate payloads are short lived and never include audio or local paths.
+export const SELECTED_CRATE_TTL_MS = 2 * 60_000;
+
+export async function companionSelectedPlaylist(clerkId: string, playlistId: string) {
+  const snapshot = await activeCompanionSnapshot(clerkId, "serato");
+  if (!snapshot) return { connected: false as const, playlist: null, snapshot: null };
+
+  const listings = Array.isArray(snapshot.playlists) ? snapshot.playlists : [];
+  if (!listings.some(row => sanitizeCompanionPlaylist(row)?.id === playlistId)) {
+    return { connected: true as const, missing: true, playlist: null, snapshot };
+  }
+
+  const fresh = Boolean(
+    snapshot.requestedPlaylistId === playlistId &&
+    snapshot.selectedPlaylistAt &&
+    Date.now() - snapshot.selectedPlaylistAt.getTime() < SELECTED_CRATE_TTL_MS
+  );
+  return {
+    connected: true as const,
+    missing: false,
+    playlist: fresh ? sanitizeCompanionPlaylist(snapshot.selectedPlaylist) : null,
+    snapshot,
+  };
 }
 
 export async function companionPlaylists(clerkId: string): Promise<DjPlaylist[] | null> {

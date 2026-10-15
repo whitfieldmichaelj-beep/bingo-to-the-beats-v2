@@ -6,6 +6,7 @@ import {
   sanitizeCompanionDetection,
   sanitizeCompanionPlaylist,
   sanitizeLibraryLabels,
+  SELECTED_CRATE_TTL_MS,
 } from "@/lib/companion/library";
 
 function bearer(request: NextRequest) {
@@ -55,6 +56,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Old Companion builds pushed every crate's tracks. Refuse those uploads
+  // rather than quietly accepting private library contents.
+  if (Array.isArray(body.playlists) && body.playlists.some(
+    value => value && typeof value === "object" &&
+      "tracks" in value && Array.isArray(value.tracks) && value.tracks.length > 0
+  )) {
+    return NextResponse.json(
+      { ok: false, error: "Update BTTB Companion: library-wide track uploads are no longer supported." },
+      { status: 426 }
+    );
+  }
+
   const playlists = Array.isArray(body.playlists)
     ? body.playlists
         .map(sanitizeCompanionPlaylist)
@@ -62,6 +75,13 @@ export async function POST(request: NextRequest) {
           Boolean(playlist)
         )
         .slice(0, 500)
+        // Never retain unselected crate tracks, including from older Companions.
+        .map(playlist => ({
+          id: playlist.id,
+          name: playlist.name,
+          trackCount: playlist.trackCount,
+          tracks: [],
+        }))
     : null;
 
   const currentTrack =
@@ -89,6 +109,24 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Purge interrupted transfers on the normal sync loop.
+  await prisma.companionLibrarySnapshot.updateMany({
+    where: {
+      clerkId: session.clerkId,
+      deviceId: session.deviceId,
+      provider: "serato",
+      requestedPlaylistAt: {
+        lt: new Date(now.getTime() - SELECTED_CRATE_TTL_MS),
+      },
+    },
+    data: {
+      requestedPlaylistId: null,
+      requestedPlaylistAt: null,
+      selectedPlaylist: Prisma.JsonNull,
+      selectedPlaylistAt: null,
+    },
+  });
 
   await prisma.$transaction([
     prisma.companionSession.update({

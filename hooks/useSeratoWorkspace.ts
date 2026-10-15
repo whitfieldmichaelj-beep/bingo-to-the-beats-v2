@@ -467,7 +467,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       setError("");
       setMessage(`Creating a game from ${selectedPlaylist.name}...`);
 
-      const response = await fetch("/api/game/create", {
+      const requestOptions = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -478,9 +478,21 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
           cardSize,
           winningPattern,
         }),
-      });
+      };
 
-      const data = (await response.json()) as CreateGameResponse;
+      // A single Create Game click triggers the selected-crate request.
+      // No manual sync, upload, or second button is required.
+      let response = await fetch("/api/game/create", requestOptions);
+      let data = (await response.json()) as CreateGameResponse & { pendingCrate?: boolean };
+      for (let attempt = 0; attempt < 25 && response.status === 202 && data.pendingCrate; attempt++) {
+        setMessage("Loading the selected crate from your DJ computer…");
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        response = await fetch("/api/game/create", requestOptions);
+        data = (await response.json()) as CreateGameResponse & { pendingCrate?: boolean };
+      }
+      if (response.status === 202 && data.pendingCrate) {
+        throw new Error("The Companion did not respond. Keep it open on your DJ computer and retry.");
+      }
 
       if (!response.ok || !data.ok || !data.game) {
         throw new Error(
