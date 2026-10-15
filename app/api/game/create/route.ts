@@ -3,6 +3,7 @@ import { getDjAdapter } from "@/lib/dj/bridge";
 import { isDjProvider } from "@/lib/dj/providers";
 import { excludedDjSong } from "@/lib/serato/song-filter";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
+import { companionPlaylists } from "@/lib/companion/library";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
 import { BETA_GAME_CARD_LIMIT, betaCardLimitMessage } from "@/lib/game/beta-limits";
@@ -193,8 +194,6 @@ function buildPlayablePlaylist(
 export async function POST(
   request: NextRequest
 ) {
-  const denied = await localLibraryAccessResponse();
-  if (denied) return denied;
   try {
     const {
       isAuthenticated,
@@ -263,9 +262,34 @@ export async function POST(
     }
 
     const provider = body.provider ?? "serato";
-    if (!isDjProvider(provider)) return NextResponse.json({ok:false,message:"Unknown DJ software."},{status:400});
-    const loadedPlaylist = await (await getDjAdapter(provider)).loadPlaylist(playlistId);
-    if (!loadedPlaylist) return NextResponse.json({ok:false,message:"Playlist not found."},{status:404});
+    if (!isDjProvider(provider)) {
+      return NextResponse.json(
+        { ok: false, message: "Unknown DJ software." },
+        { status: 400 }
+      );
+    }
+
+    let loadedPlaylist = null;
+    if (provider === "serato") {
+      const synced = await companionPlaylists(userId);
+      loadedPlaylist =
+        synced?.find((playlist) => playlist.id === playlistId) ??
+        null;
+    }
+
+    if (!loadedPlaylist) {
+      const denied = await localLibraryAccessResponse();
+      if (denied) return denied;
+      loadedPlaylist =
+        await (await getDjAdapter(provider)).loadPlaylist(playlistId);
+    }
+
+    if (!loadedPlaylist) {
+      return NextResponse.json(
+        { ok: false, message: "Playlist not found." },
+        { status: 404 }
+      );
+    }
 
     const {
       playlist: playablePlaylist,

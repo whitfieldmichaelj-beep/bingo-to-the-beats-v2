@@ -26,7 +26,7 @@ const p=virtual.parseVirtualDjList(xml,'/DJ/My Lists/Party.xml');assert.equal(p.
 assert.equal(virtual.parseVirtualDjList('#EXTM3U\n../Song.mp3\n','/DJ/Playlists/Party.m3u').tracks[0].filePath,'/DJ/Song.mp3');
 let denied=null,reads=0;
 const next={NextResponse:{json:(body,options={})=>({body,status:options.status??200})}};
-const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],libraryLocations:async()=>["/test/VirtualDJ"],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
+const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/companion/library':{companionPlaylists:async()=>null,companionLibraryLabels:async()=>[],activeCompanionSnapshot:async()=>null,sanitizeCompanionDetection:()=>null},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],libraryLocations:async()=>["/test/VirtualDJ"],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
 for(const endpoint of ['playlists','now-playing']) {
  const route=load(`app/api/dj/[provider]/${endpoint}/route.ts`,mocks);
  const req={nextUrl:new URL('http://localhost/?gameId=test')};
@@ -46,13 +46,16 @@ console.log('PASS all DJ providers: normalized identities, restore, startup/repe
 let saved,chosen,savedOptions;
 const gameRoute=load('app/api/game/create/route.ts',{
  'next/server':next,
+ '@/lib/game/card-layout':{parseCardSize:value=>value===3?3:5},
  '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>null},
+ '@/lib/companion/library':{companionPlaylists:async()=>null},
  '@clerk/nextjs/server':{auth:async()=>({isAuthenticated:true,userId:'owner'})},
  '@/lib/dj/providers':providers,
  '@/lib/dj/bridge':{getDjAdapter:async provider=>{chosen=provider;return {loadPlaylist:async()=>({id:'playlist',name:'Party',tracks:Array.from({length:30},(_,i)=>({id:String(i),title:`Song ${i}`,artist:'Artist',filePath:`/music/${i}.mp3`,fileName:`${i}.mp3`,bpm:120}))})}}},
  '@/lib/serato/song-filter':{excludedDjSong:()=>false},
  '@/lib/billing/access':{HostAccessError:class extends Error{}},
  '@/lib/game/playback-config':load('lib/game/playback-config.ts',{'./entry':load('lib/game/entry.ts'),'./prize':load('lib/game/prize.ts')}),
+ '@/lib/game/beta-limits':{BETA_GAME_CARD_LIMIT:100,betaCardLimitMessage:()=>"100-card beta limit"},
  '@/lib/game/balance-validator':{evaluateGameBalance:()=>({status:'healthy',recommendations:[]})},
  '@/lib/game/service':{getUniquePlaylistTrackCount:t=>t.length,createGameFromPlaylist:playlist=>({id:'game',playlist,tracks:playlist.tracks})},
  '@/lib/game/repository':{createGame:async (game,owner,options)=>{saved=game;savedOptions=options;return game}},

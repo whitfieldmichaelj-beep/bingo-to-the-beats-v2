@@ -14,9 +14,29 @@ userId='other';assert.equal((await access.localLibraryAccessResponse()).status,4
 userId='owner';assert.equal(await access.localLibraryAccessResponse(),null);
 delete process.env.BTTB_LOCAL_LIBRARY_OWNER_ID;assert.equal((await access.localLibraryAccessResponse()).status,503);
 }finally{if(previous===undefined)delete process.env.BTTB_LOCAL_LIBRARY_OWNER_ID;else process.env.BTTB_LOCAL_LIBRARY_OWNER_ID=previous;}
-const paths=['app/api/music/local/scan','app/api/music/local/folders','app/api/music/local/playlists','app/api/music/local/game','app/api/serato/drives','app/api/serato/library','app/api/serato/playlists','app/api/serato/crates','app/music/local/playlist','app/api/game/create/local','app/api/game/create','app/api/audio/artwork','app/api/audio/stream'];
+const paths=['app/api/music/local/scan','app/api/music/local/folders','app/api/music/local/playlists','app/api/music/local/game','app/api/serato/drives','app/api/serato/library','app/api/serato/playlists','app/api/serato/crates','app/music/local/playlist','app/api/game/create/local','app/api/audio/artwork','app/api/audio/stream'];
 const denied={status:403};
 for(const path of paths){const route=load(`${path}/route.ts`,{'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied}});for(const method of ['GET','HEAD','POST'])if(route[method])assert.equal(await route[method]({}),denied,`${path} ${method} must deny before filesystem/database access`);}
+let adapterCalls=0;
+class HostAccessError extends Error {}
+const createRoute=load('app/api/game/create/route.ts',{
+  'next/server':next,
+  '@/lib/game/card-layout':{parseCardSize:()=>5},
+  '@/lib/dj/bridge':{getDjAdapter:async()=>{adapterCalls++;return{loadPlaylist:async()=>null};}},
+  '@/lib/dj/providers':{isDjProvider:()=>true},
+  '@/lib/serato/song-filter':{excludedDjSong:()=>false},
+  '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},
+  '@/lib/companion/library':{companionPlaylists:async()=>null},
+  '@/lib/billing/access':{HostAccessError},
+  '@/lib/game/playback-config':{makePlaybackConfig:()=>({})},
+  '@/lib/game/beta-limits':{BETA_GAME_CARD_LIMIT:100,betaCardLimitMessage:()=>"100-card beta limit"},
+  '@clerk/nextjs/server':{auth:async()=>({isAuthenticated:true,userId:'other'})},
+  '@/lib/game/repository':{createGame:async()=>{throw new Error('must not persist');}},
+  '@/lib/game/service':{createGameFromPlaylist:()=>{throw new Error('must not create');},getUniquePlaylistTrackCount:()=>0},
+  '@/lib/game/balance-validator':{evaluateGameBalance:()=>({status:'ok',recommendations:[]})},
+});
+assert.equal(await createRoute.POST({json:async()=>({cardSize:5,playlistId:'crate',provider:'serato',cardCount:25})}),denied,'hosted Serato creation must fall back to protected local access only when no paired Companion snapshot exists');
+assert.equal(adapterCalls,0,'denied local fallback must not read the DJ filesystem');
 let game={isPractice:true,status:'DRAFT'};
 let reads=0;
 const route=load('app/api/game/join-options/route.ts',{'next/server':next,'@/lib/game/entry':load('lib/game/entry.ts',{}),'@/lib/game/prize':load('lib/game/prize.ts',{}),'@/lib/game/expiration':{expireGames:async()=>{}},'@/lib/prisma':{prisma:{game:{findUnique:async()=>{reads++;return game;}}}}});

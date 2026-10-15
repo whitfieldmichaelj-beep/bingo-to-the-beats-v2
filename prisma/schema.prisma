@@ -397,6 +397,40 @@ model CompanionSession {
   @@index([lastHeartbeatAt])
 }
 
+model CompanionLibrarySnapshot {
+  id                String   @id @default(cuid())
+  clerkId           String
+  deviceId          String
+  provider          String   @default("serato")
+  deviceName        String?
+  libraryLabels     Json?
+  playlists         Json
+  currentTrack      Json?
+  lastLibrarySyncAt DateTime @default(now())
+  lastTrackSyncAt   DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([clerkId, deviceId, provider])
+  @@index([clerkId, provider, updatedAt])
+}
+
+model CompanionPairRequest {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  secretHash  String   @unique
+  tokenHash   String   @unique
+  deviceId    String
+  deviceName  String?
+  clerkId     String?
+  approvedAt  DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([deviceId])
+}
+
 // A player retains the same spot when disconnecting, reconnecting or changing cards.
 model GamePlayerSeat {
   gameId String

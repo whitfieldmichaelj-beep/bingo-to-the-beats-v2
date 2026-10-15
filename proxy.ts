@@ -5,6 +5,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 const PROTECTED_PAGE_PREFIXES = [
   "/dashboard",
   "/dj-console",
+  "/companion/pair",
   "/serato",
   "/spotify",
   "/music",

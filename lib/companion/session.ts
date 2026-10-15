@@ -13,10 +13,13 @@ export function createCompanionToken() {
 
 export async function revokeCompanionSessions(clerkId: string) {
   const now = new Date();
-  const result = await prisma.companionSession.updateMany({
-    where: { clerkId, isActive: true },
-    data: { isActive: false, revokedAt: now },
-  });
+  const [, result] = await prisma.$transaction([
+    prisma.companionLibrarySnapshot.deleteMany({ where: { clerkId } }),
+    prisma.companionSession.updateMany({
+      where: { clerkId, isActive: true },
+      data: { isActive: false, revokedAt: now },
+    }),
+  ]);
   return result.count;
 }
 
@@ -26,10 +29,15 @@ export async function verifyCompanionToken(token: string) {
   if (!session || !session.isActive) return null;
 
   if (Date.now() - session.lastHeartbeatAt.getTime() > COMPANION_HEARTBEAT_TTL_MS) {
-    await prisma.companionSession.update({
-      where: { id: session.id },
-      data: { isActive: false, revokedAt: new Date() },
-    });
+    await prisma.$transaction([
+      prisma.companionLibrarySnapshot.deleteMany({
+        where: { clerkId: session.clerkId, deviceId: session.deviceId },
+      }),
+      prisma.companionSession.update({
+        where: { id: session.id },
+        data: { isActive: false, revokedAt: new Date() },
+      }),
+    ]);
     return null;
   }
 
