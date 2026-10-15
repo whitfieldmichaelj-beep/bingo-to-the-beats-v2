@@ -1,0 +1,77 @@
+name: Build BTTB Companion
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "companion-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-15
+            artifact: bttb-companion-macos-apple-silicon
+          - name: macOS Intel
+            os: macos-15-intel
+            artifact: bttb-companion-macos-intel
+          - name: Windows x64
+            os: windows-2025
+            artifact: bttb-companion-windows-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out BTTB
+        uses: actions/checkout@v4
+
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Build portable Companion
+        run: npm run companion:package
+
+      - name: Upload Companion build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: .bttb-companion/releases/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish tagged Companion release
+    if: startsWith(github.ref, 'refs/tags/companion-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all Companion builds
+        uses: actions/download-artifact@v4
+        with:
+          path: companion-release
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" companion-release/*.zip \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "BTTB Companion ${GITHUB_REF_NAME}" \
+            --notes "Portable beta builds for macOS Apple Silicon, macOS Intel, and Windows x64."

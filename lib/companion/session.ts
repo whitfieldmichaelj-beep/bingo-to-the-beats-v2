@@ -29,16 +29,12 @@ export async function verifyCompanionToken(token: string) {
   if (!session || !session.isActive) return null;
 
   if (Date.now() - session.lastHeartbeatAt.getTime() > COMPANION_HEARTBEAT_TTL_MS) {
-    await prisma.$transaction([
-      prisma.companionLibrarySnapshot.deleteMany({
-        where: { clerkId: session.clerkId, deviceId: session.deviceId },
-      }),
-      prisma.companionSession.update({
-        where: { id: session.id },
-        data: { isActive: false, revokedAt: new Date() },
-      }),
-    ]);
-    return null;
+    await prisma.companionLibrarySnapshot.deleteMany({
+      where: {
+        clerkId: session.clerkId,
+        deviceId: session.deviceId,
+      },
+    });
   }
 
   return session;
