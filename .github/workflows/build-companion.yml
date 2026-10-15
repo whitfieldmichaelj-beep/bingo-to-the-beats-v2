@@ -16,20 +16,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS Apple Silicon
-            os: macos-15
-            artifact: bttb-companion-macos-apple-silicon
-          - name: macOS Intel
+          - name: macOS 11 Big Sur Intel
             os: macos-15-intel
-            artifact: bttb-companion-macos-intel
-          - name: Windows x64
-            os: windows-2025
-            artifact: bttb-companion-windows-x64
+            artifact: bttb-companion-macos11-intel
 
     runs-on: ${{ matrix.os }}
 
     env:
       DATABASE_URL: postgresql://bttb:bttb@127.0.0.1:5432/bttb_companion_build
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
 
     steps:
       - name: Check out BTTB
@@ -44,8 +39,22 @@ jobs:
       - name: Install project dependencies
         run: npm ci
 
+      - name: Check Companion pairing tests
+        run: npm run test:companion-pairing && npm run test:companion-session
+
       - name: Build portable Companion
         run: npm run companion:package
+
+      - name: Verify macOS 11 Intel compatibility
+        if: runner.os == 'macOS'
+        run: |
+          set -eu
+          APP=".bttb-companion/package-darwin-x64/BTTB Companion.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" = "11.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "1.0.0"
+          file "$APP/Contents/MacOS/BTTB Companion" | grep -q 'x86_64'
+          otool -l "$APP/Contents/MacOS/BTTB Companion" | grep -A4 LC_BUILD_VERSION | grep -q 'minos 11.0'
+          codesign --verify --deep --strict "$APP"
 
       - name: Upload Companion build
         uses: actions/upload-artifact@v4
@@ -76,5 +85,5 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" companion-release/*.zip \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "BTTB Companion ${GITHUB_REF_NAME}" \
-            --notes "Portable beta builds for macOS Apple Silicon, macOS Intel, and Windows x64."
+            --title "BTTB Companion 1.0 for macOS 11 Big Sur (Intel)" \
+            --notes "Separate compatibility build for macOS Big Sur 11.7.11, Intel 64-bit. Uses Electron 37.10.3. Not Apple-notarized; may trigger Gatekeeper. First test on a noncritical machine. This older Electron branch no longer receives security updates. BTTB website must run the matching selected-crate privacy API."

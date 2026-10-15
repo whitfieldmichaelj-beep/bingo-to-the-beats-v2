@@ -360,6 +360,9 @@ async function packageMac({
     [
       "Set :CFBundleVersion 1",
     ],
+    [
+      "Set :LSMinimumSystemVersion 11.0",
+    ],
   ];
 
   for (const [command] of plistCommands) {
@@ -406,7 +409,7 @@ async function packageMac({
 
   const zip = path.join(
     releasesDir,
-    `BTTB-Companion-macOS-${label}-Beta.zip`
+    `BTTB-Companion-v1.0-macOS11-${label}.zip`
   );
 
   await fs.rm(zip, {
