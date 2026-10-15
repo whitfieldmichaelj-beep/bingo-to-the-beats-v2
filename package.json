@@ -49,6 +49,7 @@
     "test:beta-startup": "node --test scripts/test-beta-startup.mjs scripts/test-saved-database.mjs",
     "widget:build": "node scripts/build-dj-widget.mjs",
     "companion:build": "node scripts/build-companion.mjs",
+    "test:companion-pairing": "node scripts/test-companion-pairing.mjs",
     "test:desktop": "node scripts/test-desktop-widget.mjs && node scripts/test-widget-controller.mjs && node scripts/test-widget-display.mjs && node scripts/test-widget-api.mjs && node scripts/test-bingo-connection.mjs && node --test scripts/test-platform.mjs"
   },
   "dependencies": {

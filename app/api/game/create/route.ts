@@ -4,6 +4,10 @@ import { isDjProvider } from "@/lib/dj/providers";
 import { excludedDjSong } from "@/lib/serato/song-filter";
 import { localLibraryAccessResponse } from "@/lib/auth/local-library";
 import { companionPlaylists } from "@/lib/companion/library";
+import {
+  COMPANION_NOT_CONNECTED_MESSAGE,
+  hostedCompanionRequired,
+} from "@/lib/companion/hosted";
 import { HostAccessError } from "@/lib/billing/access";
 import { makePlaybackConfig } from "@/lib/game/playback-config";
 import { BETA_GAME_CARD_LIMIT, betaCardLimitMessage } from "@/lib/game/beta-limits";
@@ -275,6 +279,29 @@ export async function POST(
       loadedPlaylist =
         synced?.find((playlist) => playlist.id === playlistId) ??
         null;
+    }
+
+    if (
+      provider === "serato" &&
+      !loadedPlaylist &&
+      hostedCompanionRequired()
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BTTB_COMPANION_REQUIRED",
+          companionRequired: true,
+          companionConnected: false,
+          reconnectRequired: true,
+          message: COMPANION_NOT_CONNECTED_MESSAGE,
+        },
+        {
+          status: 409,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
     }
 
     if (!loadedPlaylist) {

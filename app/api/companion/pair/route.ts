@@ -2,18 +2,31 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const RELLOGIN_MESSAGE =
+  "BTTB Companion is ready on this DJ computer. Log out of Bingo to the Beats, then sign back in once to finish connecting Serato.";
+
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
+  const {
+    userId,
+    sessionId,
+  } = await auth();
+
+  if (!userId || !sessionId) {
     return NextResponse.json(
-      { ok: false, error: "Sign in first." },
+      {
+        ok: false,
+        error: "Sign in to Bingo to the Beats first.",
+      },
       { status: 401 }
     );
   }
 
-  const body = await request.json().catch(() => null) as
-    | { code?: string }
-    | null;
+  const body = await request
+    .json()
+    .catch(() => null) as
+      | { code?: string }
+      | null;
+
   const code = body?.code
     ?.trim()
     .toUpperCase()
@@ -21,26 +34,103 @@ export async function POST(request: NextRequest) {
 
   if (!code || code.length !== 6) {
     return NextResponse.json(
-      { ok: false, error: "Enter the six-character Companion code." },
+      {
+        ok: false,
+        error:
+          "Enter the six-character Companion code.",
+      },
       { status: 400 }
     );
   }
 
-  const pair = await prisma.companionPairRequest.findUnique({
-    where: { code },
-  });
+  const pair =
+    await prisma.companionPairRequest.findUnique({
+      where: { code },
+    });
 
-  if (!pair || pair.expiresAt.getTime() < Date.now()) {
+  if (
+    !pair ||
+    pair.expiresAt.getTime() < Date.now()
+  ) {
     return NextResponse.json(
-      { ok: false, error: "That Companion code is invalid or expired." },
+      {
+        ok: false,
+        error:
+          "That Companion code is invalid or expired.",
+      },
       { status: 404 }
     );
   }
 
   if (pair.approvedAt) {
     return NextResponse.json(
-      { ok: false, error: "That Companion code has already been used." },
+      {
+        ok: false,
+        error:
+          "That Companion code has already been used.",
+      },
       { status: 409 }
+    );
+  }
+
+  if (
+    pair.clerkId &&
+    pair.clerkId !== userId
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This Companion code is already assigned to another BTTB account.",
+      },
+      { status: 403 }
+    );
+  }
+
+  if (
+    !pair.clerkId ||
+    !pair.initialSessionId
+  ) {
+    await prisma.companionPairRequest.update({
+      where: { id: pair.id },
+      data: {
+        clerkId: userId,
+        initialSessionId: sessionId,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "BTTB_COMPANION_RELOGIN_REQUIRED",
+        requiresRelogin: true,
+        paired: false,
+        message: RELLOGIN_MESSAGE,
+      },
+      {
+        status: 409,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
+
+  if (pair.initialSessionId === sessionId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "BTTB_COMPANION_RELOGIN_REQUIRED",
+        requiresRelogin: true,
+        paired: false,
+        message: RELLOGIN_MESSAGE,
+      },
+      {
+        status: 409,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
     );
   }
 
@@ -48,12 +138,20 @@ export async function POST(request: NextRequest) {
 
   await prisma.$transaction(async (tx) => {
     await tx.companionLibrarySnapshot.deleteMany({
-      where: { deviceId: pair.deviceId },
+      where: {
+        deviceId: pair.deviceId,
+      },
     });
 
     await tx.companionSession.updateMany({
-      where: { deviceId: pair.deviceId, isActive: true },
-      data: { isActive: false, revokedAt: now },
+      where: {
+        deviceId: pair.deviceId,
+        isActive: true,
+      },
+      data: {
+        isActive: false,
+        revokedAt: now,
+      },
     });
 
     await tx.companionSession.upsert({
@@ -94,6 +192,8 @@ export async function POST(request: NextRequest) {
       paired: true,
       deviceId: pair.deviceId,
       deviceName: pair.deviceName,
+      message:
+        "BTTB Companion is connected to this account. Serato crate and now-playing metadata can now sync from this DJ computer.",
     },
     {
       headers: {

@@ -19,7 +19,7 @@ const denied={status:403};
 for(const path of paths){const route=load(`${path}/route.ts`,{'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied}});for(const method of ['GET','HEAD','POST'])if(route[method])assert.equal(await route[method]({}),denied,`${path} ${method} must deny before filesystem/database access`);}
 let adapterCalls=0;
 class HostAccessError extends Error {}
-const createRoute=load('app/api/game/create/route.ts',{
+const createMocks=hosted=>({
   'next/server':next,
   '@/lib/game/card-layout':{parseCardSize:()=>5},
   '@/lib/dj/bridge':{getDjAdapter:async()=>{adapterCalls++;return{loadPlaylist:async()=>null};}},
@@ -27,6 +27,10 @@ const createRoute=load('app/api/game/create/route.ts',{
   '@/lib/serato/song-filter':{excludedDjSong:()=>false},
   '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},
   '@/lib/companion/library':{companionPlaylists:async()=>null},
+  '@/lib/companion/hosted':{
+    hostedCompanionRequired:()=>hosted,
+    COMPANION_NOT_CONNECTED_MESSAGE:'Companion required',
+  },
   '@/lib/billing/access':{HostAccessError},
   '@/lib/game/playback-config':{makePlaybackConfig:()=>({})},
   '@/lib/game/beta-limits':{BETA_GAME_CARD_LIMIT:100,betaCardLimitMessage:()=>"100-card beta limit"},
@@ -35,8 +39,15 @@ const createRoute=load('app/api/game/create/route.ts',{
   '@/lib/game/service':{createGameFromPlaylist:()=>{throw new Error('must not create');},getUniquePlaylistTrackCount:()=>0},
   '@/lib/game/balance-validator':{evaluateGameBalance:()=>({status:'ok',recommendations:[]})},
 });
-assert.equal(await createRoute.POST({json:async()=>({cardSize:5,playlistId:'crate',provider:'serato',cardCount:25})}),denied,'hosted Serato creation must fall back to protected local access only when no paired Companion snapshot exists');
+const createRequest={json:async()=>({cardSize:5,playlistId:'crate',provider:'serato',cardCount:25})};
+const localCreateRoute=load('app/api/game/create/route.ts',createMocks(false));
+assert.equal(await localCreateRoute.POST(createRequest),denied,'local Serato creation keeps the protected local-library fallback when no Companion snapshot exists');
 assert.equal(adapterCalls,0,'denied local fallback must not read the DJ filesystem');
+const hostedCreateRoute=load('app/api/game/create/route.ts',createMocks(true));
+const hostedMissing=await hostedCreateRoute.POST(createRequest);
+assert.equal(hostedMissing.status,409,'hosted Serato must require a Companion instead of falling back to server disk');
+assert.equal(hostedMissing.body.code,'BTTB_COMPANION_REQUIRED');
+assert.equal(adapterCalls,0,'hosted Companion-required path must never read the server DJ filesystem');
 let game={isPractice:true,status:'DRAFT'};
 let reads=0;
 const route=load('app/api/game/join-options/route.ts',{'next/server':next,'@/lib/game/entry':load('lib/game/entry.ts',{}),'@/lib/game/prize':load('lib/game/prize.ts',{}),'@/lib/game/expiration':{expireGames:async()=>{}},'@/lib/prisma':{prisma:{game:{findUnique:async()=>{reads++;return game;}}}}});

@@ -11,6 +11,10 @@ import {
 } from "@/lib/billing/access";
 import { getDjAdapter } from "@/lib/dj/bridge";
 import {
+  COMPANION_NOT_CONNECTED_MESSAGE,
+  hostedCompanionRequired,
+} from "@/lib/companion/hosted";
+import {
   isDjProvider,
   DJ_PROVIDERS,
 } from "@/lib/dj/providers";
@@ -75,6 +79,7 @@ export async function GET(
           {
             ok: true,
             source: "companion",
+            companionConnected: true,
             live: Boolean(track),
             track,
             tracks: track ? [track] : [],
@@ -82,6 +87,28 @@ export async function GET(
               "Serato Companion connected. Waiting for a new song.",
           },
           {
+            headers: {
+              "Cache-Control": "no-store",
+            },
+          }
+        );
+      }
+
+      if (hostedCompanionRequired()) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "BTTB_COMPANION_REQUIRED",
+            companionRequired: true,
+            companionConnected: false,
+            reconnectRequired: true,
+            live: false,
+            track: null,
+            tracks: [],
+            message: COMPANION_NOT_CONNECTED_MESSAGE,
+          },
+          {
+            status: 409,
             headers: {
               "Cache-Control": "no-store",
             },

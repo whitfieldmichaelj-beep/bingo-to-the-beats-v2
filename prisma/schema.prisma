@@ -421,10 +421,11 @@ model CompanionPairRequest {
   secretHash  String   @unique
   tokenHash   String   @unique
   deviceId    String
-  deviceName  String?
-  clerkId     String?
-  approvedAt  DateTime?
-  expiresAt   DateTime
+  deviceName       String?
+  clerkId          String?
+  initialSessionId String?
+  approvedAt       DateTime?
+  expiresAt        DateTime
   createdAt   DateTime @default(now())
 
   @@index([expiresAt])

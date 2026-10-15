@@ -59,6 +59,11 @@ type PlaylistsResponse = {
   ok?: boolean;
   playlists?: unknown[];
   message?: string;
+  code?: string;
+  source?: string;
+  companionRequired?: boolean;
+  companionConnected?: boolean;
+  reconnectRequired?: boolean;
   library?: {
     totalTracks?: number;
     localTracks?: number;
@@ -284,6 +289,9 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
     useState<StoredGameDetails | null>(null);
   const [libraryTrackCount, setLibraryTrackCount] = useState(0);
   const [libraryLocations, setLibraryLocations] = useState<string[]>([]);
+  const [companionRequired, setCompanionRequired] = useState(false);
+  const [companionConnected, setCompanionConnected] = useState(false);
+  const [reconnectRequired, setReconnectRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState(
@@ -334,6 +342,9 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       setLoading(true);
       setError("");
       setLibraryLocations([]);
+      setCompanionRequired(false);
+      setCompanionConnected(false);
+      setReconnectRequired(false);
       setMessage(`Reading your ${labels.name} ${labels.collections}...`);
 
       const response = await fetch(`/api/dj/${provider}/playlists`, {
@@ -342,6 +353,13 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       });
 
       const data = (await response.json()) as PlaylistsResponse;
+
+      setCompanionRequired(Boolean(data.companionRequired));
+      setCompanionConnected(
+        Boolean(data.companionConnected) ||
+        data.source === "companion"
+      );
+      setReconnectRequired(Boolean(data.reconnectRequired));
 
       if (!response.ok) {
         throw new Error(
@@ -428,7 +446,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
   );
 
   const updateCardCount = useCallback((value: number) => {
-    setCardCount(Math.max(1, Math.min(500, value || 1)));
+    setCardCount(Math.max(1, Math.min(100, value || 1)));
   }, []);
 
   const createGame = useCallback(async () => {
@@ -556,7 +574,7 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
 
     setCardCount(
       Math.min(
-        500,
+        100,
         advisor.recommendedMaximumCards
       )
     );
@@ -583,6 +601,9 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       playlistCount: playlists.length,
       libraryTrackCount,
       hasError: Boolean(error),
+      companionRequired,
+      companionConnected,
+      reconnectRequired,
     },
     crates: {
       playlists: filteredPlaylists,
@@ -621,6 +642,9 @@ export function useSeratoWorkspace(provider: DjProvider = "serato") {
       creating,
       message,
       error,
+      companionRequired,
+      companionConnected,
+      reconnectRequired,
     },
     actions: {
       loadPlaylists,

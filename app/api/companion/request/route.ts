@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
 
   const baseUrl =
     process.env.BTTB_PUBLIC_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
     request.nextUrl.origin;
 
   return NextResponse.json(

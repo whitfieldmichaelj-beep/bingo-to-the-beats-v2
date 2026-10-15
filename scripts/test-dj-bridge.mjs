@@ -26,7 +26,7 @@ const p=virtual.parseVirtualDjList(xml,'/DJ/My Lists/Party.xml');assert.equal(p.
 assert.equal(virtual.parseVirtualDjList('#EXTM3U\n../Song.mp3\n','/DJ/Playlists/Party.m3u').tracks[0].filePath,'/DJ/Song.mp3');
 let denied=null,reads=0;
 const next={NextResponse:{json:(body,options={})=>({body,status:options.status??200})}};
-const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/companion/library':{companionPlaylists:async()=>null,companionLibraryLabels:async()=>[],activeCompanionSnapshot:async()=>null,sanitizeCompanionDetection:()=>null},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],libraryLocations:async()=>["/test/VirtualDJ"],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
+const mocks={'next/server':next,'@/lib/auth/local-library':{localLibraryAccessResponse:async()=>denied},'@/lib/companion/library':{companionPlaylists:async()=>null,companionLibraryLabels:async()=>[],activeCompanionSnapshot:async()=>null,sanitizeCompanionDetection:()=>null},'@/lib/companion/hosted':{hostedCompanionRequired:()=>false,COMPANION_NOT_CONNECTED_MESSAGE:'Companion required'},'@/lib/dj/providers':providers,'@/lib/dj/bridge':{getDjAdapter:async()=>{reads++;return {listPlaylists:async()=>[p],libraryLocations:async()=>["/test/VirtualDJ"],nowPlaying:async()=>null}}},'@/lib/game/service':{getUniquePlaylistTrackCount:tracks=>tracks.length},'@clerk/nextjs/server':{auth:async()=>({userId:'owner'})},'@/lib/billing/access':{HostAccessError:class extends Error{},requireGameHostAccess:async()=>{}}};
 for(const endpoint of ['playlists','now-playing']) {
  const route=load(`app/api/dj/[provider]/${endpoint}/route.ts`,mocks);
  const req={nextUrl:new URL('http://localhost/?gameId=test')};
@@ -49,6 +49,7 @@ const gameRoute=load('app/api/game/create/route.ts',{
  '@/lib/game/card-layout':{parseCardSize:value=>value===3?3:5},
  '@/lib/auth/local-library':{localLibraryAccessResponse:async()=>null},
  '@/lib/companion/library':{companionPlaylists:async()=>null},
+ '@/lib/companion/hosted':{hostedCompanionRequired:()=>false,COMPANION_NOT_CONNECTED_MESSAGE:'Companion required'},
  '@clerk/nextjs/server':{auth:async()=>({isAuthenticated:true,userId:'owner'})},
  '@/lib/dj/providers':providers,
  '@/lib/dj/bridge':{getDjAdapter:async provider=>{chosen=provider;return {loadPlaylist:async()=>({id:'playlist',name:'Party',tracks:Array.from({length:30},(_,i)=>({id:String(i),title:`Song ${i}`,artist:'Artist',filePath:`/music/${i}.mp3`,fileName:`${i}.mp3`,bpm:120}))})}}},

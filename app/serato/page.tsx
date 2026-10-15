@@ -150,6 +150,70 @@ function DjWorkspace({provider,onProviderChange}:{provider:DjProvider;onProvider
           hasError={workspace.hero.hasError}
         />
 
+        {provider === "serato" &&
+          (workspace.hero.companionRequired ||
+            workspace.hero.companionConnected) && (
+            <section
+              aria-label="BTTB Companion status"
+              style={{
+                margin: "20px 0",
+                padding: "18px",
+                border: workspace.hero.companionConnected
+                  ? "1px solid rgba(34,197,94,.55)"
+                  : "1px solid rgba(245,158,11,.65)",
+                borderRadius: "14px",
+                background: workspace.hero.companionConnected
+                  ? "rgba(20,83,45,.28)"
+                  : "rgba(120,53,15,.28)",
+              }}
+            >
+              <h2
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: "18px",
+                }}
+              >
+                {workspace.hero.companionConnected
+                  ? "BTTB Companion Connected"
+                  : "BTTB Companion Required"}
+              </h2>
+
+              {workspace.hero.companionConnected ? (
+                <>
+                  <p style={{ color: "#dcfce7" }}>
+                    This BTTB account is connected to the Companion running on
+                    the DJ computer. Serato crate and now-playing metadata can
+                    sync to the hosted game.
+                  </p>
+                  <p style={{ color: "#cbd5e1", marginBottom: 0 }}>
+                    Audio files are not uploaded. Logging out of BTTB
+                    disconnects this Companion from the account and removes
+                    the synced local-library snapshot.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: "#fef3c7" }}>
+                    The hosted BTTB site cannot read Serato directly from a
+                    DJ&apos;s computer. BTTB Companion must be running locally
+                    on that DJ computer to connect Serato to this account.
+                  </p>
+                  <p style={{ color: "#cbd5e1" }}>
+                    The Companion reads Serato crates and now-playing metadata
+                    locally and sends only the metadata BTTB needs. Audio files
+                    and full local file paths are not uploaded.
+                  </p>
+                  <p style={{ color: "#cbd5e1", marginBottom: 0 }}>
+                    After the Companion starts, its pairing screen will require
+                    one BTTB logout and sign-in cycle before the connection is
+                    approved. This prevents one DJ account from inheriting
+                    another DJ&apos;s library.
+                  </p>
+                </>
+              )}
+            </section>
+          )}
+
         {provider === "virtualdj" && (
           <section aria-label="Virtual DJ library locations" style={{ margin: "20px 0", padding: "18px", border: "1px solid #475569", borderRadius: "14px" }}>
             <h2 style={{ margin: "0 0 10px", fontSize: "18px" }}>Virtual DJ library locations</h2>

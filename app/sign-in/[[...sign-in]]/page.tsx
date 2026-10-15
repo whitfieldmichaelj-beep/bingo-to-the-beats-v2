@@ -2,7 +2,48 @@ import Image from "next/image";
 import { SignIn } from "@clerk/nextjs";
 import LogoutLibraryNotice from "@/components/LogoutLibraryNotice";
 
-export default function SignInPage() {
+type SignInPageProps = {
+  searchParams: Promise<
+    Record<
+      string,
+      string | string[] | undefined
+    >
+  >;
+};
+
+function firstValue(
+  value: string | string[] | undefined
+) {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
+}
+
+function safeReturnPath(
+  value: string | undefined
+) {
+  if (
+    value &&
+    value.startsWith("/") &&
+    !value.startsWith("//")
+  ) {
+    return value;
+  }
+
+  return "/dashboard";
+}
+
+export default async function SignInPage({
+  searchParams,
+}: SignInPageProps) {
+  const params = await searchParams;
+  const explicitReturn =
+    firstValue(params.returnTo);
+  const returnTo =
+    safeReturnPath(explicitReturn);
+  const companionReconnect =
+    firstValue(params.companion) === "1";
+
   return (
     <main
       style={{
@@ -51,6 +92,35 @@ export default function SignInPage() {
 
         <LogoutLibraryNotice />
 
+        {companionReconnect && (
+          <div
+            role="status"
+            style={{
+              margin: "0 auto 24px",
+              padding: "14px 16px",
+              maxWidth: "480px",
+              border:
+                "1px solid rgba(167,139,250,.55)",
+              borderRadius: "12px",
+              background:
+                "rgba(49,46,129,.32)",
+              lineHeight: 1.5,
+              textAlign: "left",
+            }}
+          >
+            <strong>
+              Finish connecting BTTB Companion
+            </strong>
+            <div style={{ marginTop: "6px" }}>
+              Sign back into the same BTTB
+              account. After login, you will
+              return to the Companion screen
+              and the new login session will
+              complete the Serato connection.
+            </div>
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
@@ -61,7 +131,12 @@ export default function SignInPage() {
             routing="path"
             path="/sign-in"
             signUpUrl="/sign-up"
-            fallbackRedirectUrl="/dashboard"
+            fallbackRedirectUrl={returnTo}
+            forceRedirectUrl={
+              explicitReturn
+                ? returnTo
+                : undefined
+            }
           />
         </div>
       </section>

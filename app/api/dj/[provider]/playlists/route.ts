@@ -5,6 +5,10 @@ import {
   companionLibraryLabels,
   companionPlaylists,
 } from "@/lib/companion/library";
+import {
+  COMPANION_NOT_CONNECTED_MESSAGE,
+  hostedCompanionRequired,
+} from "@/lib/companion/hosted";
 import { getDjAdapter } from "@/lib/dj/bridge";
 import { isDjProvider } from "@/lib/dj/providers";
 import { getUniquePlaylistTrackCount } from "@/lib/game/service";
@@ -46,6 +50,7 @@ export async function GET(
         {
           ok: true,
           source: "companion",
+          companionConnected: true,
           playlists,
           libraryLocations: libraryLabels,
           totalTracks: playlists.reduce(
@@ -54,6 +59,28 @@ export async function GET(
           ),
         },
         {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    if (hostedCompanionRequired()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BTTB_COMPANION_REQUIRED",
+          companionRequired: true,
+          companionConnected: false,
+          reconnectRequired: true,
+          playlists: [],
+          libraryLocations: [],
+          totalTracks: 0,
+          message: COMPANION_NOT_CONNECTED_MESSAGE,
+        },
+        {
+          status: 409,
           headers: {
             "Cache-Control": "no-store",
           },
