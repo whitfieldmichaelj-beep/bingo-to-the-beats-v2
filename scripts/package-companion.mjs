@@ -256,7 +256,7 @@ async function copyRuntimeAppFiles({
     JSON.stringify(
       {
         name: "bttb-companion",
-        version: "0.1.0-beta",
+        version: "1.0.0",
         private: true,
         main: "main.cjs",
       },
@@ -355,7 +355,7 @@ async function packageMac({
       "Set :CFBundleName BTTB Companion",
     ],
     [
-      "Set :CFBundleShortVersionString 0.1.0-beta",
+      "Set :CFBundleShortVersionString 1.0.0",
     ],
     [
       "Set :CFBundleVersion 1",
