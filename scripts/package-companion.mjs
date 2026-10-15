@@ -14,11 +14,6 @@ const root = path.resolve(
 const electronVersion =
   require("electron/package.json").version;
 
-const npmCommand =
-  process.platform === "win32"
-    ? "npm.cmd"
-    : "npm";
-
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -28,7 +23,7 @@ function run(command, args, options = {}) {
         ...(options.env || {}),
       },
       stdio: "inherit",
-      shell: false,
+      shell: options.shell ?? false,
     });
 
     child.on("error", reject);
@@ -51,6 +46,83 @@ async function exists(file) {
   return Boolean(
     await fs.stat(file).catch(() => null)
   );
+}
+
+async function runNpm(
+  args,
+  options = {}
+) {
+  if (process.platform === "win32") {
+    return run(
+      process.env.ComSpec || "cmd.exe",
+      [
+        "/d",
+        "/s",
+        "/c",
+        `npm ${args.join(" ")}`,
+      ],
+      options
+    );
+  }
+
+  return run("npm", args, options);
+}
+
+async function ensureElectronRuntime() {
+  const electronRoot = path.join(
+    root,
+    "node_modules",
+    "electron"
+  );
+
+  const executable =
+    process.platform === "darwin"
+      ? path.join(
+          electronRoot,
+          "dist",
+          "Electron.app",
+          "Contents",
+          "MacOS",
+          "Electron"
+        )
+      : path.join(
+          electronRoot,
+          "dist",
+          "electron.exe"
+        );
+
+  if (await exists(executable)) {
+    return;
+  }
+
+  const installer = path.join(
+    electronRoot,
+    "install.js"
+  );
+
+  if (!(await exists(installer))) {
+    throw new Error(
+      "Electron install script was not found."
+    );
+  }
+
+  console.log(
+    "Electron runtime is missing; downloading the native runtime for this build machine..."
+  );
+
+  await run(
+    process.execPath,
+    [installer],
+    {
+      cwd: electronRoot,
+    }
+  );
+
+  if (!(await exists(executable))) {
+    throw new Error(
+      "Electron runtime download completed without producing the expected executable."
+    );
+  }
 }
 
 async function prepareRuntime(runtimeDir) {
@@ -80,8 +152,7 @@ async function prepareRuntime(runtimeDir) {
     )
   );
 
-  await run(
-    npmCommand,
+  await runNpm(
     [
       "install",
       "--omit=dev",
@@ -92,8 +163,7 @@ async function prepareRuntime(runtimeDir) {
     { cwd: runtimeDir }
   );
 
-  await run(
-    npmCommand,
+  await runNpm(
     [
       "rebuild",
       "better-sqlite3-multiple-ciphers",
@@ -462,6 +532,7 @@ async function main() {
   }
 
   await buildCompanion();
+  await ensureElectronRuntime();
 
   const releasesDir = path.join(
     root,
