@@ -28,6 +28,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      DATABASE_URL: postgresql://bttb:bttb@127.0.0.1:5432/bttb_companion_build
+
     steps:
       - name: Check out BTTB
         uses: actions/checkout@v4
