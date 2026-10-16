@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseCrate } from "serato-connect";
 
 import { getSeratoLibrary } from "./service";
-import type { SeratoPlaylist, SeratoTrack } from "./types";
+import type { SeratoPlaylist, SeratoResult, SeratoTrack } from "./types";
 
 interface TrackLookup {
   byPath: Map<string, SeratoTrack>;
@@ -105,6 +105,10 @@ function addUniqueLookupEntry(
   }
 }
 
+// All crates in one scan use the same library snapshot. Cache the path
+// index by snapshot identity to avoid rebuilding it for every crate.
+const lookupCache = new WeakMap<SeratoResult, TrackLookup>();
+
 function buildTrackLookup(tracks: SeratoTrack[]): TrackLookup {
   const byPath = new Map<string, SeratoTrack>();
   const byExactFileName = new Map<string, SeratoTrack | null>();
@@ -174,11 +178,14 @@ export async function loadPlaylist(
   const parsedCrate = await parseCrate(playlist.filePath);
   const libraryResult = await getSeratoLibrary();
 
-  const allLibraryTracks = libraryResult.libraries.flatMap(
-    (library) => library.tracks
-  );
-
-  const lookup = buildTrackLookup(allLibraryTracks);
+  let lookup = lookupCache.get(libraryResult);
+  if (!lookup) {
+    const allLibraryTracks = libraryResult.libraries.flatMap(
+      (library) => library.tracks
+    );
+    lookup = buildTrackLookup(allLibraryTracks);
+    lookupCache.set(libraryResult, lookup);
+  }
   const tracks: SeratoTrack[] = [];
   const addedTrackIds = new Set<string>();
 

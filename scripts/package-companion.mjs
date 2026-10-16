@@ -256,7 +256,7 @@ async function copyRuntimeAppFiles({
     JSON.stringify(
       {
         name: "bttb-companion",
-        version: "1.0.0",
+        version: "1.0.1",
         private: true,
         main: "main.cjs",
       },
@@ -355,7 +355,7 @@ async function packageMac({
       "Set :CFBundleName BTTB Companion",
     ],
     [
-      "Set :CFBundleShortVersionString 1.0.0",
+      "Set :CFBundleShortVersionString 1.0.1",
     ],
     [
       "Set :CFBundleVersion 1",
@@ -409,7 +409,7 @@ async function packageMac({
 
   const zip = path.join(
     releasesDir,
-    `BTTB-Companion-v1.0-macOS11-${label}.zip`
+    `BTTB-Companion-v1.0.1-macOS11-${label}.zip`
   );
 
   await fs.rm(zip, {

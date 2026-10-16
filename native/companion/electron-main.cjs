@@ -69,6 +69,10 @@ function startCompanion() {
       updateStatus(line.replace("Synced ", "Connected — synced "));
       return;
     }
+    if (line.includes("BTTB Companion sync warning:")) {
+      updateStatus("Connected, but Serato library sync failed. Verify your Serato library is accessible on this Mac.");
+      return;
+    }
     if (line.startsWith("Now playing:")) {
       updateStatus(`Connected — ${line}`);
       return;
